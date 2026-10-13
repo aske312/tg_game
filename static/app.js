@@ -208,11 +208,19 @@ $('chat-form').onsubmit=guard(async()=>{const text=$('chat-text').value;await co
 $('finish').onclick=guard(async()=>{if(confirm('Завершить квиз и показать итоговый счёт?'))await command('finish');});
 $('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem('room');room=null;$('media-content').replaceChildren();mediaKey='';show('game',false);show('home',true);notice('');history.replaceState(null,'',location.pathname);};
 $('q-kind').onchange=()=>{const kind=$('q-kind').value;show('file-fields',!!kind);show('clip-fields',kind==='audio'||kind==='video');$('q-file').accept=kind==='image'?'.png,.jpg,.jpeg,.gif,.webp':kind==='audio'?'.mp3,.wav,.ogg,.m4a':'.mp4,.webm';$('q-file').required=!!kind;};
-function renderQuestionEditor() {const binary=room?.stages.find(s=>s.id===$('q-stage').value)?.type==='binary';show('q-binary-fields',binary);$('q-answer').required=!binary;$('q-answer').hidden=binary;$('q-answer').previousElementSibling.hidden=binary;for(const id of ['q-choice-a','q-choice-b'])$(id).required=binary;}
+function renderQuestionEditor() {
+  const selected=room?.stages.find(s=>s.id===$('q-stage').value),binary=selected?.type==='binary',grid=selected?.type==='grid';
+  show('q-binary-fields',binary);$('q-answer').required=!binary;$('q-answer').hidden=binary;$('q-answer').previousElementSibling.hidden=binary;for(const id of ['q-choice-a','q-choice-b'])$(id).required=binary;
+  show('q-category-field',grid);$('q-category').required=grid;
+  const category=$('q-category').value;
+  $('q-category').innerHTML='<option value="">Выбери категорию</option>'+(selected?.categories||[]).map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  if(selected?.categories?.includes(category))$('q-category').value=category;
+}
 $('q-stage').onchange=renderQuestionEditor;
 $('question-form').onsubmit=guard(async()=>{
   if(uploading)return;
   const body={stage:$('q-stage').value,text:$('q-text').value,answer:$('q-answer').value,value:Number($('q-value').value),seconds:Number($('q-seconds').value),clip_start:Number($('clip-start').value||0),clip_end:$('clip-end').value?Number($('clip-end').value):null};
+  if(room.stages.find(s=>s.id===body.stage)?.type==='grid')body.category=$('q-category').value;
   if(room.stages.find(s=>s.id===body.stage)?.type==='binary'){body.choices=[$('q-choice-a').value,$('q-choice-b').value];body.correct_choice=Number($('q-correct-choice').value);body.answer=body.choices[body.correct_choice];}
   const kind=$('q-kind').value,file=$('q-file').files[0];
   if(kind&&(!file||file.size>25*1024*1024))throw new Error('Выберите файл размером до 25 МБ');
@@ -220,7 +228,7 @@ $('question-form').onsubmit=guard(async()=>{
   uploading=true;$('add-question').disabled=true;$('start').disabled=true;
   try{
     if(kind){const r=await fetch(`/api/rooms/${room.code}/media?kind=${kind}`,{method:'POST',headers:{Authorization:'Bearer '+auth.token,'Content-Type':file.type||'application/octet-stream'},body:file});const data=await r.json();if(!r.ok)throw new Error(data.detail||'Не удалось загрузить файл');body.media_id=data.id;}
-    apply(await api('/rooms/'+room.code+'/questions',body));$('question-form').reset();$('q-kind').onchange();renderQuestionEditor();renderQuestionEditor();renderQuestionEditor();notice('Вопрос добавлен в конец пакета.');
+    apply(await api('/rooms/'+room.code+'/questions',body));$('question-form').reset();$('q-kind').onchange();renderQuestionEditor();notice('Вопрос добавлен в конец пакета.');
   }finally{uploading=false;$('add-question').disabled=false;if(room)$('start').disabled=room.players.length<2||!room.question_count;}
 });
 $('invite').onclick=guard(async()=>{const link=config.bot_username?`https://t.me/${config.bot_username}?start=${room.code}`:`${location.origin}/?room=${room.code}`;if(tg?.initData&&config.bot_username)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Крысиные бега! Код: '+room.code)}`);else if(navigator.clipboard){await navigator.clipboard.writeText(link);notice('Ссылка скопирована. Код: '+room.code);}else notice('Код комнаты: '+room.code);});

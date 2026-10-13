@@ -12,6 +12,8 @@ from builder.store import Catalog
 
 
 def stage(sid, mode, **settings):
+    if mode == 'grid':
+        settings.setdefault('categories', ['Тема'])
     return stages_from_doc({'stages':[dict(id=sid,type=mode,title=sid,**settings)]})[0]
 
 

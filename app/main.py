@@ -68,6 +68,7 @@ class Question(BaseModel):
     stage: str = Field(default='', max_length=64)
     choices: Optional[list[str]] = None
     correct_choice: Optional[int] = Field(default=None, ge=0, le=1)
+    category: str = Field(default='', max_length=100)
 
 
 def set_session_cookie(response, request, token):

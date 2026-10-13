@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101e18">
   <title>Конструктор · Крысиные бега</title>
-  <link rel="stylesheet" href="/static/builder.css?v=2">
-  <script src="/static/builder.js?v=2" defer></script>
+  <link rel="stylesheet" href="/static/builder.css?v=3">
+  <script src="/static/categories.js?v=3" defer></script>
+  <script src="/static/builder.js?v=3" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -32,6 +33,8 @@
       <section id="editor" hidden>
         <div class="editor-header"><div><span class="eyebrow">РЕДАКТИРОВАНИЕ ИГРЫ</span><h1 id="editor-title"></h1><span id="save-status" class="save-status" role="status"></span></div><div class="editor-actions"><button id="save" class="secondary">Сохранить черновик</button><button id="publish" class="primary">Опубликовать ↗</button></div></div>
         <section class="panel game-settings"><div class="section-title"><h2>Об игре</h2><span id="round-count" class="hint"></span></div><label for="game-title">Название</label><input id="game-title" maxlength="100" placeholder="Как назовём забег?"><label for="game-description">Описание <span class="optional">необязательно</span></label><textarea id="game-description" maxlength="500" rows="2" placeholder="Тема, настроение или пара слов для игроков"></textarea></section>
+        <section class="panel category-overview"><div class="section-title"><h2>Сводка по категориям</h2><span id="category-overview-total" class="hint"></span></div><div class="category-table-wrap"><table class="category-table"><thead><tr><th scope="col">Категория</th><th scope="col">Вопросы</th><th scope="col">События</th><th scope="col">Всего</th></tr></thead><tbody id="category-summary"></tbody></table></div></section>
+        <datalist id="known-categories"></datalist>
         <section class="panel stage-panel">
           <div class="section-title"><h2>Раунды игры</h2><span id="stage-count" class="hint"></span></div>
           <div class="stage-add"><label for="new-stage-type" class="sr-only">Режим нового раунда</label><select id="new-stage-type"><option value="blitz">Блиц</option><option value="grid">Сетка вопросов</option><option value="binary">Выбор из двух</option></select><button id="add-stage" class="secondary">+ Раунд</button></div>
@@ -39,7 +42,7 @@
           <div class="stage-settings"><div class="stage-heading"><h3 id="stage-heading"></h3><div class="round-tools"><button id="stage-up" class="icon-button" aria-label="Переместить раунд игры выше">↑</button><button id="stage-down" class="icon-button" aria-label="Переместить раунд игры ниже">↓</button><button id="stage-delete" class="icon-button danger-text" aria-label="Удалить раунд игры">×</button></div></div>
           <div class="field-pair"><div><label for="stage-title">Название раунда</label><input id="stage-title" maxlength="100"></div><div><label for="stage-type">Режим раунда</label><select id="stage-type"><option value="blitz">Блиц</option><option value="grid">Сетка вопросов</option><option value="binary">Выбор из двух</option></select></div></div>
           <div id="stage-linear-settings" class="field-pair"><div><label for="stage-order">Порядок вопросов</label><select id="stage-order"><option value="sequential">По порядку</option><option value="random">Случайный</option></select></div><div><label for="stage-auto">Следующий вопрос после оценки</label><select id="stage-auto"><option value="manual">По кнопке ведущего</option><option value="auto">Автоматически через 3 секунды</option></select></div></div>
-          <div id="stage-grid-settings" hidden><label for="stage-chooser">Кто выбирает вопрос?</label><select id="stage-chooser"><option value="winner">Первый правильно ответивший игрок</option><option value="host">Ведущий</option></select></div><p id="stage-explanation" class="hint"></p></div>
+          <div id="stage-grid-settings" hidden><label for="stage-chooser">Кто выбирает вопрос?</label><select id="stage-chooser"><option value="winner">Первый правильно ответивший игрок</option><option value="host">Ведущий</option></select><div class="grid-category-heading"><h3>Категории сетки</h3><span class="hint">Обязательны для каждого вопроса</span></div><div class="category-add"><label class="sr-only" for="new-category">Название новой категории</label><input id="new-category" maxlength="100" placeholder="Например: космос"><button id="add-category" class="secondary" type="button">+ Категория</button></div><div id="grid-category-list" class="grid-category-list"></div><p id="category-warning" class="category-warning" role="status" hidden></p></div><p id="stage-explanation" class="hint"></p></div>
         </section>
         <div class="rounds-layout">
           <section class="panel round-order"><div class="section-title"><h2>Вопросы раунда</h2><span class="hint">до 100 в игре</span></div><div class="add-round"><button id="add-question" class="secondary">+ Вопрос</button><button id="add-event" class="secondary">+ Событие</button></div><ol id="round-list" class="round-list"></ol><p id="no-rounds" class="hint">Добавь первый вопрос этого раунда.</p></section>
@@ -53,7 +56,8 @@
                 <label for="accepted-answers">Другие допустимые ответы <span class="optional">по одному на строке</span></label><textarea id="accepted-answers" rows="2" placeholder="Варианты для проверки в тренировке"></textarea></div>
                 <div id="binary-answer-fields" hidden><div class="field-pair"><div><label for="choice-a">Первый вариант</label><input id="choice-a" maxlength="100" placeholder="Да"></div><div><label for="choice-b">Второй вариант</label><input id="choice-b" maxlength="100" placeholder="Нет"></div></div><label for="correct-choice">Правильный вариант</label><select id="correct-choice"><option value="0">Первый</option><option value="1">Второй</option></select><p class="hint">Игрок выбирает кнопку. Ответы проверяются автоматически после закрытия вопроса.</p></div>
                 <div class="field-pair"><div><label for="points">Очки</label><input id="points" type="number" min="10" max="1000" step="1"></div><div><label for="time-limit">Время, сек.</label><input id="time-limit" type="number" min="10" max="300" step="1"></div></div>
-                <label for="category">Категория <span class="optional">необязательно</span></label><input id="category" maxlength="100" placeholder="Например: космос">
+                <div id="free-category-field"><label for="category">Категория <span class="optional">необязательно</span></label><input id="category" maxlength="100" placeholder="Например: космос" list="known-categories"></div>
+                <div id="grid-category-field" hidden><label for="grid-category">Категория <span class="required-note">обязательно</span></label><select id="grid-category" required></select></div>
                 <div class="media-heading"><h3>Материал к вопросу</h3><span class="hint">до 25 МБ</span></div>
                 <label for="media-type" class="sr-only">Тип материала</label><select id="media-type"><option value="">Без материала</option><option value="image">Изображение</option><option value="audio">Аудио</option><option value="video">Видео</option></select>
                 <div id="media-fields" hidden><label for="media-file" class="upload-zone"><span id="upload-label">Выбрать файл</span><span class="hint">Нажми, чтобы загрузить или заменить материал</span><input id="media-file" type="file"></label><div id="attached-file" class="attached-file"><span id="file-name"></span><button id="remove-media" class="quiet danger-text" type="button">Убрать</button></div></div>
@@ -62,6 +66,7 @@
               <div id="event-fields" hidden>
                 <label for="event-title">Название события</label><input id="event-title" maxlength="100" placeholder="Например: сырный бонус">
                 <label for="event-text">Описание <span class="optional">необязательно</span></label><textarea id="event-text" maxlength="2000" rows="3" placeholder="Что происходит в забеге?"></textarea>
+                <label for="event-category">Категория события <span class="optional">необязательно</span></label><input id="event-category" maxlength="100" list="known-categories" placeholder="Для сводки по категориям">
                 <label for="effect-type">Эффект</label><select id="effect-type"><option value="random_buff">Усиление · случайный бонус</option><option value="random_debuff">Ослабление · случайный штраф</option></select>
                 <label for="effect-target">Кому достанется?</label><select id="effect-target"><option value="random_player">Случайному игроку</option><option value="all_players">Всем игрокам</option></select>
                 <label for="effect-duration">Длительность, вопросов</label><input id="effect-duration" type="number" min="1" max="5" step="1">

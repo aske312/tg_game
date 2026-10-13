@@ -3,8 +3,8 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101e18"><title>Крысиные бега · Квиз для своих</title>
 <link rel="icon" href="/static/rat.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/static/style.css?v=8"><link rel="stylesheet" href="/static/chat.css?v=8"><link rel="stylesheet" href="/static/quiz.css?v=8"><link rel="stylesheet" href="/static/modes.css?v=8">
-<script src="https://telegram.org/js/telegram-web-app.js"></script><script defer src="/static/app.js?v=8"></script>
+<link rel="stylesheet" href="/static/style.css?v=9"><link rel="stylesheet" href="/static/chat.css?v=9"><link rel="stylesheet" href="/static/quiz.css?v=9"><link rel="stylesheet" href="/static/modes.css?v=9">
+<script src="https://telegram.org/js/telegram-web-app.js"></script><script defer src="/static/app.js?v=9"></script>
 </head><body><main>
 <header class="app-header"><a href="/" class="brand" aria-label="Крысиные бега — главная"><span class="brand-mark"><img src="/static/rat.svg" alt="" width="36" height="36"></span><span>крысиные<br><span>бега.</span></span></a><div class="identity"><i aria-hidden="true"></i><span id="identity">Квиз для своих</span></div></header>
 <div id="notice" role="status" aria-live="polite"></div>
@@ -33,6 +33,7 @@
       <section id="lobby" class="panel lobby-panel" hidden><span class="eyebrow">ПЕРЕД СТАРТОМ</span><h2>Собираемся<br>на стартовой линии.</h2><p id="pack-count"></p><div class="lobby-rule"><span aria-hidden="true">↗</span><p>Каждый пишет один ответ. Соперники увидят его, когда приём ответов закроется.</p></div><button id="start" class="button-wide" hidden>Начать забег <span aria-hidden="true">→</span></button><p id="waiting" class="waiting-note" hidden>● Ведущий скоро запустит игру.</p></section>
       <details id="editor" class="panel editor-panel" hidden><summary>Добавить свой вопрос <span aria-hidden="true">+</span></summary><form id="question-form">
         <label for="q-stage">Раунд игры</label><select id="q-stage"></select>
+        <div id="q-category-field" hidden><label for="q-category">Категория сетки · обязательно</label><select id="q-category"></select></div>
         <label for="q-text">Текст вопроса</label><textarea id="q-text" maxlength="2000" required rows="3" placeholder="О чём спросим игроков?"></textarea><label for="q-answer">Правильный ответ · виден ведущему</label><input id="q-answer" maxlength="500" required placeholder="Ответ для проверки">
         <div class="field-pair"><div><label for="q-value">Стоимость, очков</label><input id="q-value" type="number" min="10" max="1000" value="100" required></div><div><label for="q-seconds">Время, сек.</label><input id="q-seconds" type="number" min="10" max="300" value="45" required></div></div>
         <div id="q-binary-fields" hidden><div class="field-pair"><div><label for="q-choice-a">Первый вариант</label><input id="q-choice-a" maxlength="100" value="Да"></div><div><label for="q-choice-b">Второй вариант</label><input id="q-choice-b" maxlength="100" value="Нет"></div></div><label for="q-correct-choice">Правильный вариант</label><select id="q-correct-choice"><option value="0">Первый</option><option value="1">Второй</option></select></div>

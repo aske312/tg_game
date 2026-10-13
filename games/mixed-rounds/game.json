@@ -4,7 +4,7 @@
   "description": "Разминка блицем, сетка с выбором игрока и финал с двумя вариантами. Общий счёт на всю игру.",
   "stages": [
     {"id":"warmup","type":"blitz","title":"Быстрая разминка","order":"random","auto_advance":false},
-    {"id":"board","type":"grid","title":"Выбираем тему","chooser":"winner"},
+    {"id":"board","type":"grid","title":"Выбираем тему","chooser":"winner","categories":["Космос","География"]},
     {"id":"final","type":"binary","title":"Одно из двух","order":"sequential","auto_advance":false}
   ],
   "rounds": [

@@ -6,7 +6,7 @@ import secrets
 from pathlib import Path
 
 from app.media import MAX_MEDIA_BYTES, detect_media
-from app.modes import stages_from_doc, binary_fields
+from app.modes import stages_from_doc, binary_fields, grid_category
 
 MAX_PACK_BYTES = 1024 * 1024
 
@@ -58,7 +58,11 @@ def load_pack(directory):
             text = item.get('text', '')
             if not isinstance(event_title, str) or not event_title.strip() or len(event_title) > 100 or not isinstance(text, str) or len(text) > 2000:
                 raise ValueError(f'Раунд {i}: недопустимые title/text события')
+            category = item.get('category', '')
+            if not isinstance(category, str) or len(category.strip()) > 100:
+                raise ValueError(f'Раунд {i}: категория события до 100 символов')
             questions.append(dict(id=qid, stage=stage_id, type='event', title=event_title, text=text,
+                                  category=category.strip(),
                                   effect=dict(type=effect['type'], target=effect['target'], questions=duration)))
             continue
         if item.get('type') != 'question':
@@ -77,6 +81,11 @@ def load_pack(directory):
         if not isinstance(accepted, list) or len(accepted) > 20 or any(not isinstance(v, str) or not v.strip() or len(v) > 500 for v in accepted):
             raise ValueError(f'Вопрос {i}: accepted_answers должен быть списком ответов')
         category = str(item.get('category') or title)[:100]
+        if mode == 'grid':
+            try:
+                category = grid_category(item.get('category'), stage_map[stage_id])
+            except ValueError as error:
+                raise ValueError(f'Вопрос {i}: {error}') from None
         q = dict(id=qid, stage=stage_id, type='question', category=category.strip(), text=item['text'].strip(), answer=binary.get('answer', item.get('answer', '')).strip(),
                  accepted_answers=accepted, value=points, seconds=seconds)
         q.update(binary)

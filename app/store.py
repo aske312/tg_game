@@ -10,7 +10,7 @@ from pathlib import Path
 
 from app.questions import QUESTIONS
 from app.events import apply_event, snapshot_modifiers, consume_modifiers, score_delta
-from app.modes import LEGACY_STAGE, binary_fields
+from app.modes import LEGACY_STAGE, binary_fields, grid_category
 
 
 def normalize_answer(text):
@@ -43,6 +43,9 @@ def migrate(s):
     s.setdefault('stage_index', 0)
     s.setdefault('chooser', s['host'])
     s.setdefault('advance_at', None)
+    for stage in s['stages']:
+        if stage['type'] == 'grid' and 'categories' not in stage:
+            stage['categories'] = list(dict.fromkeys(q['category'] for q in s['pack'] if q.get('stage') == stage['id'] and q.get('type') != 'event'))
     if s.get('schema') == 2:
         return s
     s['pack'] = copy.deepcopy(QUESTIONS)
@@ -261,6 +264,8 @@ class Store:
             stage = next((stage for stage in s['stages'] if stage['id'] == stage_id), None)
             if not stage:
                 raise ValueError('Неизвестный игровой раунд')
+            if stage['type'] == 'grid':
+                q['category'] = grid_category(question.get('category'), stage)
             q.update(stage=stage_id, **binary_fields(q, required=stage['type'] == 'binary'))
             if q.get('media_id'):
                 row = db.execute('SELECT kind FROM media WHERE id=? AND room=?', (q.pop('media_id'), code)).fetchone()

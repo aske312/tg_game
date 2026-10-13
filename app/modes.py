@@ -25,8 +25,34 @@ def stages_from_doc(doc):
         order, chooser, auto = stage.get('order', 'sequential'), stage.get('chooser', 'winner'), stage.get('auto_advance', False)
         if order not in ('sequential', 'random') or chooser not in ('winner', 'host') or type(auto) is not bool:
             raise ValueError(f'Раунд {index}: недопустимые настройки порядка, выбора или перехода')
-        stages.append(dict(id=sid, type=stage['type'], title=title.strip(), order=order, chooser=chooser, auto_advance=auto))
+        parsed = dict(id=sid, type=stage['type'], title=title.strip(), order=order, chooser=chooser, auto_advance=auto)
+        if stage['type'] == 'grid':
+            categories = stage.get('categories')
+            if 'categories' not in stage:
+                # Existing grids already contain category names on their questions.
+                categories = []
+                for q in doc.get('rounds', []):
+                    if isinstance(q, dict) and q.get('stage', raw[0]['id']) == sid and isinstance(q.get('category'), str) and q['category'].strip():
+                        name = q['category'].strip()
+                        if name.casefold() not in {c.casefold() for c in categories}:
+                            categories.append(name)
+            if not isinstance(categories, list) or not 1 <= len(categories) <= 100 or any(not isinstance(c, str) or not c.strip() or len(c.strip()) > 100 for c in categories):
+                raise ValueError(f'Раунд «{title}»: добавьте категории сетки (до 100 названий по 100 символов)')
+            categories = [c.strip() for c in categories]
+            if len({c.casefold() for c in categories}) != len(categories):
+                raise ValueError(f'Раунд «{title}»: названия категорий должны различаться')
+            parsed['categories'] = categories
+        stages.append(parsed)
     return stages
+
+
+def grid_category(value, stage):
+    if not isinstance(value, str) or not value.strip() or len(value.strip()) > 100:
+        raise ValueError('Выберите обязательную категорию вопроса сетки')
+    category = next((c for c in stage.get('categories', []) if c.casefold() == value.strip().casefold()), None)
+    if category is None:
+        raise ValueError('Категория вопроса должна быть из списка категорий этого раунда')
+    return category
 
 
 def binary_fields(item, required=False):
