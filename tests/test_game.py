@@ -71,6 +71,14 @@ def test_auth():
     for raw,token in [(signed('secret'),'wrong'),(signed('secret',90000),'secret'),('user=fake','secret')]:
         with pytest.raises(ValueError): validate_telegram(raw,token)
 
+
+def test_bot_room_invitation():
+    from app.bot import invitation_url
+    assert invitation_url('https://example.com', '/start ABC234')=='https://example.com?room=ABC234'
+    assert invitation_url('https://example.com/?mode=test', '/start abc234')=='https://example.com/?mode=test&room=ABC234'
+    assert invitation_url('https://example.com', '/start')=='https://example.com'
+    assert invitation_url('https://example.com', '/start https://other.example')=='https://example.com'
+
 def test_http_websocket(tmp_path,monkeypatch):
     from fastapi.testclient import TestClient
     from app import main

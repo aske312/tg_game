@@ -120,7 +120,7 @@ def main():
         children.append(bot)
         print(f'READY: https://t.me/{username}', flush=True)
         print('Open the bot and tap its menu button. Keep this process running. Ctrl+C stops all three services.', flush=True)
-        print('For startapp invitations, configure Main Mini App in BotFather with the tunnel URL above.', flush=True)
+        print('Room invitations work through /start; Main Mini App configuration is optional.', flush=True)
         while True:
             for child in children:
                 if child.poll() is not None:

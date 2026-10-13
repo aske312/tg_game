@@ -2,13 +2,25 @@
 import asyncio
 import logging
 import os
-from urllib.parse import urlparse
+import re
+from urllib.parse import urlparse, urlsplit, urlunsplit, parse_qsl, urlencode
 
 import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
+
+
+def invitation_url(base, text):
+    parts = text.split(maxsplit=1)
+    code = parts[1].strip().upper() if len(parts) > 1 else ''
+    if not re.fullmatch(r'[A-Z2-9]{6}', code):
+        return base
+    url = urlsplit(base)
+    query = dict(parse_qsl(url.query))
+    query['room'] = code
+    return urlunsplit((url.scheme, url.netloc, url.path, urlencode(query), url.fragment))
 
 
 async def main():
@@ -40,9 +52,10 @@ async def main():
                     offset = update['update_id'] + 1
                     msg = update.get('message', {})
                     if msg.get('chat', {}).get('type') == 'private' and msg.get('text', '').split(' ')[0] in ('/start', '/play'):
+                        launch = invitation_url(url, msg.get('text', ''))
                         await call('sendMessage', chat_id=msg['chat']['id'],
                                    text='Крысиные бега 🐀\nСоздайте комнату или попробуйте тренировку с искусственными игроками. Ответы пишите в чат комнаты.',
-                                   reply_markup={'inline_keyboard': [[{'text': 'Открыть игру', 'web_app': {'url': url}}]]})
+                                   reply_markup={'inline_keyboard': [[{'text': 'Открыть игру', 'web_app': {'url': launch}}]]})
             except RuntimeError as e:
                 print(str(e))
                 await asyncio.sleep(3)
