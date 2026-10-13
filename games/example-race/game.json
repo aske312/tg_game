@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "title": "Крысиные бега: вопросы и события",
+  "description": "Пример с медиа, бафом и дебафом.",
+  "rounds": [
+    {
+      "id": "color",
+      "type": "question",
+      "text": "Какой цвет на изображении?",
+      "answer": "Красный",
+      "points": 100,
+      "time_limit": 45,
+      "media": {
+        "type": "image",
+        "file": "media/red.png"
+      }
+    },
+    {
+      "id": "buff",
+      "type": "event",
+      "title": "Сырный бонус",
+      "text": "Один случайный игрок получает усиление.",
+      "effect": {
+        "type": "random_buff",
+        "target": "random_player",
+        "questions": 1
+      }
+    },
+    {
+      "id": "sound",
+      "type": "question",
+      "text": "Сколько звуковых сигналов прозвучало?",
+      "answer": "3",
+      "accepted_answers": [
+        "три"
+      ],
+      "points": 200,
+      "time_limit": 45,
+      "media": {
+        "type": "audio",
+        "file": "media/signals.wav",
+        "start": 0,
+        "end": 3
+      }
+    },
+    {
+      "id": "debuff",
+      "type": "event",
+      "title": "Крысиная ловушка",
+      "text": "Все игроки получают случайное ослабление.",
+      "effect": {
+        "type": "random_debuff",
+        "target": "all_players",
+        "questions": 2
+      }
+    },
+    {
+      "id": "video",
+      "type": "question",
+      "text": "Какой цвет был последним?",
+      "answer": "Зелёный",
+      "points": 200,
+      "time_limit": 45,
+      "media": {
+        "type": "video",
+        "file": "media/colors.mp4",
+        "start": 0,
+        "end": 3
+      }
+    },
+    {
+      "id": "math",
+      "type": "question",
+      "text": "Сколько будет 2 + 2?",
+      "answer": "4",
+      "points": 100,
+      "time_limit": 30
+    }
+  ]
+}

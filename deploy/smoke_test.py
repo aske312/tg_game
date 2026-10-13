@@ -30,7 +30,11 @@ async def main():
             assert (await client.post('/api/practice')).status_code == 401
             print('Anonymous access is blocked.')
             headers = {'Authorization': 'Bearer '+token}
-            res = await client.post('/api/practice', headers=headers)
+            await client.get('/api/me', headers=headers)
+            library = await client.get('/api/packs', headers=headers)
+            library.raise_for_status()
+            assert any(p['id']=='library-example-race' for p in library.json()['packs'])
+            res = await client.post('/api/practice', headers=headers, json={'pack':'library-example-race'})
             res.raise_for_status()
             state = res.json()
             code = state['code']
@@ -38,29 +42,37 @@ async def main():
             assert len([p for p in state['players'] if p.get('synthetic')]) == 3
             async with websockets.connect(url.replace('https://', 'wss://')+'/ws/'+code) as ws:
                 await ws.send(json.dumps({'token': token}))
-                assert json.loads(await asyncio.wait_for(ws.recv(), 5))['phase'] == 'board'
+                assert json.loads(await asyncio.wait_for(ws.recv(), 5))['phase'] == 'question'
                 async def action(action, **extra):
                     res = await client.post('/api/rooms/'+code+'/action', headers=headers, json={'action': action, **extra})
                     res.raise_for_status()
-                    return json.loads(await asyncio.wait_for(ws.recv(), 5))
-                state = await action('select', question='0-0')
+                    return res.json()
                 assert 'answer' not in state['question']
-                await action('buzz')
-                state = await action('answer', text=BY_ID['0-0']['answer'])
-                assert state['submitted']['text'] == BY_ID['0-0']['answer']
-                state = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                image = await client.get(state['question']['media']['url'], headers={'Range':'bytes=0-7'})
+                assert image.status_code == 206 and image.content == b'\x89PNG\r\n\x1a\n'
+                answer = store.read(code)['pack'][0]['answer']
+                state = await action('answer', text=answer)
+                assert state['answers'][user['id']]['text'] == answer
+                while state['phase'] != 'reveal':
+                    state = json.loads(await asyncio.wait_for(ws.recv(), 15))
                 assert state['phase'] == 'reveal'
                 assert next(p for p in state['players'] if p['id']==user['id'])['score'] == 100
-                print('Public WebSocket, text answer and automatic scoring verified.')
-                await action('next')
-                await action('select', question='0-1')
-                state = json.loads(await asyncio.wait_for(ws.recv(), 12))
-                assert state['buzzer'].startswith('sim-')
-                state = json.loads(await asyncio.wait_for(ws.recv(), 5))
-                assert state['submitted'] and state['messages'][-1]['kind'] == 'answer'
-                state = json.loads(await asyncio.wait_for(ws.recv(), 5))
-                assert len(state['attempted']) == 1
-                print('Artificial opponent answered and was scored.')
+                assert len(state['answers']) == 3
+                print('Public WebSocket, parallel answers, robots and automatic scoring verified.')
+                state = await action('next')
+                assert state['phase'] == 'event' and len(state['event']['targets']) == 1
+                state = await action('next')
+                assert state['question']['media']['kind'] == 'audio'
+                audio = await client.get(state['question']['media']['url'],headers={'Range':'bytes=0-15'})
+                assert audio.status_code == 206
+                await action('close')
+                state = await action('next')
+                assert state['phase'] == 'event' and len(state['event']['targets']) == 3
+                state = await action('next')
+                assert state['question']['media']['kind'] == 'video'
+                video = await client.get(state['question']['media']['url'],headers={'Range':'bytes=0-31'})
+                assert video.status_code == 206
+                print('JSON library, persisted events, authenticated image/audio/video ranges verified.')
             base = 'https://api.telegram.org/bot'+cfg['BOT_TOKEN']
             try:
                 menu = (await client.post(base+'/getChatMenuButton', json={})).json()
@@ -71,6 +83,7 @@ async def main():
     finally:
         with store.connect() as db:
             if code:
+                db.execute('DELETE FROM media WHERE room=?', (code,))
                 db.execute('DELETE FROM rooms WHERE code=?', (code,))
             db.execute('DELETE FROM sessions WHERE token=?', (token,))
         print('Only the smoke-test room and session were cleaned up.')

@@ -32,4 +32,12 @@ CATEGORIES = [
 
 QUESTIONS = [dict(id=f'{c}-{i}', category=name, value=(i+1)*100, text=q, answer=a)
              for c, (name, items) in enumerate(CATEGORIES) for i, (q, a) in enumerate(items)]
+QUESTIONS = [
+    dict(id='media-image', category='Медиа', value=100, seconds=45, text='Какая геометрическая фигура изображена?', answer='Треугольник',
+         media=dict(kind='image', url='/static/demo/triangle.svg')),
+    dict(id='media-audio', category='Медиа', value=100, seconds=45, text='Сколько звуковых сигналов слышно на записи?', answer='3 / Три',
+         media=dict(kind='audio', url='/static/demo/signals.wav')),
+    dict(id='media-video', category='Медиа', value=100, seconds=45, text='Какого цвета последний экран в отрывке?', answer='Зелёный / Зеленого / Зелёного',
+         media=dict(kind='video', url='/static/demo/colors.mp4', start=0, end=3)),
+] + QUESTIONS
 BY_ID = {q['id']: q for q in QUESTIONS}

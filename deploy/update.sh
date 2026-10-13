@@ -27,6 +27,7 @@ fi
 "$base/.venv/bin/pip" -q install -r "$release/requirements.txt"
 cd "$release"
 DATABASE_PATH=/var/lib/rat-race/deploy-test.sqlite3 "$base/.venv/bin/python" -m pytest -q
+install -d -o ratrace -g ratrace -m 755 /var/lib/rat-race/games /var/lib/rat-race/media
 install -d -m 700 /var/lib/rat-race/backups
 if [ -f /var/lib/rat-race/game.sqlite3 ]; then
     "$base/.venv/bin/python" - <<'PY'

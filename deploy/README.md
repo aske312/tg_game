@@ -8,7 +8,7 @@
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
-git add app static tests deploy scripts README.md requirements.txt .env.example .gitignore start-local.cmd start-telegram.cmd
+git add app static games tests deploy scripts README.md requirements.txt .env.example .gitignore start-local.cmd start-telegram.cmd
 git commit -m "Describe the change"
 git push origin main
 .\.venv\Scripts\python.exe scripts/deploy_server.py
@@ -29,6 +29,8 @@ sudo bash /opt/rat-race/current/deploy/update.sh
 - `/etc/rat-race/app.env` — токен бота, HTTPS-адрес, настройки (root:root, 600).
 - `/etc/rat-race/release.env` — SHA запущенной версии.
 - `/var/lib/rat-race/game.sqlite3` — база игры (служба `ratrace`).
+- `/var/lib/rat-race/games/<имя>/game.json` — авторские игры и медиа рядом с документом; загрузка через SFTP, обновление списка без перезапуска.
+- `/var/lib/rat-race/media/` — материалы комнат. Для полной резервной копии нужны база, этот каталог и авторские игры.
 - `/var/lib/rat-race/backups/` — резервные копии перед обновлением.
 - `/opt/rat-race/repo.git` — зеркало GitHub.
 - `/opt/rat-race/releases/<SHA>/` — неизменяемые версии приложения.

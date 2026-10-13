@@ -1,12 +1,14 @@
+import copy
 import json
+import re
 import secrets
 import sqlite3
 import time
-import re
 from contextlib import contextmanager
 from pathlib import Path
 
-from app.questions import QUESTIONS, BY_ID
+from app.questions import QUESTIONS
+from app.events import apply_event, snapshot_modifiers, consume_modifiers, score_delta
 
 
 def normalize_answer(text):
@@ -15,37 +17,86 @@ def normalize_answer(text):
 
 def answer_matches(text, answer):
     variants = [answer] + answer.split('/')
-    # Demo pack: allow a surname instead of a full author name.
     if answer in ('Юрий Гагарин', 'Александр Пушкин', 'Джоан Роулинг', 'Михаил Булгаков', 'Джордж Оруэлл'):
         variants.append(answer.split()[-1])
     return normalize_answer(text) in {normalize_answer(v) for v in variants}
 
 
+def matches_question(text, q):
+    return answer_matches(text, q['answer']) or any(answer_matches(text, v) for v in q.get('accepted_answers', []))
+
+
 def message(s, name, text, kind='chat', uid=None):
-    messages = s.setdefault('messages', [])
     s['message_seq'] = s.get('message_seq', 0) + 1
-    messages.append(dict(id=s['message_seq'], name=name, text=text, kind=kind, user_id=uid, time=time.time()))
-    s['messages'] = messages[-100:]
+    s.setdefault('messages', []).append(dict(id=s['message_seq'], name=name, text=text, kind=kind, user_id=uid, time=time.time()))
+    s['messages'] = s['messages'][-100:]
 
 
-def grade(s, correct):
-    player = next(p for p in s['players'] if p['id'] == s['buzzer'])
-    value = BY_ID[s['active']]['value']
-    player['score'] += value if correct else -value
-    message(s, 'Ведущий', f"{player['name']}: {'верно' if correct else 'неверно'} ({'+' if correct else '−'}{value})", 'system')
-    s['attempted'].append(s['buzzer'])
-    s.update(buzzer=None, submitted=None, auto_at=None)
-    if correct or len(s['attempted']) == len(s['players'])-1:
-        s.update(phase='reveal', deadline=None)
-        s['used'].append(s['active'])
-    else:
-        s.update(phase='question', deadline=time.time()+15, auto_at=time.time()+7)
+def current_question(s):
+    return next((q for q in s['pack'] if q['id'] == s['active']), None)
 
 
-def reveal(s):
-    s['used'].append(s['active'])
-    s.update(phase='reveal', deadline=None, buzzer=None, submitted=None, auto_at=None)
-    message(s, 'Ведущий', 'Вопрос закрыт. Ответ: '+BY_ID[s['active']]['answer'], 'system')
+def migrate(s):
+    if s.get('schema') == 2:
+        return s
+    s['pack'] = copy.deepcopy(QUESTIONS)
+    s['schema'] = 2
+    s['answers'] = {}
+    submitted = s.pop('submitted', None)
+    if submitted and s.get('active'):
+        s['answers'][submitted['user_id']] = dict(text=submitted['text'], verdict=None, time=time.time())
+    if s['phase'] in ('board', 'answer'):
+        s['phase'] = 'question' if s.get('active') else 'ready'
+        if s.get('active'):
+            s['deadline'] = time.time()+30
+    s.pop('buzzer', None)
+    s.pop('attempted', None)
+    s['bot_due'] = {}
+    return s
+
+
+def start_question(s):
+    q = next((q for q in s['pack'] if q['id'] not in s['used']), None)
+    if not q:
+        s.update(phase='finished', active=None, deadline=None)
+        return
+    if q.get('type') == 'event':
+        s.update(phase='event', active=q['id'], answers={}, deadline=None, event=apply_event(s, q))
+        s['used'].append(q['id'])
+        message(s, 'Ведущий', s['event']['title']+' · '+s['event']['description']+' Участники: '+', '.join(s['event']['targets']), 'system')
+        return
+    now = time.time()
+    s.update(phase='question', active=q['id'], answers={}, deadline=now+q.get('seconds', 45), auto_at=None, event=None)
+    snapshot_modifiers(s)
+    s['bot_due'] = {p['id']: now+5+i*3 for i, p in enumerate([p for p in s['players'] if p.get('synthetic') and p['id'] != s['host']])}
+    message(s, 'Ведущий', f"Вопрос {len(s['used'])+1}: {q['text']}", 'system')
+
+
+def close_question(s):
+    s.update(phase='review' if s['answers'] else 'reveal', deadline=None, auto_at=time.time()+1.5)
+    q = current_question(s)
+    if q['id'] not in s['used']:
+        s['used'].append(q['id'])
+    consume_modifiers(s)
+    for uid, answer in s['answers'].items():
+        player = next(p for p in s['players'] if p['id'] == uid)
+        message(s, player['name'], answer['text'], 'answer', uid)
+    message(s, 'Ведущий', 'Приём ответов закрыт. Проверяем ответы.' if s['answers'] else 'Никто не ответил. Вопрос завершён.', 'system')
+
+
+def grade(s, uid, correct):
+    answer = s['answers'].get(uid)
+    if s['phase'] != 'review' or not answer or answer['verdict'] is not None:
+        raise ValueError('Этот ответ уже оценён или недоступен')
+    player = next(p for p in s['players'] if p['id'] == uid)
+    value = current_question(s)['value']
+    delta = score_delta(s, uid, value, correct)
+    player['score'] += delta
+    answer['points'] = delta
+    answer['verdict'] = 'correct' if correct else 'wrong'
+    message(s, 'Ведущий', f"{player['name']}: {'верно' if correct else 'неверно'} ({delta:+d})", 'system')
+    if all(a['verdict'] is not None for a in s['answers'].values()):
+        s['phase'] = 'reveal'
 
 
 class Store:
@@ -57,7 +108,14 @@ class Store:
                 PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user TEXT NOT NULL, expires REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS rooms(code TEXT PRIMARY KEY, state TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS media(id TEXT PRIMARY KEY, room TEXT NOT NULL, kind TEXT NOT NULL, mime TEXT NOT NULL, filename TEXT NOT NULL);
             ''')
+            for code, raw in db.execute('SELECT code, state FROM rooms').fetchall():
+                s = json.loads(raw)
+                if s.get('schema') != 2:
+                    s = migrate(s)
+                    s['version'] += 1
+                    db.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(s), code))
 
     @contextmanager
     def connect(self):
@@ -82,23 +140,26 @@ class Store:
             raise ValueError('Сессия истекла. Перезагрузите приложение')
         return json.loads(row[0])
 
-    def create(self, user, practice=False):
+    def create(self, user, practice=False, pack='demo', questions=None, assets=None, title=None):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             while True:
                 code = ''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZ23456789') for _ in range(6))
                 if not db.execute('SELECT 1 FROM rooms WHERE code=?', (code,)).fetchone():
                     break
-            state = dict(code=code, host=user['id'], players=[dict(**user, score=0)], phase='lobby',
-                         active=None, used=[], attempted=[], buzzer=None, deadline=None, version=0,
-                         practice=practice, owner=user['id'], messages=[], submitted=None, auto_at=None)
+            s = dict(schema=2, code=code, host=user['id'], owner=user['id'], players=[dict(**user, score=0)], phase='lobby',
+                     pack=copy.deepcopy(questions if questions is not None else QUESTIONS if pack == 'demo' else []),
+                     pack_id=pack, pack_title=title or ('Демоквиз' if pack == 'demo' else 'Ваш квиз'), active=None, used=[], answers={},
+                     deadline=None, version=0, practice=practice, messages=[], auto_at=None, bot_due={}, event=None, modifiers={}, round_modifiers={})
             if practice:
                 host = dict(id='sim-host-'+code, name='Робоведущий', score=0, synthetic=True)
-                bots = [dict(id=f'sim-{i}-{code}', name=name, score=0, synthetic=True)
-                        for i, name in enumerate(('Сырник', 'Шустрик'))]
-                state.update(host=host['id'], players=[host, dict(**user, score=0), *bots], phase='board')
-                message(state, 'Робоведущий', 'Тренировка началась! Выбирай вопрос. Сырник и Шустрик — искусственные игроки.', 'system')
-            db.execute('INSERT INTO rooms VALUES (?, ?)', (code, json.dumps(state)))
+                bots = [dict(id=f'sim-{i}-{code}', name=name, score=0, synthetic=True) for i, name in enumerate(('Сырник', 'Шустрик'))]
+                s.update(host=host['id'], players=[host, dict(**user, score=0), *bots])
+                message(s, 'Робоведущий', 'Все отвечают одновременно. Напиши свой ответ: соперники его не увидят до закрытия вопроса.', 'system')
+                start_question(s)
+            db.execute('INSERT INTO rooms VALUES (?, ?)', (code, json.dumps(s)))
+            for asset in assets or []:
+                db.execute('INSERT INTO media VALUES (?, ?, ?, ?, ?)', (asset['id'], code, asset['kind'], asset['mime'], asset['filename']))
         return code
 
     def read(self, code):
@@ -106,16 +167,60 @@ class Store:
             row = db.execute('SELECT state FROM rooms WHERE code=?', (code,)).fetchone()
         if not row:
             raise ValueError('Комната не найдена')
-        return json.loads(row[0])
+        return migrate(json.loads(row[0]))
 
-    def change(self, code, user, action, question=None, text=''):
+    def media_permission(self, code, user):
+        s = self.read(code)
+        if s['host'] != user['id'] or s['phase'] != 'lobby':
+            raise ValueError('Материалы загружает ведущий до начала игры')
+
+    def save_media(self, code, user, asset, kind, mime, filename):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            s = migrate(json.loads(db.execute('SELECT state FROM rooms WHERE code=?', (code,)).fetchone()[0]))
+            if s['host'] != user['id'] or s['phase'] != 'lobby':
+                raise ValueError('Комната уже запущена')
+            db.execute('INSERT INTO media VALUES (?, ?, ?, ?, ?)', (asset, code, kind, mime, filename))
+
+    def media_info(self, asset):
+        with self.connect() as db:
+            row = db.execute('SELECT room, kind, mime, filename FROM media WHERE id=?', (asset,)).fetchone()
+        if not row:
+            raise ValueError('Материал не найден')
+        return dict(zip(('room', 'kind', 'mime', 'filename'), row))
+
+    def add_question(self, code, user, question):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT state FROM rooms WHERE code=?', (code,)).fetchone()
             if not row:
                 raise ValueError('Комната не найдена')
-            s = json.loads(row[0])
-            s.setdefault('submitted', None)
+            s = migrate(json.loads(row[0]))
+            if s['host'] != user['id'] or s['phase'] != 'lobby':
+                raise ValueError('Вопросы добавляет ведущий до начала игры')
+            if len(s['pack']) >= 100:
+                raise ValueError('Максимум 100 вопросов в квизе')
+            q = dict(question, id='custom-'+secrets.token_hex(8), category='Ваши вопросы')
+            if q.get('media_id'):
+                row = db.execute('SELECT kind FROM media WHERE id=? AND room=?', (q.pop('media_id'), code)).fetchone()
+                if not row:
+                    raise ValueError('Материал принадлежит другой комнате или не найден')
+                asset = question['media_id']
+                q['media'] = dict(kind=row[0], url='/api/media/'+asset, start=q.pop('clip_start', 0), end=q.pop('clip_end', None))
+            else:
+                for key in ('media_id', 'clip_start', 'clip_end'):
+                    q.pop(key, None)
+            s['pack'].append(q)
+            s['version'] += 1
+            db.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(s), code))
+
+    def change(self, code, user, action, question=None, text='', player=''):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT state FROM rooms WHERE code=?', (code,)).fetchone()
+            if not row:
+                raise ValueError('Комната не найдена')
+            s = migrate(json.loads(row[0]))
             uid = user['id']
             member = next((p for p in s['players'] if p['id'] == uid), None)
             if action == 'join':
@@ -128,53 +233,47 @@ class Store:
             else:
                 if not member:
                     raise ValueError('Вы не участник комнаты')
-                practice_owner = s.get('practice') and uid == s.get('owner')
-                if action not in ('buzz', 'answer', 'message') and uid != s['host'] and not (practice_owner and action in ('select', 'next', 'finish')):
+                practice_owner = s['practice'] and uid == s['owner']
+                if action not in ('answer', 'message') and uid != s['host'] and not (practice_owner and action in ('close', 'next', 'finish')):
                     raise ValueError('Это действие доступно только ведущему')
                 if action == 'start':
-                    if s['phase'] != 'lobby' or len(s['players']) < 2:
-                        raise ValueError('Для старта нужен хотя бы один игрок')
-                    s['phase'] = 'board'
-                elif action == 'select':
-                    if s['phase'] != 'board' or question not in BY_ID or question in s['used']:
-                        raise ValueError('Этот вопрос недоступен')
-                    s.update(phase='question', active=question, buzzer=None, attempted=[], submitted=None,
-                             deadline=time.time()+30, auto_at=time.time()+7)
-                    message(s, 'Ведущий', f"{BY_ID[question]['category']} · {BY_ID[question]['value']}: {BY_ID[question]['text']}", 'system')
-                elif action == 'buzz':
-                    if uid == s['host'] or s['phase'] != 'question' or uid in s['attempted'] or time.time() >= s['deadline']:
-                        raise ValueError('Сейчас нельзя ответить')
-                    s.update(phase='answer', buzzer=uid, submitted=None, deadline=time.time()+20, auto_at=None)
-                elif action in ('answer', 'message'):
+                    if s['phase'] != 'lobby' or len(s['players']) < 2 or not s['pack']:
+                        raise ValueError('Для старта нужны вопросы и хотя бы один игрок')
+                    start_question(s)
+                elif action == 'answer':
+                    if uid == s['host'] or s['phase'] != 'question' or uid in s['answers']:
+                        raise ValueError('Ответ уже отправлен или приём ответов закрыт')
+                    if time.time() >= s['deadline']:
+                        raise ValueError('Время ответа вышло')
                     text = text.strip()
                     if not text or len(text) > 500:
+                        raise ValueError('Ответ должен содержать от 1 до 500 символов')
+                    s['answers'][uid] = dict(text=text, time=time.time(), verdict=None)
+                    if len(s['answers']) == len(s['players'])-1:
+                        close_question(s)
+                elif action == 'message':
+                    text = text.strip()
+                    if s['phase'] == 'question':
+                        raise ValueError('Чат откроется после закрытия вопроса. Отправьте ответ через поле ответа')
+                    if not text or len(text) > 500:
                         raise ValueError('Сообщение должно содержать от 1 до 500 символов')
-                    if action == 'answer':
-                        if s['phase'] != 'answer' or s['buzzer'] != uid or s['submitted']:
-                            raise ValueError('Сейчас не ваша очередь отвечать')
-                        if time.time() >= s['deadline']:
-                            raise ValueError('Время ответа вышло')
-                        s['submitted'] = dict(user_id=uid, text=text)
-                        s['auto_at'] = time.time()+1.5
-                    message(s, member['name'], text, 'answer' if action == 'answer' else 'chat', uid)
+                    message(s, member['name'], text, uid=uid)
+                elif action == 'close':
+                    if s['phase'] != 'question':
+                        raise ValueError('Приём ответов уже закрыт')
+                    close_question(s)
                 elif action in ('correct', 'wrong'):
-                    if s['phase'] != 'answer':
-                        raise ValueError('Нет игрока для оценки')
-                    if not s['submitted'] and (time.time() < s['deadline'] or action == 'correct'):
-                        raise ValueError('Дождитесь текстового ответа или истечения времени')
-                    grade(s, action == 'correct')
-                elif action == 'skip':
-                    if s['phase'] not in ('question', 'answer'):
-                        raise ValueError('Нет открытого вопроса')
-                    reveal(s)
+                    grade(s, player, action == 'correct')
                 elif action == 'next':
-                    if s['phase'] != 'reveal':
-                        raise ValueError('Сначала завершите вопрос')
-                    s.update(phase='finished' if len(s['used']) == len(QUESTIONS) else 'board', active=None)
+                    if s['phase'] not in ('reveal', 'ready', 'event'):
+                        raise ValueError('Сначала оцените все ответы')
+                    start_question(s)
                 elif action == 'finish':
                     if s['phase'] in ('lobby', 'finished'):
                         raise ValueError('Игра ещё не началась или уже завершена')
-                    s.update(phase='finished', active=None, deadline=None, buzzer=None)
+                    if s['phase'] == 'question' or (s['phase'] == 'review' and any(a['verdict'] is None for a in s['answers'].values())):
+                        raise ValueError('Сначала закройте вопрос и оцените ответы')
+                    s.update(phase='finished', deadline=None)
                 else:
                     raise ValueError('Неизвестное действие')
             s['version'] += 1
@@ -184,58 +283,61 @@ class Store:
         s = self.read(code)
         if not any(p['id'] == uid for p in s['players']):
             raise ValueError('Вы не участник комнаты')
-        s['board'] = [{k: q[k] for k in ('id', 'category', 'value')} for q in QUESTIONS]
+        q = current_question(s)
         s['question'] = None
-        if s['active']:
-            q = BY_ID[s['active']]
-            s['question'] = {k: q[k] for k in ('id', 'category', 'value', 'text')}
-            if uid == s['host'] or s['phase'] == 'reveal':
+        if q and q.get('type') != 'event':
+            s['question'] = {k: v for k, v in q.items() if k not in ('answer', 'accepted_answers')}
+            if uid == s['host'] or s['phase'] in ('review', 'reveal', 'finished'):
                 s['question']['answer'] = q['answer']
+        s['answered_ids'] = list(s['answers'])
+        if s['phase'] == 'question' and uid != s['host']:
+            s['answers'] = {k: v for k, v in s['answers'].items() if k == uid}
+            s['messages'] = [m for m in s['messages'] if m['kind'] != 'answer']
+        s['question_count'] = sum(q.get('type') != 'event' for q in s['pack'])
+        s['round_count'] = len(s['pack'])
+        s['round_number'] = min(len(s['used'])+(s['phase'] == 'question'), len(s['pack']))
+        s['question_number'] = sum(q['id'] in s['used'] and q.get('type') != 'event' for q in s['pack'])+(s['phase'] == 'question')
+        if uid == s['host'] and s['phase'] == 'lobby':
+            s['question_list'] = s['pack']
+        s.pop('pack')
+        s.pop('bot_due', None)
+        s.pop('auto_at', None)
         s['server_time'] = time.time()
         return s
 
-    def practice_rooms(self):
+    def running_rooms(self):
         with self.connect() as db:
             rows = db.execute('SELECT code, state FROM rooms').fetchall()
-        return [code for code, raw in rows if (s := json.loads(raw)).get('practice') and s['phase'] != 'finished']
+        return [code for code, raw in rows if json.loads(raw)['phase'] not in ('lobby', 'finished')]
 
-    def tick_practice(self, code):
-        """Server-only simulation, persisted so it survives process restarts."""
+    def tick(self, code):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT state FROM rooms WHERE code=?', (code,)).fetchone()
             if not row:
                 return False
-            s = json.loads(row[0])
-            if not s.get('practice') or s['phase'] not in ('question', 'answer'):
-                return False
+            raw = json.loads(row[0])
+            changed = raw.get('schema') != 2
+            s = migrate(raw)
             now = time.time()
             if s['phase'] == 'question':
                 if now >= s['deadline']:
-                    reveal(s)
-                elif not s.get('auto_at') or now < s['auto_at']:
-                    return False
-                else:
-                    bots = [p for p in s['players'] if p.get('synthetic') and p['id'] != s['host'] and p['id'] not in s['attempted']]
-                    if not bots:
-                        return False
-                    # Alternate the first bot and right/wrong answers, for reproducible testing.
-                    bot = bots[len(s['used']) % len(bots)]
-                    s.update(phase='answer', buzzer=bot['id'], submitted=None, deadline=now+20, auto_at=now+2)
-            elif s.get('submitted'):
-                if now < s['auto_at']:
-                    return False
-                grade(s, answer_matches(s['submitted']['text'], BY_ID[s['active']]['answer']))
-            elif now >= s['deadline']:
-                grade(s, False)
-            elif s.get('auto_at') and now >= s['auto_at']:
-                bot = next(p for p in s['players'] if p['id'] == s['buzzer'])
-                correct = (len(s['used']) + len(s['attempted'])) % 2 == 0
-                text = BY_ID[s['active']]['answer'] if correct else 'Не знаю'
-                s.update(submitted=dict(user_id=bot['id'], text=text), auto_at=now+1.5)
-                message(s, bot['name'], text, 'answer', bot['id'])
-            else:
-                return False
-            s['version'] += 1
-            db.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(s), code))
-            return True
+                    close_question(s)
+                    changed = True
+                elif s['practice']:
+                    for i, p in enumerate(s['players']):
+                        if p.get('synthetic') and p['id'] != s['host'] and p['id'] not in s['answers'] and now >= s['bot_due'].get(p['id'], float('inf')):
+                            correct = (i+len(s['used'])) % 2 == 0
+                            s['answers'][p['id']] = dict(text=current_question(s)['answer'] if correct else 'Не знаю', time=now, verdict=None)
+                            changed = True
+                    if len(s['answers']) == len(s['players'])-1:
+                        close_question(s)
+            elif s['phase'] == 'review' and s['practice'] and now >= (s.get('auto_at') or 0):
+                for uid, a in s['answers'].items():
+                    if a['verdict'] is None:
+                        grade(s, uid, matches_question(a['text'], current_question(s)))
+                changed = True
+            if changed:
+                s['version'] += 1
+                db.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(s), code))
+            return changed

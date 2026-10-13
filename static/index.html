@@ -1,35 +1,37 @@
 <!doctype html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#101425"><title>Крысиные бега</title>
-  <link rel="stylesheet" href="/static/style.css?v=2">
-  <link rel="stylesheet" href="/static/chat.css?v=2">
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script defer src="/static/app.js?v=3"></script>
-</head>
-<body>
-<main>
-  <header><a href="/" class="brand">крысиные<span> бега</span><i>🐀</i></a><span id="identity" class="muted"></span></header>
-  <div id="notice" role="status" aria-live="polite"></div>
-  <section id="login" hidden class="panel"><span class="eyebrow">ЛОКАЛЬНЫЙ РЕЖИМ</span><h1>Давай сыграем.</h1><p>Введи имя, чтобы проверить игру в браузере.</p><form id="login-form"><label for="name">Твоё имя</label><input id="name" maxlength="64" value="Игрок" required><button>Войти</button></form></section>
-  <section id="home" hidden>
-    <div class="hero"><span class="eyebrow">ЗНАНИЯ · АЗАРТ · ДРУЗЬЯ</span><h1>Твой ответ.<br><span>Твоя победа.</span></h1><p>Выбирайте вопросы, отвечайте первыми<br>и собирайте очки вместе с друзьями.</p></div>
-    <div class="panel"><h2>Собери свою компанию</h2><p>Создатель комнаты становится ведущим.</p><button id="create">✦ Создать комнату</button><div class="divider">или присоединиться</div><form id="join-form" class="inline"><input id="code" aria-label="Код комнаты" placeholder="КОД КОМНАТЫ" maxlength="6" minlength="6" required autocomplete="off"><button class="secondary">Войти →</button></form></div>
-    <div class="panel"><span class="eyebrow">ТЕСТОВАЯ КОМНАТА</span><h2>Попробуй как игрок</h2><p>Робоведущий и два искусственных соперника уже готовы. Выбирай вопросы и пиши ответы в чат.</p><button id="practice" class="secondary">🐀 Играть с искусственными игроками</button><p class="footnote">В тренировке ответы сверяются с демопакетом. Допустимы регистр, пунктуация и фамилии авторов.</p></div>
-    <p class="footnote">4 категории · 20 вопросов · до 8 игроков<br>Ответы — в чате комнаты, оценки — у ведущего.</p>
-  </section>
-  <section id="game" hidden>
-    <div class="room-head"><div><span class="eyebrow">КОМНАТА</span><h2 id="room-code"></h2></div><button id="invite" class="secondary small">Пригласить ↗</button></div>
-    <div class="status-line"><span id="phase"></span><span id="connection" class="muted">Подключение…</span></div>
-    <div id="players" class="players"></div>
-    <div id="lobby" class="panel" hidden><h2>Все на месте?</h2><p>Передайте код друзьям. Нажмите «Я знаю ответ!» и напишите ответ в чат комнаты.</p><button id="start" hidden>Начать игру →</button><p id="waiting" hidden>Ждём, когда ведущий начнёт игру.</p></div>
-    <div id="board" hidden></div>
-    <article id="question" class="panel question" hidden><div class="question-meta"><span id="category"></span><strong id="value"></strong></div><h2 id="question-text"></h2><p id="timer"></p><p id="answerer"></p><button id="buzz" class="buzz" hidden>Я знаю ответ!</button><div id="judge" class="inline" hidden><button id="correct">✓ Верно</button><button id="wrong" class="danger">✕ Неверно</button></div><p id="solution" class="solution" hidden></p><button id="skip" class="secondary" hidden>Раскрыть ответ</button><button id="next" hidden>Следующий вопрос →</button></article>
-    <div id="finished" class="panel" hidden><span class="eyebrow">ФИНИШ</span><h1>Отличная игра ✦</h1><p id="winner"></p><button id="another">Новая комната</button></div>
-    <section id="chat" class="panel"><h2>Чат комнаты</h2><p id="chat-hint">Общайтесь и отправляйте ответы здесь.</p><div id="messages" class="messages" role="log" aria-live="polite"></div><form id="chat-form" class="inline"><input id="chat-text" aria-label="Сообщение или ответ" placeholder="Написать сообщение…" maxlength="500" required autocomplete="off"><button id="chat-send">Отправить</button></form></section>
-    <button id="leave" class="text-button">На главный экран</button>
-    <button id="finish" class="text-button" hidden>Завершить игру досрочно</button>
-  </section>
-</main>
-</body></html>
+<html lang="ru"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101425"><title>Крысиные бега</title>
+<link rel="stylesheet" href="/static/style.css?v=5"><link rel="stylesheet" href="/static/chat.css?v=5"><link rel="stylesheet" href="/static/quiz.css?v=5">
+<script src="https://telegram.org/js/telegram-web-app.js"></script><script defer src="/static/app.js?v=5"></script>
+</head><body><main>
+<header><a href="/" class="brand">крысиные<span> бега</span><i>🐀</i></a><span id="identity" class="muted"></span></header>
+<div id="notice" role="status" aria-live="polite"></div>
+<section id="login" hidden class="panel"><span class="eyebrow">ЛОКАЛЬНЫЙ РЕЖИМ</span><h1>Давай сыграем.</h1><p>Введи имя для проверки в браузере.</p><form id="login-form"><label for="name">Твоё имя</label><input id="name" maxlength="64" value="Игрок" required><button>Войти</button></form></section>
+<section id="home" hidden>
+<div class="hero"><span class="eyebrow">КВИЗ ДЛЯ СВОЕЙ КОМПАНИИ</span><h1>Один вопрос.<br><span>Каждый отвечает.</span></h1><p>Пиши свой ответ. Ведущий проверит его,<br>а верный ответ принесёт очки.</p></div>
+<div class="panel"><h2>Создай квиз</h2><p>Ты станешь ведущим и оценишь ответы каждого игрока.</p><label for="pack">Вопросы</label><select id="pack"><option value="demo">Демопакет · 23 вопроса, включая медиа</option><option value="custom">Свои вопросы · пустой пакет</option></select><button id="reload-packs" class="secondary small">Обновить список игр</button><p id="pack-errors" class="footnote"></p><button id="create">✦ Создать комнату</button><div class="divider">или присоединиться</div><form id="join-form" class="inline"><input id="code" aria-label="Код комнаты" placeholder="КОД КОМНАТЫ" maxlength="6" minlength="6" required autocomplete="off"><button class="secondary">Войти →</button></form></div>
+<div class="panel"><span class="eyebrow">ТРЕНИРОВКА</span><h2>Попробуй как игрок</h2><p>Робоведущий и два искусственных соперника. Выбери готовую игру в списке выше, чтобы проверить её вопросы и события.</p><button id="practice" class="secondary">🐀 Играть с искусственными игроками</button><p class="footnote">Робоведущий сверяет ответ с пакетом. Синонимы и опечатки могут не засчитаться.</p></div>
+<p class="footnote">До 8 игроков · ответы скрыты до закрытия вопроса<br>Верно: +стоимость · неверно: −стоимость · пропуск: 0</p>
+</section>
+<section id="game" hidden>
+<div class="room-head"><div><span class="eyebrow">КОМНАТА</span><h2 id="room-code"></h2></div><button id="invite" class="secondary small">Пригласить ↗</button></div>
+<div class="status-line"><span id="phase"></span><span id="connection" class="muted">Подключение…</span></div><div id="players" class="players"></div>
+<div id="lobby" class="panel" hidden><h2>Все на месте?</h2><p id="pack-count"></p><p>Каждый пишет один ответ на вопрос. Другие игроки увидят его после закрытия приёма.</p><button id="start" hidden>Начать квиз →</button><p id="waiting" hidden>Ждём старта от ведущего.</p></div>
+<details id="editor" class="panel" hidden><summary>Добавить свой вопрос</summary><form id="question-form">
+<label for="q-text">Текст вопроса</label><textarea id="q-text" maxlength="2000" required rows="3"></textarea>
+<label for="q-answer">Правильный ответ (виден ведущему)</label><input id="q-answer" maxlength="500" required>
+<div class="field-pair"><div><label for="q-value">Стоимость</label><input id="q-value" type="number" min="10" max="1000" value="100" required></div><div><label for="q-seconds">Время ответа, сек.</label><input id="q-seconds" type="number" min="10" max="300" value="45" required></div></div>
+<label for="q-kind">Материал к вопросу</label><select id="q-kind"><option value="">Без файла</option><option value="image">Изображение</option><option value="audio">Аудио</option><option value="video">Видео</option></select>
+<div id="file-fields" hidden><label for="q-file">Файл · до 25 МБ</label><input id="q-file" type="file"><p class="footnote">Изображения: PNG/JPG/GIF/WebP · аудио: MP3/WAV/OGG/M4A · видео: MP4/WebM</p></div>
+<div id="clip-fields" class="field-pair" hidden><div><label for="clip-start">Начало отрывка, сек.</label><input id="clip-start" type="number" min="0" max="86400" step="0.1" value="0"></div><div><label for="clip-end">Конец (необязательно), сек.</label><input id="clip-end" type="number" min="0.1" max="86400" step="0.1"></div></div>
+<button id="add-question">Добавить вопрос</button></form></details>
+<div id="question-list" class="panel" hidden></div>
+<article id="question" class="panel question" hidden><div class="question-meta"><span id="category"></span><strong id="value"></strong></div><h2 id="question-text"></h2><div id="media-content"></div><p id="media-caption" class="footnote"></p><p id="timer"></p><p id="answer-count"></p>
+<form id="answer-form" hidden><label for="answer-text">Твой ответ · одна попытка</label><input id="answer-text" maxlength="500" placeholder="Напиши ответ…" required autocomplete="off"><button id="answer-send">Отправить ответ</button></form><p id="my-answer" class="solution" hidden></p><p id="solution" class="solution" hidden></p><button id="close" class="secondary" hidden>Закрыть приём ответов</button><div id="review-list"></div><button id="next" hidden>Следующий вопрос →</button></article>
+<article id="event" class="panel" hidden><span class="eyebrow">СОБЫТИЕ</span><h2 id="event-title"></h2><p id="event-text"></p><h3 id="effect-title"></h3><p id="effect-description"></p><p id="effect-targets"></p><button id="event-next">Продолжить →</button></article>
+<div id="ready" class="panel" hidden><h2>Продолжим квиз?</h2><button id="resume">Следующий вопрос →</button></div>
+<div id="finished" class="panel" hidden><span class="eyebrow">ФИНИШ</span><h1>Отличная игра ✦</h1><p id="winner"></p><button id="another">Новая комната</button></div>
+<section id="chat" class="panel"><h2>Чат комнаты</h2><p id="chat-hint"></p><div id="messages" class="messages" role="log" aria-live="polite"></div><form id="chat-form" class="inline"><input id="chat-text" aria-label="Сообщение" placeholder="Написать сообщение…" maxlength="500" required autocomplete="off"><button id="chat-send">Отправить</button></form></section>
+<button id="leave" class="text-button">На главный экран</button><button id="finish" class="text-button" hidden>Завершить квиз досрочно</button>
+</section></main></body></html>

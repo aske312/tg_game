@@ -1,0 +1,152 @@
+"""Validated game.json folders containing questions and events."""
+import hashlib
+import json
+import re
+import secrets
+from pathlib import Path
+
+from app.media import MAX_MEDIA_BYTES, detect_media
+
+MAX_PACK_BYTES = 1024 * 1024
+
+
+def load_pack(directory):
+    directory = Path(directory).resolve()
+    manifest = directory / 'game.json'
+    if not manifest.is_file():
+        raise ValueError('В папке должен быть game.json')
+    if not manifest.resolve().is_relative_to(directory) or manifest.stat().st_size > MAX_PACK_BYTES:
+        raise ValueError('Недопустимый документ или размер больше 1 МБ')
+    try:
+        raw = manifest.read_text(encoding='utf-8-sig')
+        doc = json.loads(raw)
+    except (ValueError, UnicodeError) as e:
+        raise ValueError('Не удалось прочитать JSON') from e
+    if not isinstance(doc, dict) or doc.get('schema_version', 1) != 1:
+        raise ValueError('Ожидается объект с schema_version: 1')
+    title = doc.get('title')
+    if not isinstance(title, str) or not title.strip() or len(title) > 100:
+        raise ValueError('Укажите title до 100 символов')
+    items = doc.get('rounds')
+    if not isinstance(items, list) or not 1 <= len(items) <= 100:
+        raise ValueError('В rounds должно быть от 1 до 100 раундов')
+    questions, ids, paths = [], set(), set()
+    for i, item in enumerate(items, 1):
+        if not isinstance(item, dict):
+            raise ValueError(f'Вопрос {i}: ожидается объект')
+        qid = item.get('id', f'q{i}')
+        if not isinstance(qid, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', qid) or qid in ids:
+            raise ValueError(f'Вопрос {i}: уникальный id из букв, цифр, _ или -')
+        ids.add(qid)
+        if item.get('type') == 'event':
+            effect = item.get('effect')
+            if not isinstance(effect, dict) or effect.get('type') not in ('random_buff', 'random_debuff') or effect.get('target') not in ('random_player', 'all_players'):
+                raise ValueError(f'Раунд {i}: событие требует effect.type и effect.target')
+            duration = effect.get('questions', 1)
+            if type(duration) is not int or not 1 <= duration <= 5:
+                raise ValueError(f'Раунд {i}: эффект действует от 1 до 5 вопросов')
+            event_title = item.get('title', 'Событие')
+            text = item.get('text', '')
+            if not isinstance(event_title, str) or not event_title.strip() or len(event_title) > 100 or not isinstance(text, str) or len(text) > 2000:
+                raise ValueError(f'Раунд {i}: недопустимые title/text события')
+            questions.append(dict(id=qid, type='event', title=event_title, text=text,
+                                  effect=dict(type=effect['type'], target=effect['target'], questions=duration)))
+            continue
+        if item.get('type') != 'question':
+            raise ValueError(f'Раунд {i}: type должен быть question или event')
+        for field, limit in (('text', 2000), ('answer', 500)):
+            if not isinstance(item.get(field), str) or not item[field].strip() or len(item[field]) > limit:
+                raise ValueError(f'Вопрос {i}: заполните {field} (до {limit} символов)')
+        points, seconds = item.get('points', 100), item.get('time_limit', 45)
+        if type(points) is not int or not 10 <= points <= 1000 or type(seconds) is not int or not 10 <= seconds <= 300:
+            raise ValueError(f'Вопрос {i}: points 10–1000, time_limit 10–300')
+        accepted = item.get('accepted_answers', [])
+        if not isinstance(accepted, list) or len(accepted) > 20 or any(not isinstance(v, str) or not v.strip() or len(v) > 500 for v in accepted):
+            raise ValueError(f'Вопрос {i}: accepted_answers должен быть списком ответов')
+        q = dict(id=qid, type='question', category=str(item.get('category', title))[:100], text=item['text'].strip(), answer=item['answer'].strip(),
+                 accepted_answers=accepted, value=points, seconds=seconds)
+        media = item.get('media')
+        if media is not None:
+            if not isinstance(media, dict) or media.get('type') not in ('image', 'audio', 'video') or not isinstance(media.get('file'), str):
+                raise ValueError(f'Вопрос {i}: media требует type и file')
+            relative = Path(media['file'])
+            source = (directory / relative).resolve()
+            if relative.is_absolute() or not source.is_relative_to(directory) or not source.is_file():
+                raise ValueError(f'Вопрос {i}: файл должен существовать внутри папки пакета')
+            if source.stat().st_size > MAX_MEDIA_BYTES:
+                raise ValueError(f'Вопрос {i}: файл больше 25 МБ')
+            paths.add(source)
+            with source.open('rb') as f:
+                detect_media(f.read(128), media['type'])
+            start, end = media.get('start', 0), media.get('end')
+            if type(start) not in (int, float) or not 0 <= start <= 86400 or (end is not None and (type(end) not in (int, float) or not start < end <= 86400)):
+                raise ValueError(f'Вопрос {i}: недопустимые границы отрывка')
+            q['media'] = dict(kind=media['type'], source=str(source), start=start, end=end)
+        questions.append(q)
+    if sum(p.stat().st_size for p in paths) > 100 * 1024 * 1024:
+        raise ValueError('Общий размер медиа пакета не должен превышать 100 МБ')
+    if not any(q.get('type') == 'question' for q in questions):
+        raise ValueError('В пакете нужен хотя бы один question')
+    return dict(title=title.strip(), description=str(doc.get('description', ''))[:500], questions=questions)
+
+
+def find_pack(roots, pack_id):
+    if not pack_id.startswith('library-') or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', pack_id[8:]):
+        raise ValueError('Недопустимый идентификатор пакета')
+    name = pack_id[8:]
+    for root in roots:
+        root = Path(root).resolve()
+        folder = (root / name).resolve()
+        if folder.is_relative_to(root) and folder.is_dir():
+            return load_pack(folder)
+    raise ValueError('Пакет игры не найден')
+
+
+def list_packs(roots):
+    packs, errors, seen = [], [], set()
+    for root in roots:
+        if not Path(root).exists():
+            continue
+        for folder in sorted(Path(root).iterdir()):
+            if not folder.is_dir() or folder.name in seen or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', folder.name):
+                continue
+            seen.add(folder.name)
+            try:
+                pack = find_pack(roots, 'library-'+folder.name)
+                packs.append(dict(id='library-'+folder.name, title=pack['title'], description=pack['description'], count=len(pack['questions']),
+                                  questions=sum(q.get('type') == 'question' for q in pack['questions'])))
+            except (ValueError, OSError) as e:
+                errors.append(dict(folder=folder.name, error=str(e)))
+    return dict(packs=packs, errors=errors)
+
+
+def materialize_pack(pack, media_directory):
+    """Copy files into immutable content-addressed storage before creating a room."""
+    directory = Path(media_directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    assets, cache = [], {}
+    for q in pack['questions']:
+        if not q.get('media'):
+            continue
+        media = q['media']
+        source = media.pop('source')
+        key = (source, media['kind'])
+        if key not in cache:
+            data = Path(source).read_bytes()
+            if len(data) > MAX_MEDIA_BYTES:
+                raise ValueError('Материал изменился и превышает 25 МБ')
+            mime, extension = detect_media(data[:128], media['kind'])
+            filename = hashlib.sha256(data).hexdigest()+extension
+            target = directory / filename
+            if not target.exists():
+                temporary = directory / (secrets.token_hex(20)+'.part')
+                try:
+                    temporary.write_bytes(data)
+                    temporary.replace(target)
+                finally:
+                    temporary.unlink(missing_ok=True)
+            asset = secrets.token_hex(20)
+            cache[key] = asset
+            assets.append(dict(id=asset, kind=media['kind'], mime=mime, filename=filename))
+        media['url'] = '/api/media/'+cache[key]
+    return assets
