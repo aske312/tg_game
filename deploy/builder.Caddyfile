@@ -1,14 +1,17 @@
 {
-    admin 127.0.0.1:2020
-    auto_https off
-    persist_config off
+	admin 127.0.0.1:2020
+	auto_https off
+	persist_config off
+	servers {
+		protocols h1 h2
+	}
 }
 
 {$BUILDER_SITE} {
-    tls /etc/rat-race/tls/fullchain.pem /etc/rat-race/tls/privkey.pem
-    encode gzip
-    request_body {
-        max_size 26MB
-    }
-    reverse_proxy 127.0.0.1:8011
+	tls /etc/rat-race/tls/fullchain.pem /etc/rat-race/tls/privkey.pem
+	encode gzip
+	request_body {
+		max_size 26MB
+	}
+	reverse_proxy 127.0.0.1:8011
 }
