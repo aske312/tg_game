@@ -1,6 +1,5 @@
 """Private SSH access from server.txt; never print connection credentials."""
 import argparse
-import hashlib
 import re
 import sys
 from pathlib import Path

@@ -41,12 +41,17 @@ fi
 previous=$(readlink -f "$base/current" || true)
 install -m 644 "$release/deploy/rat-race-web.service" /etc/systemd/system/rat-race-web.service
 install -m 644 "$release/deploy/rat-race-bot.service" /etc/systemd/system/rat-race-bot.service
+install -m 644 "$release/deploy/rat-race-cert-renew.service" /etc/systemd/system/rat-race-cert-renew.service
+install -m 644 "$release/deploy/rat-race-cert-renew.timer" /etc/systemd/system/rat-race-cert-renew.timer
+install -d -m 755 /usr/local/lib/rat-race
+install -m 755 "$release/deploy/copy-certificate.sh" /usr/local/lib/rat-race/copy-certificate.sh
 printf 'BUILD_SHA=%s\n' "$revision" > /etc/rat-race/release.env
 chmod 600 /etc/rat-race/release.env
 ln -sfn "$release" "$base/current-next"
 mv -Tf "$base/current-next" "$base/current"
 systemctl daemon-reload
 systemctl enable rat-race-web.service rat-race-bot.service
+systemctl enable --now rat-race-cert-renew.timer
 systemctl restart rat-race-web.service
 ready=false
 for attempt in {1..20}; do

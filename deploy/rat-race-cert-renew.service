@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew Rat Race IP HTTPS certificate
+After=network-online.target caddy.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/rat-race/certbot-venv/bin/certbot renew --cert-name rat-race-ip --quiet --deploy-hook /usr/local/lib/rat-race/copy-certificate.sh

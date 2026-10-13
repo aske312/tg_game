@@ -11,6 +11,7 @@
 git add app static tests deploy scripts README.md requirements.txt .env.example .gitignore start-local.cmd start-telegram.cmd
 git commit -m "Describe the change"
 git push origin main
+.\.venv\Scripts\python.exe scripts/deploy_server.py
 ```
 
 На сервере:
@@ -18,6 +19,8 @@ git push origin main
 ```bash
 sudo bash /opt/rat-race/current/deploy/update.sh
 ```
+
+Можно также запустить `deploy-server.cmd` после `git push`. Подключение берётся из локального `server.txt`; на сервер копируется версия из GitHub, а не незакоммиченные файлы компьютера.
 
 Скрипт скачивает `main`, создаёт отдельный каталог релиза по SHA, запускает тесты, делает согласованную резервную копию SQLite и переключает `/opt/rat-race/current`. После проверки `/api/health` перезапускается бот. Предыдущие релизы сохраняются. Если новый веб-сервер не отвечает, переключается предыдущий каталог. Зависимости находятся в общей `.venv`; изменения зависимостей требуют отдельной проверки совместимости при откате.
 
