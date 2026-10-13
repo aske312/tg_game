@@ -1,9 +1,9 @@
 const $ = id => document.getElementById(id);
 const tg = window.Telegram?.WebApp;
 const show = (id, visible) => $(id).hidden = !visible;
-const notice = text => $('notice').textContent = text || '';
+const notice = (text, type='info') => { $('notice').textContent = text || ''; $('notice').dataset.type = type; };
 const esc = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let auth, config, room, socket, retry, offset = 0, mediaKey = '', uploading = false;
+let auth, config, room, socket, retry, offset = 0, mediaKey = '', uploading = false, libraryPacks = [];
 
 async function api(path, body) {
   const response = await fetch('/api'+path, {method:body===undefined?'GET':'POST', headers:{'Content-Type':'application/json', ...(auth?{Authorization:'Bearer '+auth.token}:{})}, ...(body===undefined?{}:{body:JSON.stringify(body)})});
@@ -11,7 +11,7 @@ async function api(path, body) {
   if (!response.ok) throw new Error(typeof data.detail==='string'?data.detail:'Проверьте введённые данные');
   return data;
 }
-function guard(fn) { return async event => {event?.preventDefault();notice('');try {await fn(event);} catch(e) {notice(e.message||'Нет связи с сервером');}}; }
+function guard(fn) { let pending=false; return async event => {event?.preventDefault();if(pending)return;pending=true;notice('');try {await fn(event);} catch(e) {notice(e.message||'Нет связи с сервером','error');} finally {pending=false;}}; }
 function ownAnswer() {return room?.answers?.[auth.user.id];}
 function isHost() {return room?.host===auth.user.id;}
 function hasControls() {return isHost() || (room?.practice && room.owner===auth.user.id);}
@@ -31,7 +31,7 @@ function renderMedia(q) {
   if(!m)return;
   const node=document.createElement(m.kind==='image'?'img':m.kind);
   node.src=m.url;
-  node.onerror=()=>notice('Не удалось открыть материал. Проверьте формат файла или обновите игру.');
+  node.onerror=()=>notice('Не удалось открыть материал. Проверьте формат файла или обновите игру.','error');
   if(m.kind==='image')node.alt='Материал к вопросу';
   else {
     node.controls=true;node.preload='metadata';
@@ -39,7 +39,7 @@ function renderMedia(q) {
     const start=m.start||0,end=m.end;
     if(start||end!=null){
       $('media-caption').textContent=`Отрывок: ${start}–${end??'конец'} сек.`;
-      node.addEventListener('loadedmetadata',()=>{if(start>=node.duration){notice('Начало отрывка за пределами записи.');return;}node.currentTime=start;});
+      node.addEventListener('loadedmetadata',()=>{if(start>=node.duration){notice('Начало отрывка за пределами записи.','error');return;}node.currentTime=start;});
       node.addEventListener('play',()=>{if(node.currentTime<start || (end!=null&&node.currentTime>=end-.05))node.currentTime=start;});
       node.addEventListener('timeupdate',()=>{if(end!=null&&node.currentTime>=end){node.pause();if(node.currentTime>end)node.currentTime=end;}});
       node.addEventListener('seeking',()=>{if(node.currentTime<start)node.currentTime=start;else if(end!=null&&node.currentTime>end)node.currentTime=end;});
@@ -50,12 +50,41 @@ function renderMedia(q) {
 
 function renderReview() {
   const visible=['review','reveal','finished'].includes(room.phase);
-  $('review-list').innerHTML=visible?room.players.filter(p=>p.id!==room.host).map(p=>{
+  $('review-list').innerHTML=visible?'<h3 class="review-heading">Ответы игроков</h3>'+room.players.filter(p=>p.id!==room.host).map(p=>{
     const a=room.answers[p.id];
     const status=!a?'Не ответил · 0 очков':a.verdict==='correct'?`Верно · ${a.points>=0?'+':''}${a.points}`:a.verdict==='wrong'?`Неверно · ${a.points}`:'Ожидает оценки';
     const buttons=isHost()&&room.phase==='review'&&a&&!a.verdict?`<div class="inline"><button data-player="${esc(p.id)}" data-verdict="correct">✓ Верно</button><button class="danger" data-player="${esc(p.id)}" data-verdict="wrong">✕ Неверно</button></div>`:'';
-    return `<div class="review-answer"><strong>${esc(p.name)}</strong><p>${a?esc(a.text):'—'}</p><small>${status}</small>${buttons}</div>`;
+    return `<div class="review-answer" data-verdict="${a?.verdict||'pending'}"><strong>${esc(p.name)}</strong><p>${a?esc(a.text):'—'}</p><small>${status}</small>${buttons}</div>`;
   }).join(''):'';
+}
+
+function renderPlayers(s) {
+  const sorted=[...s.players].sort((a,b)=>(a.id===s.host)-(b.id===s.host)||b.score-a.score);
+  $('player-count').textContent=(s.players.length-1)+' / 8';
+  $('players').innerHTML=sorted.map((p,i)=>{
+    const host=p.id===s.host;
+    const state=host?'Ведущий':s.phase==='question'&&s.answered_ids.includes(p.id)?'Ответ отправлен ✓':p.id===auth.user.id?'Это ты':p.synthetic?'Соперник':'В забеге';
+    const color=[...p.id].reduce((n,c)=>n+c.charCodeAt(0),0)%4;
+    return `<div class="player ${p.id===auth.user.id?'me':''} ${host?'host':''}" data-color="${color}"><span class="player-rank">${host?'—':String(i+1).padStart(2,'0')}</span><span class="player-avatar" aria-hidden="true">${esc([...p.name.trim()][0]?.toUpperCase()||'?')}</span><div class="player-info"><span class="player-name" title="${esc(p.name)}">${esc(p.name)}</span><em>${state}</em>${host?'':effectBadge(s,p.id)}</div><strong class="player-score">${host?'↗':p.score}</strong></div>`;
+  }).join('');
+}
+
+function renderHostAnswers() {
+  const visible=isHost()&&room.phase==='question';
+  show('host-hint',visible);show('host-answers',visible);
+  $('host-answers').innerHTML=visible?room.players.filter(p=>room.answers[p.id]).map(p=>`<div class="host-answer"><strong>${esc(p.name)}</strong><span>${esc(room.answers[p.id].text)}</span></div>`).join(''):'';
+}
+
+function renderPackPreview() {
+  const id=$('pack').value;
+  const pack=id==='demo'?{title:'Демоквиз',description:'Космос, технологии и ещё немного всего. С картинками, аудио и видео.',questions:23,count:23}:id==='custom'?{title:'Твой собственный квиз',description:'Начни с пустой комнаты. Добавь вопросы и материалы перед стартом игры.',questions:0,count:0}:libraryPacks.find(p=>p.id===id);
+  if(!pack)return;
+  $('pack-title').textContent=pack.title;
+  $('pack-description').textContent=pack.description||'Готовая игра для тебя и твоей компании.';
+  const tags=id==='custom'?['Вопросы в лобби']:id==='demo'?['23 вопроса','Медиа']:[pack.questions+' вопросов',pack.count+' раундов'];
+  $('pack-tags').innerHTML=tags.map(t=>`<span>${esc(t)}</span>`).join('');
+  $('practice').disabled=id==='custom';
+  $('practice-caption').textContent=id==='custom'?'Для тренировки выбери готовую игру.':'Тренировка на выбранной игре.';
 }
 
 function renderChat(){
@@ -64,11 +93,12 @@ function renderChat(){
   if(box.dataset.key!==key){
     const bottom=box.scrollHeight-box.scrollTop-box.clientHeight<70;
     const first=!box.dataset.key?.startsWith(room.code+':');
-    box.innerHTML=messages.map(m=>`<div class="chat-message ${m.kind==='system'?'system':''} ${m.user_id===auth.user.id?'mine':''}"><strong>${esc(m.name)}${m.kind==='answer'?' · ответ':''}</strong><p>${esc(m.text)}</p></div>`).join('');
+    box.innerHTML=messages.length?messages.map(m=>`<div class="chat-message ${m.kind==='system'?'system':''} ${m.user_id===auth.user.id?'mine':''}"><strong>${esc(m.name)}${m.kind==='answer'?' · ответ':''}</strong><p>${esc(m.text)}</p></div>`).join(''):'<div class="chat-empty">Здесь будет обсуждение.<br>Начни с приветствия.</div>';
     box.dataset.key=key;if(bottom||first)box.scrollTop=box.scrollHeight;
   }
   const blocked=room.phase==='question';
-  $('chat-hint').textContent=blocked?'Чат откроется после закрытия вопроса. Ответ отправляется через поле выше и скрыт от соперников.':'Обсуждайте вопрос и результаты здесь.';
+  $('chat-hint').textContent=blocked?'Пока тихо: чат откроется после вопроса. Отправь ответ через поле в карточке вопроса.':'Обсуждай вопросы, радуйся очкам. Только без подсказок!';
+  $('chat').dataset.blocked=blocked;
   $('chat-text').disabled=blocked;$('chat-send').disabled=blocked;
 }
 
@@ -76,18 +106,22 @@ function apply(s){
   if(room&&s.code===room.code&&s.version<room.version)return;
   const oldQuestion=room?.code+':'+room?.active;
   room=s;offset=s.server_time*1000-Date.now();sessionStorage.setItem('room',s.code);
+  $('game').dataset.phase=s.phase;
   show('home',false);show('game',true);
   $('room-code').textContent=s.code;
   $('phase').textContent=(s.practice?'Тренировка · ':'')+({event:'Событие',lobby:'Ожидание игроков',question:'Все пишут ответы',review:'Ведущий проверяет ответы',reveal:'Результаты вопроса',ready:'Готовы продолжить',finished:'Квиз завершён'}[s.phase]||'');
-  $('players').innerHTML=[...s.players].sort((a,b)=>(a.id===s.host)-(b.id===s.host)||b.score-a.score).map(p=>`<div class="player ${p.id===auth.user.id?'me':''}"><span>${esc(p.name)}</span>${p.id===s.host?'<em>Ведущий</em>':`<strong>${p.score}</strong><em>${s.phase==='question'&&s.answered_ids.includes(p.id)?'Ответ отправлен ✓':p.synthetic?'Искусственный игрок':'очков'}</em>${effectBadge(s,p.id)}`}</div>`).join('');
+  renderPlayers(s);
+  show('round-status',s.phase!=='lobby');
+  $('round-label').textContent=`Раунд ${s.round_number} / ${s.round_count}`;
+  $('round-progress').max=Math.max(1,s.round_count);$('round-progress').value=s.used.length;
   show('invite',!s.practice);show('lobby',s.phase==='lobby');show('start',isHost());$('start').disabled=uploading||s.players.length<2||!s.question_count;
   $('pack-count').textContent=`В игре ${s.question_count} вопросов, ${s.round_count} раундов.`;show('waiting',!isHost());show('editor',isHost()&&s.phase==='lobby');
-  show('question-list',isHost()&&s.phase==='lobby'&&!!s.question_count);
-  $('question-list').innerHTML=(s.question_list||[]).map((q,i)=>`<p>${i+1}. ${esc(q.type==='event'?'⚡ '+q.title:q.text)}${q.media?' · '+({image:'🖼',video:'🎬',audio:'🎧'}[q.media.kind]):''}</p>`).join('');
+  show('question-list-panel',isHost()&&s.phase==='lobby'&&!!s.question_count);
+  $('question-list').innerHTML=(s.question_list||[]).map((q,i)=>`<p><span class="question-list-number">${String(i+1).padStart(2,'0')}</span><span class="question-list-text">${esc(q.type==='event'?'✳ '+q.title:q.text)}${q.media?' · '+({image:'Изображение',video:'Видео',audio:'Аудио'}[q.media.kind]):''}</span></p>`).join('');
   show('event',s.phase==='event');
   if(s.phase==='event'){const e=s.event;$('event-title').textContent=e.event_title;$('event-text').textContent=e.text;$('effect-title').textContent=e.title;$('effect-description').textContent=e.description;$('effect-targets').textContent='Получатели: '+e.targets.join(', ')+' · действует '+e.questions+' вопросов';show('event-next',hasControls());}
   const q=s.question;
-  if(!q)renderMedia(null);show('question',!!q&&s.phase!=='finished');
+  if(!q||s.phase==='finished')renderMedia(null);show('question',!!q&&s.phase!=='finished');
   if(q){
     $('category').textContent=`Вопрос ${s.question_number}/${s.question_count} · ${q.category}`;$('value').textContent=q.value+' очков';$('question-text').textContent=q.text;
     $('answer-count').textContent=`Ответили ${s.answered_ids.length} из ${s.players.length-1}`;
@@ -97,35 +131,50 @@ function apply(s){
     show('close',hasControls()&&s.phase==='question');show('next',hasControls()&&s.phase==='reveal');
     $('next').textContent=s.round_number===s.round_count?'Показать итоги →':'Следующий вопрос →';
     if(oldQuestion!==s.code+':'+s.active){$('answer-text').value='';}
-    renderMedia(q);renderReview();
+    if(s.phase!=='finished')renderMedia(q);renderReview();
   }
+  renderHostAnswers();
   show('ready',s.phase==='ready'&&hasControls());show('finished',s.phase==='finished');show('finish',hasControls()&&['reveal','event'].includes(s.phase));
   $('another').textContent=s.practice?'Ещё одна тренировка':'Новая комната';
-  if(s.phase==='finished'){const players=s.players.filter(p=>p.id!==s.host),top=Math.max(...players.map(p=>p.score));$('winner').textContent=players.filter(p=>p.score===top).map(p=>p.name).join(', ')+' — '+top+' очков';}
+  if(s.phase==='finished'){
+    const players=s.players.filter(p=>p.id!==s.host).sort((a,b)=>b.score-a.score),top=Math.max(...players.map(p=>p.score));
+    $('winner').textContent=players.filter(p=>p.score===top).map(p=>p.name).join(', ')+' — '+top+' очков';
+    $('final-results').innerHTML=players.map(p=>`<div class="final-result"><span>${players.findIndex(other=>other.score===p.score)+1}</span><span class="result-name">${esc(p.name)}${p.id===auth.user.id?' · ты':''}</span><strong>${p.score} очков</strong></div>`).join('');
+  }
   renderChat();tick();
 }
-function tick(){if(!room)return;const n=room.deadline?Math.max(0,Math.ceil((room.deadline*1000-Date.now()-offset)/1000)):null;$('timer').textContent=n===null?'':n?`Осталось ${n} сек.`:'Время вышло. Приём ответов закрывается.';$('answer-send').disabled=n===0;}
+function tick(){
+  if(!room)return;
+  const left=room.deadline?Math.max(0,room.deadline*1000-Date.now()-offset):null;
+  const n=left===null?null:Math.ceil(left/1000),urgent=n!==null&&n<=10;
+  $('timer').textContent=n===null?'':n===0?'Время вышло':`${n} сек.`;
+  $('timer').dataset.urgent=urgent;$('timer-track').dataset.urgent=urgent;
+  show('timer-track',n!==null);
+  $('timer-bar').style.width=(left===null?0:Math.min(100,left/(room.question?.seconds||45)/10))+'%';
+  $('answer-send').disabled=n===0;
+}
 setInterval(tick,250);
 function connect(code){
   clearTimeout(retry);if(socket){socket.onclose=null;socket.close();}
   const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws/${code}`);socket=ws;
-  ws.onopen=()=>{ws.send(JSON.stringify({token:auth.token}));$('connection').textContent='● На связи';};
-  ws.onmessage=e=>{try{apply(JSON.parse(e.data));}catch{notice('Не удалось обновить игру');}};
-  ws.onerror=()=>$('connection').textContent='Нет связи';
-  ws.onclose=e=>{if(socket!==ws)return;$('connection').textContent='Переподключение…';if(e.code===1008){notice('Сессия истекла. Перезагрузите приложение.');return;}retry=setTimeout(()=>connect(code),1500);};
+  ws.onopen=()=>{ws.send(JSON.stringify({token:auth.token}));$('connection').textContent='● На связи';$('connection').dataset.status='online';};
+  ws.onmessage=e=>{if(socket!==ws)return;try{apply(JSON.parse(e.data));}catch{notice('Не удалось обновить игру','error');}};
+  ws.onerror=()=>{$('connection').textContent='Нет связи';$('connection').dataset.status='offline';};
+  ws.onclose=e=>{if(socket!==ws)return;$('connection').textContent='Переподключение…';$('connection').dataset.status='offline';if(e.code===1008){notice('Сессия истекла. Перезагрузите приложение.','error');return;}retry=setTimeout(()=>connect(code),1500);};
 }
 async function join(code){const s=await api('/rooms/'+encodeURIComponent(code.trim().toUpperCase())+'/join',{});apply(s);connect(s.code);}
 async function create(){const s=await api('/rooms',{pack:$('pack').value});await join(s.code);}
 async function practice(){const s=await api('/practice',{pack:$('pack').value});apply(s);connect(s.code);}
 async function command(action,extra={}){apply(await api('/rooms/'+room.code+'/action',{action,...extra}));}
-async function refreshPacks(){const data=await api('/packs'),selected=$('pack').value;$('pack').querySelectorAll('[data-library]').forEach(n=>n.remove());for(const p of data.packs){const o=document.createElement('option');o.value=p.id;o.dataset.library='1';o.textContent=p.title+' · '+p.questions+' вопросов, '+p.count+' раундов';$('pack').append(o);}if([...$('pack').options].some(o=>o.value===selected))$('pack').value=selected;$('pack-errors').textContent=data.errors.map(e=>e.folder+': '+e.error).join('; ');}
+async function refreshPacks(){const data=await api('/packs'),selected=$('pack').value;libraryPacks=data.packs;$('pack').querySelectorAll('[data-library]').forEach(n=>n.remove());for(const p of data.packs){const o=document.createElement('option');o.value=p.id;o.dataset.library='1';o.textContent=p.title+' · '+p.questions+' вопросов';$('pack').append(o);}if([...$('pack').options].some(o=>o.value===selected))$('pack').value=selected;$('pack-errors').textContent=data.errors.map(e=>e.folder+': '+e.error).join('; ');renderPackPreview();}
+$('pack').onchange=renderPackPreview;
 $('reload-packs').onclick=guard(refreshPacks);$('event-next').onclick=guard(()=>command('next'));
 async function entered(){await refreshPacks();sessionStorage.setItem('auth',JSON.stringify(auth));$('identity').textContent=auth.user.name;show('login',false);show('home',true);const p=new URLSearchParams(location.search),code=tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam')||p.get('room')||sessionStorage.getItem('room');if(code&&/^[A-Z2-9]{6}$/i.test(code)){try{await join(code);}catch(e){notice(e.message);sessionStorage.removeItem('room');}}}
 $('login-form').onsubmit=guard(async()=>{auth=await api('/login',{name:$('name').value});await entered();});
 $('join-form').onsubmit=guard(()=>join($('code').value));$('create').onclick=guard(create);$('practice').onclick=guard(practice);$('another').onclick=guard(()=>room?.practice?practice():create());
 for(const a of ['start','close','next'])$(a).onclick=guard(()=>command(a));$('resume').onclick=guard(()=>command('next'));
 $('answer-form').onsubmit=guard(()=>command('answer',{text:$('answer-text').value}));
-$('review-list').onclick=guard(async e=>{const b=e.target.closest('[data-verdict]');if(b)await command(b.dataset.verdict,{player:b.dataset.player});});
+$('review-list').onclick=guard(async e=>{const b=e.target.closest('button[data-verdict]');if(b)await command(b.dataset.verdict,{player:b.dataset.player});});
 $('chat-form').onsubmit=guard(async()=>{const text=$('chat-text').value;await command('message',{text});if($('chat-text').value===text)$('chat-text').value='';});
 $('finish').onclick=guard(async()=>{if(confirm('Завершить квиз и показать итоговый счёт?'))await command('finish');});
 $('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem('room');room=null;$('media-content').replaceChildren();mediaKey='';show('game',false);show('home',true);notice('');history.replaceState(null,'',location.pathname);};
@@ -144,4 +193,14 @@ $('question-form').onsubmit=guard(async()=>{
 });
 $('invite').onclick=guard(async()=>{const link=config.bot_username?`https://t.me/${config.bot_username}?start=${room.code}`:`${location.origin}/?room=${room.code}`;if(tg?.initData&&config.bot_username)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Крысиные бега! Код: '+room.code)}`);else if(navigator.clipboard){await navigator.clipboard.writeText(link);notice('Ссылка скопирована. Код: '+room.code);}else notice('Код комнаты: '+room.code);});
 window.addEventListener('online',()=>{if(room)connect(room.code);});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&room)connect(room.code);});
-guard(async()=>{tg?.ready();tg?.expand();config=await api('/config');try{auth=JSON.parse(sessionStorage.getItem('auth'));}catch{auth=null;}if(auth){try{auth.user=await api('/me');}catch{auth=null;sessionStorage.removeItem('auth');}}if(!auth&&tg?.initData)auth=await api('/login',{init_data:tg.initData});if(auth)await entered();else if(config.dev_mode)show('login',true);else notice('Откройте игру через Telegram-бота.');})();
+function telegramEntry(){
+  show('telegram-entry',true);
+  if(config.bot_username){$('open-bot').href='https://t.me/'+encodeURIComponent(config.bot_username);show('open-bot',true);}
+}
+guard(async()=>{
+  tg?.ready();tg?.expand();config=await api('/config');
+  try{auth=JSON.parse(sessionStorage.getItem('auth'));}catch{auth=null;}
+  if(auth){try{auth.user=await api('/me');}catch{auth=null;sessionStorage.removeItem('auth');}}
+  if(!auth&&tg?.initData){try{auth=await api('/login',{init_data:tg.initData});}catch(e){telegramEntry();throw e;}}
+  if(auth)await entered();else if(config.dev_mode)show('login',true);else telegramEntry();
+})();
