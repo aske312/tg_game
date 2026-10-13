@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101e18">
   <title>Конструктор · Крысиные бега</title>
-  <link rel="stylesheet" href="/static/builder.css?v=1">
-  <script src="/static/builder.js?v=1" defer></script>
+  <link rel="stylesheet" href="/static/builder.css?v=2">
+  <script src="/static/builder.js?v=2" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -32,16 +32,26 @@
       <section id="editor" hidden>
         <div class="editor-header"><div><span class="eyebrow">РЕДАКТИРОВАНИЕ ИГРЫ</span><h1 id="editor-title"></h1><span id="save-status" class="save-status" role="status"></span></div><div class="editor-actions"><button id="save" class="secondary">Сохранить черновик</button><button id="publish" class="primary">Опубликовать ↗</button></div></div>
         <section class="panel game-settings"><div class="section-title"><h2>Об игре</h2><span id="round-count" class="hint"></span></div><label for="game-title">Название</label><input id="game-title" maxlength="100" placeholder="Как назовём забег?"><label for="game-description">Описание <span class="optional">необязательно</span></label><textarea id="game-description" maxlength="500" rows="2" placeholder="Тема, настроение или пара слов для игроков"></textarea></section>
+        <section class="panel stage-panel">
+          <div class="section-title"><h2>Раунды игры</h2><span id="stage-count" class="hint"></span></div>
+          <div class="stage-add"><label for="new-stage-type" class="sr-only">Режим нового раунда</label><select id="new-stage-type"><option value="blitz">Блиц</option><option value="grid">Сетка вопросов</option><option value="binary">Выбор из двух</option></select><button id="add-stage" class="secondary">+ Раунд</button></div>
+          <ol id="stage-list" class="stage-list"></ol>
+          <div class="stage-settings"><div class="stage-heading"><h3 id="stage-heading"></h3><div class="round-tools"><button id="stage-up" class="icon-button" aria-label="Переместить раунд игры выше">↑</button><button id="stage-down" class="icon-button" aria-label="Переместить раунд игры ниже">↓</button><button id="stage-delete" class="icon-button danger-text" aria-label="Удалить раунд игры">×</button></div></div>
+          <div class="field-pair"><div><label for="stage-title">Название раунда</label><input id="stage-title" maxlength="100"></div><div><label for="stage-type">Режим раунда</label><select id="stage-type"><option value="blitz">Блиц</option><option value="grid">Сетка вопросов</option><option value="binary">Выбор из двух</option></select></div></div>
+          <div id="stage-linear-settings" class="field-pair"><div><label for="stage-order">Порядок вопросов</label><select id="stage-order"><option value="sequential">По порядку</option><option value="random">Случайный</option></select></div><div><label for="stage-auto">Следующий вопрос после оценки</label><select id="stage-auto"><option value="manual">По кнопке ведущего</option><option value="auto">Автоматически через 3 секунды</option></select></div></div>
+          <div id="stage-grid-settings" hidden><label for="stage-chooser">Кто выбирает вопрос?</label><select id="stage-chooser"><option value="winner">Первый правильно ответивший игрок</option><option value="host">Ведущий</option></select></div><p id="stage-explanation" class="hint"></p></div>
+        </section>
         <div class="rounds-layout">
-          <section class="panel round-order"><div class="section-title"><h2>Раунды</h2><span class="hint">до 100</span></div><div class="add-round"><button id="add-question" class="secondary">+ Вопрос</button><button id="add-event" class="secondary">+ Событие</button></div><ol id="round-list" class="round-list"></ol><p id="no-rounds" class="hint">Добавь первый вопрос. События можно вставить между вопросами.</p></section>
+          <section class="panel round-order"><div class="section-title"><h2>Вопросы раунда</h2><span class="hint">до 100 в игре</span></div><div class="add-round"><button id="add-question" class="secondary">+ Вопрос</button><button id="add-event" class="secondary">+ Событие</button></div><ol id="round-list" class="round-list"></ol><p id="no-rounds" class="hint">Добавь первый вопрос этого раунда.</p></section>
           <section class="panel round-editor">
             <div id="round-empty" class="round-empty"><span aria-hidden="true">↖</span><p>Выбери раунд для редактирования.</p></div>
             <div id="round-details" hidden>
               <div class="section-title round-heading"><div><span id="round-type" class="eyebrow"></span><h2 id="round-heading"></h2></div><div class="round-tools"><button id="move-up" class="icon-button" title="Выше" aria-label="Переместить раунд выше">↑</button><button id="move-down" class="icon-button" title="Ниже" aria-label="Переместить раунд ниже">↓</button><button id="duplicate-round" class="icon-button" title="Копировать" aria-label="Дублировать раунд">⧉</button><button id="remove-round" class="icon-button danger-text" title="Удалить" aria-label="Удалить раунд">×</button></div></div>
               <div id="question-fields" hidden>
                 <label for="question-text">Текст вопроса</label><textarea id="question-text" maxlength="2000" rows="4" placeholder="Например: как называется наша галактика?"></textarea>
-                <label for="answer">Правильный ответ</label><input id="answer" maxlength="500" placeholder="Ответ для ведущего">
-                <label for="accepted-answers">Другие допустимые ответы <span class="optional">по одному на строке</span></label><textarea id="accepted-answers" rows="2" placeholder="Варианты для проверки в тренировке"></textarea>
+                <div id="text-answer-fields"><label for="answer">Правильный ответ</label><input id="answer" maxlength="500" placeholder="Ответ для ведущего">
+                <label for="accepted-answers">Другие допустимые ответы <span class="optional">по одному на строке</span></label><textarea id="accepted-answers" rows="2" placeholder="Варианты для проверки в тренировке"></textarea></div>
+                <div id="binary-answer-fields" hidden><div class="field-pair"><div><label for="choice-a">Первый вариант</label><input id="choice-a" maxlength="100" placeholder="Да"></div><div><label for="choice-b">Второй вариант</label><input id="choice-b" maxlength="100" placeholder="Нет"></div></div><label for="correct-choice">Правильный вариант</label><select id="correct-choice"><option value="0">Первый</option><option value="1">Второй</option></select><p class="hint">Игрок выбирает кнопку. Ответы проверяются автоматически после закрытия вопроса.</p></div>
                 <div class="field-pair"><div><label for="points">Очки</label><input id="points" type="number" min="10" max="1000" step="1"></div><div><label for="time-limit">Время, сек.</label><input id="time-limit" type="number" min="10" max="300" step="1"></div></div>
                 <label for="category">Категория <span class="optional">необязательно</span></label><input id="category" maxlength="100" placeholder="Например: космос">
                 <div class="media-heading"><h3>Материал к вопросу</h3><span class="hint">до 25 МБ</span></div>

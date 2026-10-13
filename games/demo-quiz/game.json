@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "title": "Демоквиз",
+  "description": "Космос, география, технологии, литература и медиа. 23 вопроса для первого забега.",
+  "rounds": [
+    {
+      "id": "media-image",
+      "category": "Медиа",
+      "text": "Какая геометрическая фигура изображена?",
+      "answer": "Треугольник",
+      "media": {
+        "type": "image",
+        "file": "media/triangle.png"
+      },
+      "type": "question",
+      "points": 100,
+      "time_limit": 45
+    },
+    {
+      "id": "media-audio",
+      "category": "Медиа",
+      "text": "Сколько звуковых сигналов слышно на записи?",
+      "answer": "3 / Три",
+      "media": {
+        "type": "audio",
+        "file": "media/signals.wav"
+      },
+      "type": "question",
+      "points": 100,
+      "time_limit": 45
+    },
+    {
+      "id": "media-video",
+      "category": "Медиа",
+      "text": "Какого цвета последний экран в отрывке?",
+      "answer": "Зелёный / Зеленого / Зелёного",
+      "media": {
+        "start": 0,
+        "end": 3,
+        "type": "video",
+        "file": "media/colors.mp4"
+      },
+      "type": "question",
+      "points": 100,
+      "time_limit": 45
+    },
+    {
+      "id": "0-0",
+      "category": "Космос",
+      "text": "Какая планета ближе всего к Солнцу?",
+      "answer": "Меркурий",
+      "type": "question",
+      "points": 100,
+      "time_limit": 45
+    },
+    {
+      "id": "0-1",
+      "category": "Космос",
+      "text": "Как называется естественный спутник Земли?",
+      "answer": "Луна",
+      "type": "question",
+      "points": 200,
+      "time_limit": 45
+    },
+    {
+      "id": "0-2",
+      "category": "Космос",
+      "text": "Какая планета известна своими кольцами?",
+      "answer": "Сатурн",
+      "type": "question",
+      "points": 300,
+      "time_limit": 45
+    },
+    {
+      "id": "0-3",
+      "category": "Космос",
+      "text": "Как называется наша галактика?",
+      "answer": "Млечный Путь",
+      "type": "question",
+      "points": 400,
+      "time_limit": 45
+    },
+    {
+      "id": "0-4",
+      "category": "Космос",
+      "text": "Кто первым полетел в космос?",
+      "answer": "Юрий Гагарин",
+      "type": "question",
+      "points": 500,
+      "time_limit": 45
+    },
+    {
+      "id": "1-0",
+      "category": "География",
+      "text": "Какой океан самый большой?",
+      "answer": "Тихий океан",
+      "type": "question",
+      "points": 100,
+      "time_limit": 45
+    },
+    {
+      "id": "1-1",
+      "category": "География",
+      "text": "В какой стране находится Рим?",
+      "answer": "Италия",
+      "type": "question",
+      "points": 200,
+      "time_limit": 45
+    },
+    {
+      "id": "1-2",
+      "category": "География",
+      "text": "Как называется столица Японии?",
+      "answer": "Токио",
+      "type": "question",
+      "points": 300,
+      "time_limit": 45
+    },
+    {
+      "id": "1-3",
+      "category": "География",
+      "text": "На каком материке находится Египет?",
+      "answer": "Африка",
+      "type": "question",
+      "points": 400,
+      "time_limit": 45
+    },
+    {
+      "id": "1-4",
+      "category": "География",
+      "text": "Какое озеро самое глубокое в мире?",
+      "answer": "Байкал",
+      "type": "question",
+      "points": 500,
+      "time_limit": 45
+    },
+    {
+      "id": "2-0",
+      "category": "Технологии",
+      "text": "Как называется устройство для ввода текста в компьютер?",
+      "answer": "Клавиатура",
+      "type": "question",
+      "points": 100,
+      "time_limit": 45
+    },
+    {
+      "id": "2-1",
+      "category": "Технологии",
+      "text": "Какие две цифры используются в двоичной системе?",
+      "answer": "0 и 1",
+      "type": "question",
+      "points": 200,
+      "time_limit": 45
+    },
+    {
+      "id": "2-2",
+      "category": "Технологии",
+      "text": "Как называется язык программирования с логотипом из двух змей?",
+      "answer": "Python",
+      "type": "question",
+      "points": 300,
+      "time_limit": 45
+    },
+    {
+      "id": "2-3",
+      "category": "Технологии",
+      "text": "Что означает сокращение CPU?",
+      "answer": "Центральный процессор / Central Processing Unit",
+      "type": "question",
+      "points": 400,
+      "time_limit": 45
+    },
+    {
+      "id": "2-4",
+      "category": "Технологии",
+      "text": "Как называется структура данных, работающая по принципу «последним пришёл — первым вышел»?",
+      "answer": "Стек",
+      "type": "question",
+      "points": 500,
+      "time_limit": 45
+    },
+    {
+      "id": "3-0",
+      "category": "Литература",
+      "text": "Кто написал «Евгения Онегина»?",
+      "answer": "Александр Пушкин",
+      "type": "question",
+      "points": 100,
+      "time_limit": 45
+    },
+    {
+      "id": "3-1",
+      "category": "Литература",
+      "text": "Кто написал «Гарри Поттера»?",
+      "answer": "Джоан Роулинг",
+      "type": "question",
+      "points": 200,
+      "time_limit": 45
+    },
+    {
+      "id": "3-2",
+      "category": "Литература",
+      "text": "Как зовут сыщика, живущего на Бейкер-стрит?",
+      "answer": "Шерлок Холмс",
+      "type": "question",
+      "points": 300,
+      "time_limit": 45
+    },
+    {
+      "id": "3-3",
+      "category": "Литература",
+      "text": "Кто написал «Мастера и Маргариту»?",
+      "answer": "Михаил Булгаков",
+      "type": "question",
+      "points": 400,
+      "time_limit": 45
+    },
+    {
+      "id": "3-4",
+      "category": "Литература",
+      "text": "Кто написал роман «1984»?",
+      "answer": "Джордж Оруэлл",
+      "type": "question",
+      "points": 500,
+      "time_limit": 45
+    }
+  ]
+}

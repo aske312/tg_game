@@ -47,9 +47,10 @@ class Login(BaseModel):
 
 class Command(BaseModel):
     action: str = Field(max_length=20)
-    question: str = Field(default='', max_length=20)
+    question: str = Field(default='', max_length=64)
     text: str = Field(default='', max_length=500)
     player: str = Field(default='', max_length=100)
+    choice: Optional[int] = Field(default=None, ge=0, le=1)
 
 
 class CreateRoom(BaseModel):
@@ -64,6 +65,9 @@ class Question(BaseModel):
     media_id: str = Field(default='', max_length=64)
     clip_start: float = Field(default=0, ge=0, le=86400)
     clip_end: Optional[float] = Field(default=None, gt=0, le=86400)
+    stage: str = Field(default='', max_length=64)
+    choices: Optional[list[str]] = None
+    correct_choice: Optional[int] = Field(default=None, ge=0, le=1)
 
 
 def set_session_cookie(response, request, token):
@@ -129,12 +133,12 @@ def me(request: Request, response: Response, authorization: str = Header(default
 @app.post('/api/rooms')
 def create(body: CreateRoom = CreateRoom(), authorization: str = Header(default='')):
     user = current_user(authorization)
-    if body.pack in ('demo', 'custom'):
+    if body.pack == 'custom':
         return {'code': store.create(user, pack=body.pack)}
     try:
-        pack = find_pack(pack_roots(), body.pack)
+        pack = find_pack(pack_roots(), 'library-demo-quiz' if body.pack == 'demo' else body.pack)
         assets = materialize_pack(pack, Path(store.path).parent / 'media')
-        return {'code': store.create(user, pack=body.pack, questions=pack['questions'], assets=assets, title=pack['title'])}
+        return {'code': store.create(user, pack=body.pack, questions=pack['questions'], assets=assets, title=pack['title'], stages=pack['stages'])}
     except (ValueError, OSError) as e:
         raise HTTPException(400, str(e))
 
@@ -152,15 +156,13 @@ def packs(authorization: str = Header(default='')):
 @app.post('/api/practice')
 def practice(body: CreateRoom = CreateRoom(), authorization: str = Header(default='')):
     user = current_user(authorization)
-    if body.pack == 'demo':
-        code = store.create(user, practice=True)
-    elif body.pack == 'custom':
+    if body.pack == 'custom':
         raise HTTPException(400, 'Для тренировки выберите готовую игру')
     else:
         try:
-            pack = find_pack(pack_roots(), body.pack)
+            pack = find_pack(pack_roots(), 'library-demo-quiz' if body.pack == 'demo' else body.pack)
             assets = materialize_pack(pack, Path(store.path).parent / 'media')
-            code = store.create(user, practice=True, pack=body.pack, questions=pack['questions'], assets=assets, title=pack['title'])
+            code = store.create(user, practice=True, pack=body.pack, questions=pack['questions'], assets=assets, title=pack['title'], stages=pack['stages'])
         except (ValueError, OSError) as e:
             raise HTTPException(400, str(e))
     return store.public(code, user['id'])
@@ -272,7 +274,7 @@ def state(code: str, authorization: str = Header(default='')):
 async def action(code: str, body: Command, authorization: str = Header(default='')):
     user = current_user(authorization)
     try:
-        store.change(code.upper(), user, body.action, body.question, body.text, body.player)
+        store.change(code.upper(), user, body.action, body.question, body.text, body.player, body.choice)
         await publish(code.upper())
         return store.public(code.upper(), user['id'])
     except ValueError as e:

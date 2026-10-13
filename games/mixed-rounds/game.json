@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "title": "Три режима — один забег",
+  "description": "Разминка блицем, сетка с выбором игрока и финал с двумя вариантами. Общий счёт на всю игру.",
+  "stages": [
+    {"id":"warmup","type":"blitz","title":"Быстрая разминка","order":"random","auto_advance":false},
+    {"id":"board","type":"grid","title":"Выбираем тему","chooser":"winner"},
+    {"id":"final","type":"binary","title":"Одно из двух","order":"sequential","auto_advance":false}
+  ],
+  "rounds": [
+    {"id":"warmup-1","stage":"warmup","type":"question","text":"Сколько дней в обычной неделе?","answer":"7","accepted_answers":["семь"],"points":100,"time_limit":30},
+    {"id":"warmup-2","stage":"warmup","type":"question","text":"Как называется естественный спутник Земли?","answer":"Луна","points":100,"time_limit":30},
+    {"id":"board-1","stage":"board","type":"question","category":"Космос","text":"Какая планета ближе всего к Солнцу?","answer":"Меркурий","points":100,"time_limit":45},
+    {"id":"board-2","stage":"board","type":"question","category":"Космос","text":"Как называется наша галактика?","answer":"Млечный Путь","points":200,"time_limit":45},
+    {"id":"board-3","stage":"board","type":"question","category":"География","text":"В какой стране находится Рим?","answer":"Италия","points":100,"time_limit":45},
+    {"id":"board-4","stage":"board","type":"question","category":"География","text":"Какое озеро самое глубокое в мире?","answer":"Байкал","points":200,"time_limit":45},
+    {"id":"final-1","stage":"final","type":"question","text":"Что из этого — название газа?","choices":["Бан","Пропан"],"correct_choice":1,"points":100,"time_limit":20},
+    {"id":"final-2","stage":"final","type":"question","text":"Пингвины умеют летать?","choices":["Да","Нет"],"correct_choice":1,"points":100,"time_limit":20}
+  ]
+}

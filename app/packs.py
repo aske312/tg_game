@@ -6,6 +6,7 @@ import secrets
 from pathlib import Path
 
 from app.media import MAX_MEDIA_BYTES, detect_media
+from app.modes import stages_from_doc, binary_fields
 
 MAX_PACK_BYTES = 1024 * 1024
 
@@ -30,6 +31,8 @@ def load_pack(directory):
     items = doc.get('rounds')
     if not isinstance(items, list) or not 1 <= len(items) <= 100:
         raise ValueError('В rounds должно быть от 1 до 100 раундов')
+    stages = stages_from_doc(doc)
+    stage_map = {stage['id']: stage for stage in stages}
     questions, ids, paths = [], set(), set()
     for i, item in enumerate(items, 1):
         if not isinstance(item, dict):
@@ -38,7 +41,13 @@ def load_pack(directory):
         if not isinstance(qid, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', qid) or qid in ids:
             raise ValueError(f'Вопрос {i}: уникальный id из букв, цифр, _ или -')
         ids.add(qid)
+        stage_id = item.get('stage', stages[0]['id'])
+        if not isinstance(stage_id, str) or stage_id not in stage_map:
+            raise ValueError(f'Вопрос {i}: неизвестный игровой раунд stage')
+        mode = stage_map[stage_id]['type']
         if item.get('type') == 'event':
+            if mode == 'grid':
+                raise ValueError(f'Раунд {i}: события добавляйте в блиц или выбор из двух')
             effect = item.get('effect')
             if not isinstance(effect, dict) or effect.get('type') not in ('random_buff', 'random_debuff') or effect.get('target') not in ('random_player', 'all_players'):
                 raise ValueError(f'Раунд {i}: событие требует effect.type и effect.target')
@@ -49,12 +58,16 @@ def load_pack(directory):
             text = item.get('text', '')
             if not isinstance(event_title, str) or not event_title.strip() or len(event_title) > 100 or not isinstance(text, str) or len(text) > 2000:
                 raise ValueError(f'Раунд {i}: недопустимые title/text события')
-            questions.append(dict(id=qid, type='event', title=event_title, text=text,
+            questions.append(dict(id=qid, stage=stage_id, type='event', title=event_title, text=text,
                                   effect=dict(type=effect['type'], target=effect['target'], questions=duration)))
             continue
         if item.get('type') != 'question':
             raise ValueError(f'Раунд {i}: type должен быть question или event')
-        for field, limit in (('text', 2000), ('answer', 500)):
+        try:
+            binary = binary_fields(item, required=mode == 'binary')
+        except ValueError as error:
+            raise ValueError(f'Вопрос {i}: {error}') from None
+        for field, limit in (('text', 2000),) + (() if binary else (('answer', 500),)):
             if not isinstance(item.get(field), str) or not item[field].strip() or len(item[field]) > limit:
                 raise ValueError(f'Вопрос {i}: заполните {field} (до {limit} символов)')
         points, seconds = item.get('points', 100), item.get('time_limit', 45)
@@ -63,8 +76,10 @@ def load_pack(directory):
         accepted = item.get('accepted_answers', [])
         if not isinstance(accepted, list) or len(accepted) > 20 or any(not isinstance(v, str) or not v.strip() or len(v) > 500 for v in accepted):
             raise ValueError(f'Вопрос {i}: accepted_answers должен быть списком ответов')
-        q = dict(id=qid, type='question', category=str(item.get('category', title))[:100], text=item['text'].strip(), answer=item['answer'].strip(),
+        category = str(item.get('category') or title)[:100]
+        q = dict(id=qid, stage=stage_id, type='question', category=category.strip(), text=item['text'].strip(), answer=binary.get('answer', item.get('answer', '')).strip(),
                  accepted_answers=accepted, value=points, seconds=seconds)
+        q.update(binary)
         media = item.get('media')
         if media is not None:
             if not isinstance(media, dict) or media.get('type') not in ('image', 'audio', 'video') or not isinstance(media.get('file'), str):
@@ -87,7 +102,10 @@ def load_pack(directory):
         raise ValueError('Общий размер медиа пакета не должен превышать 100 МБ')
     if not any(q.get('type') == 'question' for q in questions):
         raise ValueError('В пакете нужен хотя бы один question')
-    return dict(title=title.strip(), description=str(doc.get('description', ''))[:500], questions=questions)
+    for stage in stages:
+        if not any(q.get('stage') == stage['id'] and q.get('type') == 'question' for q in questions):
+            raise ValueError(f'Раунд «{stage["title"]}»: добавьте хотя бы один вопрос')
+    return dict(title=title.strip(), description=str(doc.get('description', ''))[:500], questions=questions, stages=stages)
 
 
 def find_pack(roots, pack_id):
@@ -114,7 +132,7 @@ def list_packs(roots):
             try:
                 pack = find_pack(roots, 'library-'+folder.name)
                 packs.append(dict(id='library-'+folder.name, title=pack['title'], description=pack['description'], count=len(pack['questions']),
-                                  questions=sum(q.get('type') == 'question' for q in pack['questions'])))
+                                  questions=sum(q.get('type') == 'question' for q in pack['questions']), stages=pack['stages']))
             except (ValueError, OSError) as e:
                 errors.append(dict(folder=folder.name, error=str(e)))
     return dict(packs=packs, errors=errors)

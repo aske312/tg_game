@@ -158,7 +158,8 @@ class Catalog:
                     dirty = is_draft and revision(doc) != self.meta(draft).get('published_revision')
                     items.append(dict(id=name, title=str(doc.get('title', name)), description=str(doc.get('description', '')),
                                       questions=sum(isinstance(q, dict) and q.get('type') == 'question' for q in rounds),
-                                      rounds=len(rounds), published=bool(published), dirty=dirty, error=''))
+                                      rounds=len(rounds), stages_count=len(doc['stages']) if isinstance(doc.get('stages'), list) else 1,
+                                      published=bool(published), dirty=dirty, error=''))
                 except ValueError as error:
                     items.append(dict(id=name, title=name, description='', questions=0, rounds=0,
                                       published=bool(published), dirty=False, error=str(error)))
@@ -168,7 +169,8 @@ class Catalog:
         with self.lock:
             game_id = 'game-' + secrets.token_hex(6)
             folder = self.folder(self.drafts, game_id)
-            doc = dict(schema_version=1, title=title.strip(), description='', rounds=[])
+            doc = dict(schema_version=1, title=title.strip(), description='', rounds=[],
+                       stages=[dict(id='legacy', type='blitz', title='Раунд 1', order='sequential', chooser='winner', auto_advance=False)])
             atomic_write(folder / 'game.json', encode(doc))
             atomic_write(folder / '.meta.json', encode({'base': None}))
             return self.snapshot(game_id)

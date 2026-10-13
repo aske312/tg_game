@@ -1,9 +1,26 @@
+function countLabel(n,words) {const mod=n%100;return n+' '+words[mod>=11&&mod<=14?2:n%10===1?0:n%10>=2&&n%10<=4?1:2];}
 const $ = id => document.getElementById(id);
 const tg = window.Telegram?.WebApp;
 const show = (id, visible) => $(id).hidden = !visible;
 const notice = (text, type='info') => { $('notice').textContent = text || ''; $('notice').dataset.type = type; };
 const esc = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let auth, config, room, socket, retry, offset = 0, mediaKey = '', uploading = false, libraryPacks = [];
+const modeTitles={blitz:'Блиц',grid:'Сетка вопросов',binary:'Выбор из двух'};
+
+function renderModes() {
+  const stage=room.stage;
+  show('stage-banner',!!stage&&!['lobby','finished'].includes(room.phase));
+  if(stage){$('stage-mode').textContent=`Раунд ${room.stage_number} / ${room.stage_count} · ${modeTitles[stage.type]}`;$('stage-name').textContent=stage.title;$('stage-hint').textContent=stage.type==='grid'?'Выбираем тему и стоимость, затем все отвечают.':stage.type==='binary'?'Два варианта. Одна попытка. Проверка автоматически.':stage.order==='random'?'Вопросы в случайном порядке.':'Вопросы идут один за другим.';}
+  show('question-board',stage?.type==='grid'&&['board','reveal'].includes(room.phase)&&!room.stage_complete);
+  const chooser=room.players.find(p=>p.id===room.chooser);
+  $('board-chooser').textContent=room.can_pick?'Выбери следующий вопрос.':`Выбирает ${chooser?.name||'ведущий'}.`;
+  const categories=[...new Set((room.board||[]).map(q=>q.category))];
+  $('board-cells').innerHTML=categories.map(c=>`<div class="board-row"><div class="board-category">${esc(c)}</div><div class="board-values">${room.board.filter(q=>q.category===c).sort((a,b)=>a.value-b.value).map(q=>`<button data-pick="${esc(q.id)}" ${!room.can_pick||q.used?'disabled':''} class="${q.used?'played':''}" aria-label="${esc(c)}: ${q.value} очков${q.used?', сыгран':''}">${q.used?'—':q.value}</button>`).join('')}</div></div>`).join('');
+  const q=room.question,binary=Array.isArray(q?.choices);
+  show('binary-options',binary&&room.phase!=='finished');
+  $('binary-options').innerHTML=binary?q.choices.map((choice,i)=>`<button data-choice="${i}" ${canAnswer()?'':'disabled'} class="${ownAnswer()?.choice===i?'chosen':''} ${q.correct_choice===i?'correct-option':''} ${ownAnswer()?.choice===i&&ownAnswer()?.verdict==='wrong'?'wrong-option':''}">${esc(choice)}</button>`).join(''):'';
+  show('auto-next',!!room.advance_at&&room.phase==='reveal');
+}
 
 async function api(path, body) {
   const response = await fetch('/api'+path, {method:body===undefined?'GET':'POST', headers:{'Content-Type':'application/json', ...(auth?{Authorization:'Bearer '+auth.token}:{})}, ...(body===undefined?{}:{body:JSON.stringify(body)})});
@@ -77,11 +94,11 @@ function renderHostAnswers() {
 
 function renderPackPreview() {
   const id=$('pack').value;
-  const pack=id==='demo'?{title:'Демоквиз',description:'Космос, технологии и ещё немного всего. С картинками, аудио и видео.',questions:23,count:23}:id==='custom'?{title:'Твой собственный квиз',description:'Начни с пустой комнаты. Добавь вопросы и материалы перед стартом игры.',questions:0,count:0}:libraryPacks.find(p=>p.id===id);
+  const pack=id==='demo'?libraryPacks.find(p=>p.id==='library-demo-quiz'):id==='custom'?{title:'Твой собственный квиз',description:'Начни с пустой комнаты. Добавь вопросы и материалы перед стартом игры.',questions:0,count:0}:libraryPacks.find(p=>p.id===id);
   if(!pack)return;
   $('pack-title').textContent=pack.title;
   $('pack-description').textContent=pack.description||'Готовая игра для тебя и твоей компании.';
-  const tags=id==='custom'?['Вопросы в лобби']:id==='demo'?['23 вопроса','Медиа']:[pack.questions+' вопросов',pack.count+' раундов'];
+  const tags=id==='custom'?['Вопросы в лобби']:[countLabel(pack.questions,['вопрос','вопроса','вопросов']),countLabel(pack.stages?.length||1,['раунд','раунда','раундов']),...[...new Set((pack.stages||[]).map(s=>modeTitles[s.type]))]];
   $('pack-tags').innerHTML=tags.map(t=>`<span>${esc(t)}</span>`).join('');
   $('practice').disabled=id==='custom';
   $('practice-caption').textContent=id==='custom'?'Для тренировки выбери готовую игру.':'Тренировка на выбранной игре.';
@@ -109,13 +126,14 @@ function apply(s){
   $('game').dataset.phase=s.phase;
   show('home',false);show('game',true);
   $('room-code').textContent=s.code;
-  $('phase').textContent=(s.practice?'Тренировка · ':'')+({event:'Событие',lobby:'Ожидание игроков',question:'Все пишут ответы',review:'Ведущий проверяет ответы',reveal:'Результаты вопроса',ready:'Готовы продолжить',finished:'Квиз завершён'}[s.phase]||'');
+  $('phase').textContent=(s.practice?'Тренировка · ':'')+({board:'Выбираем вопрос',event:'Событие',lobby:'Ожидание игроков',question:s.question?.choices?'Выбираем вариант':'Все пишут ответы',review:'Ведущий проверяет ответы',reveal:'Результаты вопроса',ready:'Готовы продолжить',finished:'Квиз завершён'}[s.phase]||'');
   renderPlayers(s);
   show('round-status',s.phase!=='lobby');
-  $('round-label').textContent=`Раунд ${s.round_number} / ${s.round_count}`;
+  $('round-label').textContent=`Раунд ${s.stage_number} / ${s.stage_count} · Вопрос ${s.question_number} / ${s.question_count}`;
   $('round-progress').max=Math.max(1,s.round_count);$('round-progress').value=s.used.length;
   show('invite',!s.practice);show('lobby',s.phase==='lobby');show('start',isHost());$('start').disabled=uploading||s.players.length<2||!s.question_count;
-  $('pack-count').textContent=`В игре ${s.question_count} вопросов, ${s.round_count} раундов.`;show('waiting',!isHost());show('editor',isHost()&&s.phase==='lobby');
+  $('pack-count').textContent=`В игре ${s.question_count} вопросов, ${s.stage_count} игровых раундов: ${s.stages.map(stage=>modeTitles[stage.type]).join(' → ')}.`;show('waiting',!isHost());show('editor',isHost()&&s.phase==='lobby');
+  if(s.phase==='lobby'){const selected=$('q-stage').value;$('q-stage').innerHTML=s.stages.map(stage=>`<option value="${esc(stage.id)}">${esc(stage.title)} · ${modeTitles[stage.type]}</option>`).join('');if(s.stages.some(stage=>stage.id===selected))$('q-stage').value=selected;renderQuestionEditor();}
   show('question-list-panel',isHost()&&s.phase==='lobby'&&!!s.question_count);
   $('question-list').innerHTML=(s.question_list||[]).map((q,i)=>`<p><span class="question-list-number">${String(i+1).padStart(2,'0')}</span><span class="question-list-text">${esc(q.type==='event'?'✳ '+q.title:q.text)}${q.media?' · '+({image:'Изображение',video:'Видео',audio:'Аудио'}[q.media.kind]):''}</span></p>`).join('');
   show('event',s.phase==='event');
@@ -125,16 +143,16 @@ function apply(s){
   if(q){
     $('category').textContent=`Вопрос ${s.question_number}/${s.question_count} · ${q.category}`;$('value').textContent=q.value+' очков';$('question-text').textContent=q.text;
     $('answer-count').textContent=`Ответили ${s.answered_ids.length} из ${s.players.length-1}`;
-    show('answer-form',canAnswer());show('my-answer',!isHost()&&!!ownAnswer()&&s.phase==='question');
+    show('answer-form',canAnswer()&&!q.choices);show('my-answer',!isHost()&&!!ownAnswer()&&s.phase==='question');
     $('my-answer').textContent=ownAnswer()?'Твой ответ: '+ownAnswer().text+' · отправлен':'';
     show('solution',!!q.answer);$('solution').textContent=q.answer?'Правильный ответ: '+q.answer:'';
     show('close',hasControls()&&s.phase==='question');show('next',hasControls()&&s.phase==='reveal');
-    $('next').textContent=s.round_number===s.round_count?'Показать итоги →':'Следующий вопрос →';
+    $('next').textContent=s.round_number===s.round_count?'Показать итоги →':s.stage_complete?'Следующий раунд →':s.stage?.type==='grid'?'Вернуться к сетке →':'Следующий вопрос →';
     if(oldQuestion!==s.code+':'+s.active){$('answer-text').value='';}
     if(s.phase!=='finished')renderMedia(q);renderReview();
   }
-  renderHostAnswers();
-  show('ready',s.phase==='ready'&&hasControls());show('finished',s.phase==='finished');show('finish',hasControls()&&['reveal','event'].includes(s.phase));
+  renderHostAnswers();renderModes();
+  show('ready',s.phase==='ready'&&hasControls());show('finished',s.phase==='finished');show('finish',hasControls()&&['reveal','event','board'].includes(s.phase));
   $('another').textContent=s.practice?'Ещё одна тренировка':'Новая комната';
   if(s.phase==='finished'){
     const players=s.players.filter(p=>p.id!==s.host).sort((a,b)=>b.score-a.score),top=Math.max(...players.map(p=>p.score));
@@ -152,6 +170,8 @@ function tick(){
   show('timer-track',n!==null);
   $('timer-bar').style.width=(left===null?0:Math.min(100,left/(room.question?.seconds||45)/10))+'%';
   $('answer-send').disabled=n===0;
+  for(const button of $('binary-options').querySelectorAll('button'))button.disabled=!canAnswer()||n===0;
+  if(room.advance_at)$('auto-next').textContent=`Следующий вопрос через ${Math.max(0,Math.ceil((room.advance_at*1000-Date.now()-offset)/1000))} сек.`;
 }
 setInterval(tick,250);
 function connect(code){
@@ -166,7 +186,7 @@ async function join(code){const s=await api('/rooms/'+encodeURIComponent(code.tr
 async function create(){const s=await api('/rooms',{pack:$('pack').value});await join(s.code);}
 async function practice(){const s=await api('/practice',{pack:$('pack').value});apply(s);connect(s.code);}
 async function command(action,extra={}){apply(await api('/rooms/'+room.code+'/action',{action,...extra}));}
-async function refreshPacks(){const data=await api('/packs'),selected=$('pack').value;libraryPacks=data.packs;$('pack').querySelectorAll('[data-library]').forEach(n=>n.remove());for(const p of data.packs){const o=document.createElement('option');o.value=p.id;o.dataset.library='1';o.textContent=p.title+' · '+p.questions+' вопросов';$('pack').append(o);}if([...$('pack').options].some(o=>o.value===selected))$('pack').value=selected;$('pack-errors').textContent=data.errors.map(e=>e.folder+': '+e.error).join('; ');renderPackPreview();}
+async function refreshPacks(){const data=await api('/packs'),selected=$('pack').value;libraryPacks=data.packs;const demo=data.packs.find(p=>p.id==='library-demo-quiz');if(demo)$('pack').querySelector('[value=demo]').textContent=demo.title+' · '+demo.questions+' вопросов';$('pack').querySelectorAll('[data-library]').forEach(n=>n.remove());for(const p of data.packs.filter(p=>p.id!=='library-demo-quiz')){const o=document.createElement('option');o.value=p.id;o.dataset.library='1';o.textContent=p.title+' · '+p.questions+' вопросов';$('pack').append(o);}if([...$('pack').options].some(o=>o.value===selected))$('pack').value=selected;$('pack-errors').textContent=data.errors.map(e=>e.folder+': '+e.error).join('; ');renderPackPreview();}
 $('pack').onchange=renderPackPreview;
 $('reload-packs').onclick=guard(refreshPacks);$('event-next').onclick=guard(()=>command('next'));
 async function entered(){await refreshPacks();sessionStorage.setItem('auth',JSON.stringify(auth));$('identity').textContent=auth.user.name;show('login',false);show('home',true);const p=new URLSearchParams(location.search),code=tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam')||p.get('room')||sessionStorage.getItem('room');if(code&&/^[A-Z2-9]{6}$/i.test(code)){try{await join(code);}catch(e){notice(e.message);sessionStorage.removeItem('room');}}}
@@ -174,21 +194,33 @@ $('login-form').onsubmit=guard(async()=>{auth=await api('/login',{name:$('name')
 $('join-form').onsubmit=guard(()=>join($('code').value));$('create').onclick=guard(create);$('practice').onclick=guard(practice);$('another').onclick=guard(()=>room?.practice?practice():create());
 for(const a of ['start','close','next'])$(a).onclick=guard(()=>command(a));$('resume').onclick=guard(()=>command('next'));
 $('answer-form').onsubmit=guard(()=>command('answer',{text:$('answer-text').value}));
-$('review-list').onclick=guard(async e=>{const b=e.target.closest('button[data-verdict]');if(b)await command(b.dataset.verdict,{player:b.dataset.player});});
+$('binary-options').onclick=guard(async event=>{const b=event.target.closest('[data-choice]');if(b&&!b.disabled)await command('answer',{choice:Number(b.dataset.choice)});});
+$('board-cells').onclick=guard(async event=>{const b=event.target.closest('[data-pick]');if(b&&!b.disabled)await command('pick',{question:b.dataset.pick});});
+const pendingGrades=new Set();
+$('review-list').onclick=async e=>{
+  const b=e.target.closest('button[data-verdict]');if(!b||pendingGrades.has(b.dataset.player))return;
+  const player=b.dataset.player;pendingGrades.add(player);notice('');
+  for(const button of $('review-list').querySelectorAll('button'))if(button.dataset.player===player)button.disabled=true;
+  try{await command(b.dataset.verdict,{player});}catch(error){notice(error.message||'Нет связи с сервером','error');}
+  finally{pendingGrades.delete(player);renderReview();}
+};
 $('chat-form').onsubmit=guard(async()=>{const text=$('chat-text').value;await command('message',{text});if($('chat-text').value===text)$('chat-text').value='';});
 $('finish').onclick=guard(async()=>{if(confirm('Завершить квиз и показать итоговый счёт?'))await command('finish');});
 $('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem('room');room=null;$('media-content').replaceChildren();mediaKey='';show('game',false);show('home',true);notice('');history.replaceState(null,'',location.pathname);};
 $('q-kind').onchange=()=>{const kind=$('q-kind').value;show('file-fields',!!kind);show('clip-fields',kind==='audio'||kind==='video');$('q-file').accept=kind==='image'?'.png,.jpg,.jpeg,.gif,.webp':kind==='audio'?'.mp3,.wav,.ogg,.m4a':'.mp4,.webm';$('q-file').required=!!kind;};
+function renderQuestionEditor() {const binary=room?.stages.find(s=>s.id===$('q-stage').value)?.type==='binary';show('q-binary-fields',binary);$('q-answer').required=!binary;$('q-answer').hidden=binary;$('q-answer').previousElementSibling.hidden=binary;for(const id of ['q-choice-a','q-choice-b'])$(id).required=binary;}
+$('q-stage').onchange=renderQuestionEditor;
 $('question-form').onsubmit=guard(async()=>{
   if(uploading)return;
-  const body={text:$('q-text').value,answer:$('q-answer').value,value:Number($('q-value').value),seconds:Number($('q-seconds').value),clip_start:Number($('clip-start').value||0),clip_end:$('clip-end').value?Number($('clip-end').value):null};
+  const body={stage:$('q-stage').value,text:$('q-text').value,answer:$('q-answer').value,value:Number($('q-value').value),seconds:Number($('q-seconds').value),clip_start:Number($('clip-start').value||0),clip_end:$('clip-end').value?Number($('clip-end').value):null};
+  if(room.stages.find(s=>s.id===body.stage)?.type==='binary'){body.choices=[$('q-choice-a').value,$('q-choice-b').value];body.correct_choice=Number($('q-correct-choice').value);body.answer=body.choices[body.correct_choice];}
   const kind=$('q-kind').value,file=$('q-file').files[0];
   if(kind&&(!file||file.size>25*1024*1024))throw new Error('Выберите файл размером до 25 МБ');
   if(body.clip_end!=null&&body.clip_end<=body.clip_start)throw new Error('Конец отрывка должен быть позже начала');
   uploading=true;$('add-question').disabled=true;$('start').disabled=true;
   try{
     if(kind){const r=await fetch(`/api/rooms/${room.code}/media?kind=${kind}`,{method:'POST',headers:{Authorization:'Bearer '+auth.token,'Content-Type':file.type||'application/octet-stream'},body:file});const data=await r.json();if(!r.ok)throw new Error(data.detail||'Не удалось загрузить файл');body.media_id=data.id;}
-    apply(await api('/rooms/'+room.code+'/questions',body));$('question-form').reset();$('q-kind').onchange();notice('Вопрос добавлен в конец пакета.');
+    apply(await api('/rooms/'+room.code+'/questions',body));$('question-form').reset();$('q-kind').onchange();renderQuestionEditor();renderQuestionEditor();renderQuestionEditor();notice('Вопрос добавлен в конец пакета.');
   }finally{uploading=false;$('add-question').disabled=false;if(room)$('start').disabled=room.players.length<2||!room.question_count;}
 });
 $('invite').onclick=guard(async()=>{const link=config.bot_username?`https://t.me/${config.bot_username}?start=${room.code}`:`${location.origin}/?room=${room.code}`;if(tg?.initData&&config.bot_username)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Крысиные бега! Код: '+room.code)}`);else if(navigator.clipboard){await navigator.clipboard.writeText(link);notice('Ссылка скопирована. Код: '+room.code);}else notice('Код комнаты: '+room.code);});
