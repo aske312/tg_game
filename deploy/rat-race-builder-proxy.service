@@ -1,0 +1,25 @@
+[Unit]
+Description=HTTPS on a separate port for Rat Race authoring
+After=network-online.target rat-race-builder.service
+Wants=network-online.target rat-race-builder.service
+
+[Service]
+Type=notify
+User=caddy
+Group=caddy
+EnvironmentFile=/etc/rat-race/builder.env
+Environment=XDG_CONFIG_HOME=/var/lib/rat-race-builder-proxy/config
+Environment=XDG_DATA_HOME=/var/lib/rat-race-builder-proxy/data
+ExecStart=/usr/bin/caddy run --config /etc/rat-race/builder.Caddyfile --adapter caddyfile
+ExecReload=/usr/bin/caddy reload --config /etc/rat-race/builder.Caddyfile --adapter caddyfile --address 127.0.0.1:2020 --force
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/rat-race-builder-proxy
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

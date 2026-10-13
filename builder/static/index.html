@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101e18">
+  <title>Конструктор · Крысиные бега</title>
+  <link rel="stylesheet" href="/static/builder.css?v=1">
+  <script src="/static/builder.js?v=1" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/"><span class="brand-mark">кб.</span><span>крысиные бега<span class="brand-caption">КОНСТРУКТОР ИГР</span></span></a>
+    <div id="account-actions" hidden><button id="new-game" class="primary">+ Новая игра</button><button id="logout" class="quiet">Выйти</button></div>
+  </header>
+  <div id="notice" role="status" aria-live="polite" hidden></div>
+  <section id="login-panel" class="login-panel panel" hidden>
+    <span class="eyebrow">МАСТЕРСКАЯ КВИЗОВ</span><h1>Хорошая игра<br>начинается с идеи.</h1>
+    <p>Создавай вопросы, добавляй материалы и собирай забеги для своей компании.</p>
+    <form id="login-form"><label for="password">Пароль конструктора</label><input id="password" type="password" autocomplete="current-password" required maxlength="256"><button class="primary wide">Войти в мастерскую <span>→</span></button></form>
+    <p class="hint">Доступ только для авторов игр.</p>
+  </section>
+  <div id="studio" class="studio" hidden>
+    <aside class="library">
+      <div class="library-heading"><h2>Мои игры</h2><button id="refresh" class="icon-button" aria-label="Обновить библиотеку">↻</button></div>
+      <label for="search" class="sr-only">Поиск игр</label><input id="search" type="search" placeholder="Найти игру…" autocomplete="off">
+      <div id="game-list" class="game-list"></div>
+      <p class="library-note">Игры запускаются в Telegram.<br>Здесь — их создание и редактирование.</p>
+    </aside>
+    <main class="workspace">
+      <section id="empty" class="empty panel"><span class="empty-symbol" aria-hidden="true">✳</span><span class="eyebrow">ТВОЯ СЛЕДУЮЩАЯ ИГРА</span><h1>Есть о чём<br>спросить?</h1><p>Выбери игру в библиотеке или создай новую.<br>Вопросы, медиа и события — всё в одном месте.</p><button id="empty-create" class="primary">Создать первую игру ↗</button></section>
+      <section id="editor" hidden>
+        <div class="editor-header"><div><span class="eyebrow">РЕДАКТИРОВАНИЕ ИГРЫ</span><h1 id="editor-title"></h1><span id="save-status" class="save-status" role="status"></span></div><div class="editor-actions"><button id="save" class="secondary">Сохранить черновик</button><button id="publish" class="primary">Опубликовать ↗</button></div></div>
+        <section class="panel game-settings"><div class="section-title"><h2>Об игре</h2><span id="round-count" class="hint"></span></div><label for="game-title">Название</label><input id="game-title" maxlength="100" placeholder="Как назовём забег?"><label for="game-description">Описание <span class="optional">необязательно</span></label><textarea id="game-description" maxlength="500" rows="2" placeholder="Тема, настроение или пара слов для игроков"></textarea></section>
+        <div class="rounds-layout">
+          <section class="panel round-order"><div class="section-title"><h2>Раунды</h2><span class="hint">до 100</span></div><div class="add-round"><button id="add-question" class="secondary">+ Вопрос</button><button id="add-event" class="secondary">+ Событие</button></div><ol id="round-list" class="round-list"></ol><p id="no-rounds" class="hint">Добавь первый вопрос. События можно вставить между вопросами.</p></section>
+          <section class="panel round-editor">
+            <div id="round-empty" class="round-empty"><span aria-hidden="true">↖</span><p>Выбери раунд для редактирования.</p></div>
+            <div id="round-details" hidden>
+              <div class="section-title round-heading"><div><span id="round-type" class="eyebrow"></span><h2 id="round-heading"></h2></div><div class="round-tools"><button id="move-up" class="icon-button" title="Выше" aria-label="Переместить раунд выше">↑</button><button id="move-down" class="icon-button" title="Ниже" aria-label="Переместить раунд ниже">↓</button><button id="duplicate-round" class="icon-button" title="Копировать" aria-label="Дублировать раунд">⧉</button><button id="remove-round" class="icon-button danger-text" title="Удалить" aria-label="Удалить раунд">×</button></div></div>
+              <div id="question-fields" hidden>
+                <label for="question-text">Текст вопроса</label><textarea id="question-text" maxlength="2000" rows="4" placeholder="Например: как называется наша галактика?"></textarea>
+                <label for="answer">Правильный ответ</label><input id="answer" maxlength="500" placeholder="Ответ для ведущего">
+                <label for="accepted-answers">Другие допустимые ответы <span class="optional">по одному на строке</span></label><textarea id="accepted-answers" rows="2" placeholder="Варианты для проверки в тренировке"></textarea>
+                <div class="field-pair"><div><label for="points">Очки</label><input id="points" type="number" min="10" max="1000" step="1"></div><div><label for="time-limit">Время, сек.</label><input id="time-limit" type="number" min="10" max="300" step="1"></div></div>
+                <label for="category">Категория <span class="optional">необязательно</span></label><input id="category" maxlength="100" placeholder="Например: космос">
+                <div class="media-heading"><h3>Материал к вопросу</h3><span class="hint">до 25 МБ</span></div>
+                <label for="media-type" class="sr-only">Тип материала</label><select id="media-type"><option value="">Без материала</option><option value="image">Изображение</option><option value="audio">Аудио</option><option value="video">Видео</option></select>
+                <div id="media-fields" hidden><label for="media-file" class="upload-zone"><span id="upload-label">Выбрать файл</span><span class="hint">Нажми, чтобы загрузить или заменить материал</span><input id="media-file" type="file"></label><div id="attached-file" class="attached-file"><span id="file-name"></span><button id="remove-media" class="quiet danger-text" type="button">Убрать</button></div></div>
+                <div id="clip-fields" class="field-pair" hidden><div><label for="clip-start">Начало отрывка, сек.</label><input id="clip-start" type="number" min="0" max="86400" step="0.1"></div><div><label for="clip-end">Конец, сек. <span class="optional">необязательно</span></label><input id="clip-end" type="number" min="0.1" max="86400" step="0.1"></div></div>
+              </div>
+              <div id="event-fields" hidden>
+                <label for="event-title">Название события</label><input id="event-title" maxlength="100" placeholder="Например: сырный бонус">
+                <label for="event-text">Описание <span class="optional">необязательно</span></label><textarea id="event-text" maxlength="2000" rows="3" placeholder="Что происходит в забеге?"></textarea>
+                <label for="effect-type">Эффект</label><select id="effect-type"><option value="random_buff">Усиление · случайный бонус</option><option value="random_debuff">Ослабление · случайный штраф</option></select>
+                <label for="effect-target">Кому достанется?</label><select id="effect-target"><option value="random_player">Случайному игроку</option><option value="all_players">Всем игрокам</option></select>
+                <label for="effect-duration">Длительность, вопросов</label><input id="effect-duration" type="number" min="1" max="5" step="1">
+                <p id="effect-explanation" class="info-note"></p>
+              </div>
+              <details id="preview-panel" class="preview-panel" open><summary>Предпросмотр раунда <span>⌄</span></summary><div id="preview-content" class="preview-content"></div></details>
+            </div>
+          </section>
+        </div>
+        <section class="publication-note"><span aria-hidden="true">↗</span><p>После публикации игра появится в списке Mini App. Уже начатые комнаты продолжат играть по своей версии.</p></section>
+        <div class="editor-footer"><div><button id="export" class="quiet">↓ Скачать пакет ZIP</button><label class="quiet import-label" for="import-json">↑ Импортировать вопросы<input id="import-json" type="file" accept=".json,application/json" hidden></label></div><button id="reload-published" class="quiet" hidden>Загрузить опубликованную версию</button></div>
+      </section>
+    </main>
+  </div>
+  <dialog id="create-dialog"><form id="create-form"><span class="eyebrow">НОВЫЙ ЗАБЕГ</span><h2>Начнём с названия</h2><label for="new-title">Название игры</label><input id="new-title" maxlength="100" required placeholder="Например: пятничный квиз"><div class="dialog-actions"><button id="cancel-create" type="button" class="secondary">Отмена</button><button class="primary">Создать игру →</button></div></form></dialog>
+</body>
+</html>
