@@ -113,7 +113,6 @@ def main():
         env['APP_URL'] = url
         # Install the menu before declaring the launch successful.
         telegram(token, 'setChatMenuButton', {'menu_button': {'type': 'web_app', 'text': 'Играть', 'web_app': {'url': url}}})
-        telegram(token, 'setMyName', {'name': 'Крысиные бега'})
         bot_log = open(logdir / 'telegram-bot.log', 'a', encoding='utf-8')
         logs.append(bot_log)
         bot = subprocess.Popen([sys.executable, '-m', 'app.bot'], cwd=ROOT, env=env, stdout=bot_log, stderr=subprocess.STDOUT)

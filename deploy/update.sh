@@ -68,4 +68,16 @@ if [ "$ready" != true ]; then
     exit 1
 fi
 systemctl restart rat-race-bot.service
+bot_ready=false
+for attempt in {1..20}; do
+    sleep 1
+    if systemctl is-active --quiet rat-race-bot.service; then
+        sleep 2
+        if systemctl is-active --quiet rat-race-bot.service; then bot_ready=true; break; fi
+    fi
+done
+if [ "$bot_ready" != true ]; then
+    echo 'The web app is ready, but the bot did not stay running. Check journalctl -u rat-race-bot.' >&2
+    exit 1
+fi
 echo "Deployed $revision"

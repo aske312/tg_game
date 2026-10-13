@@ -23,6 +23,19 @@ def invitation_url(base, text):
     return urlunsplit((url.scheme, url.netloc, url.path, urlencode(query), url.fragment))
 
 
+async def configure_bot(call, url):
+    menu = await call('getChatMenuButton')
+    if menu.get('web_app', {}).get('url', '').rstrip('/') != url.rstrip('/'):
+        await call('setChatMenuButton', menu_button={'type': 'web_app', 'text': 'Играть', 'web_app': {'url': url}})
+    # Profile changes are optional. Their rate limits must not stop polling.
+    try:
+        profile = await call('getMyName')
+        if profile.get('name') != 'Крысиные бега':
+            await call('setMyName', name='Крысиные бега')
+    except RuntimeError as exc:
+        print('Не удалось обновить имя бота: '+str(exc))
+
+
 async def main():
     token = os.getenv('BOT_TOKEN', '')
     url = os.getenv('APP_URL', '')
@@ -41,8 +54,7 @@ async def main():
             return data['result']
 
         logging.getLogger('httpx').setLevel(logging.WARNING)
-        await call('setChatMenuButton', menu_button={'type': 'web_app', 'text': 'Играть', 'web_app': {'url': url}})
-        await call('setMyName', name='Крысиные бега')
+        await configure_bot(call, url)
         offset = 0
         print('Бот запущен. Ожидаю /start в личном чате.')
         while True:

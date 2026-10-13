@@ -79,6 +79,26 @@ def test_bot_room_invitation():
     assert invitation_url('https://example.com', '/start')=='https://example.com'
     assert invitation_url('https://example.com', '/start https://other.example')=='https://example.com'
 
+
+def test_bot_profile_rate_limit_does_not_block_startup():
+    import asyncio
+    from app.bot import configure_bot
+    calls=[]
+    async def configured(method, **payload):
+        calls.append(method)
+        if method=='getChatMenuButton': return {'web_app':{'url':'https://example.com/'}}
+        if method=='getMyName': return {'name':'Крысиные бега'}
+        raise AssertionError('Already configured profile should not be changed')
+    asyncio.run(configure_bot(configured,'https://example.com'))
+    assert 'setMyName' not in calls and 'setChatMenuButton' not in calls
+    async def limited(method, **payload):
+        if method=='getChatMenuButton': return {'web_app':{'url':'https://example.com'}}
+        if method=='getMyName': return {'name':'Old name'}
+        if method=='setMyName': raise RuntimeError('Too Many Requests: retry after 85061')
+        raise AssertionError(method)
+    # This used to abort the bot before it could start receiving messages.
+    asyncio.run(configure_bot(limited,'https://example.com'))
+
 def test_http_websocket(tmp_path,monkeypatch):
     from fastapi.testclient import TestClient
     from app import main
