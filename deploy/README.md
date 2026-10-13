@@ -42,7 +42,10 @@ systemctl status rat-race-web rat-race-bot --no-pager
 journalctl -u rat-race-web -u rat-race-bot -n 50 --no-pager
 curl -fsS http://127.0.0.1:8010/api/health
 systemctl status rat-race-cert-renew.timer --no-pager
+sudo /opt/rat-race/.venv/bin/python /opt/rat-race/current/deploy/smoke_test.py
 ```
+
+Smoke-тест создаёт временную явно обозначенную тестовую сессию и тренировочную комнату. Через публичные HTTPS/WebSocket проверяет текстовый ответ, очки, искусственного соперника и адрес кнопки Telegram. В конце удаляет только созданные им комнату и сессию.
 
 Сервер запускает один процесс приложения на loopback-порту 8010. HTTPS и WebSocket обслуживает Caddy на 443. Сертификат на IP выпускает Certbot с профилем `shortlived`; systemd-таймер проверяет продление каждые 12 часов. После продления сертификаты копируются в `/etc/rat-race/tls/` с доступом только для Caddy, затем Caddy перезагружает конфигурацию. HTTP-путь `/.well-known/acme-challenge/` используется для подтверждения владения IP.
 
