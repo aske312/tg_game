@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const show = (id, visible) => { $(id).hidden = !visible; };
 const state = {games:[], snapshot:null, doc:null, index:-1, stageIndex:0, dirty:false, busy:false};
+let deleteTarget=null;
 const modeTitles={blitz:'Блиц',grid:'Сетка вопросов',binary:'Выбор из двух'};
 function normalizeStages(doc) {
   if(!Array.isArray(doc.stages)||!doc.stages.length)doc.stages=[{id:'legacy',type:'blitz',title:'Раунд 1',order:'sequential',chooser:'winner',auto_advance:false}];
@@ -48,6 +49,8 @@ function updateActions() {
   $('stage-delete').disabled=state.busy||(state.doc?.stages.length??0)<=1;
   $('add-stage').disabled=state.busy||(state.doc?.stages.length??0)>=30;
   for(const id of ['duplicate-round','remove-round'])$(id).disabled=state.busy||state.index<0;
+  for(const id of ['delete-current-game','confirm-delete-game','cancel-delete-game'])$(id).disabled=state.busy;
+  for(const button of $('game-list').querySelectorAll('[data-delete-game]'))button.disabled=state.busy;
   $('media-file').disabled=state.busy;
   $('import-json').disabled=state.busy;
   // Freeze editable fields while saving so a delayed response cannot replace new typing.
@@ -72,7 +75,7 @@ function roundId() {return 'r-'+crypto.randomUUID().replaceAll('-','').slice(0,1
 function renderLibrary() {
   const search=$('search').value.trim().toLowerCase();
   const filtered=state.games.filter(g=>(g.title+' '+g.description).toLowerCase().includes(search));
-  $('game-list').innerHTML=filtered.length?filtered.map(g=>`<button class="game-card ${g.id===state.snapshot?.id?'active':''}" data-game="${esc(g.id)}"><strong>${esc(g.title)}</strong><small>${countLabel(g.questions,['вопрос','вопроса','вопросов'])} · ${countLabel(g.stages_count??1,['раунд','раунда','раундов'])}</small><span class="game-badge ${g.error?'error':''}">${g.error?'Ошибка пакета':g.dirty?'Есть черновик':g.published?'В библиотеке':'Новая игра'}</span></button>`).join(''):`<p class="library-empty">${search?'Ничего не найдено.':'Пока нет игр. Начни с новой.'}</p>`;
+  $('game-list').innerHTML=filtered.length?filtered.map(g=>`<div class="game-library-item"><button class="game-card ${g.id===state.snapshot?.id?'active':''}" data-game="${esc(g.id)}"><strong>${esc(g.title)}</strong><small>${countLabel(g.questions,['вопрос','вопроса','вопросов'])} · ${countLabel(g.stages_count??1,['раунд','раунда','раундов'])}</small><span class="game-badge ${g.error?'error':''}">${g.error?'Ошибка пакета':g.dirty?'Есть черновик':g.published?'В библиотеке':'Новая игра'}</span></button><button class="icon-button game-delete danger-text" data-delete-game="${esc(g.id)}" aria-label="Удалить игру ${esc(g.title)}" title="Удалить игру" ${state.busy?'disabled':''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7"/></svg></button></div>`).join(''):`<p class="library-empty">${search?'Ничего не найдено.':'Пока нет игр. Начни с новой.'}</p>`;
 }
 async function refresh() {state.games=await api('/games');renderLibrary();}
 function accept(snapshot, selected=0, selectedStage=null) {
@@ -229,7 +232,34 @@ function newGameDialog() {if(!state.busy&&canLeave()){$('new-title').value='';$(
 $('new-game').onclick=newGameDialog;$('empty-create').onclick=newGameDialog;
 $('cancel-create').onclick=()=>$('create-dialog').close();
 $('create-form').onsubmit=guarded(async()=>{const title=$('new-title').value.trim();if(!title)throw new Error('Введите название игры.');const snapshot=await api('/games','POST',{title});$('create-dialog').close();accept(snapshot);await refresh();addRound('question');$('question-text').focus();});
-$('game-list').onclick=guarded(async event=>{const button=event.target.closest('[data-game]');if(button)await openGame(button.dataset.game);});
+function openDeleteDialog(gameId) {
+  if(state.busy)return;
+  const game=state.games.find(g=>g.id===gameId);if(!game)return;
+  const current=state.snapshot?.id===gameId;
+  deleteTarget={id:gameId,revision:game.delete_revision};
+  $('delete-game-title').textContent=game.title;
+  show('delete-game-error',false);
+  $('delete-game-description').textContent=game.published?'Игра исчезнет из редактора и списка игр Telegram. Её черновик и медиафайлы будут удалены. Начатые комнаты продолжат работать.':'Черновик игры будет удалён вместе со всеми загруженными медиафайлами.';
+  show('delete-unsaved-note',current&&state.dirty);
+  $('delete-game-dialog').showModal();$('cancel-delete-game').focus();
+}
+$('delete-current-game').onclick=()=>openDeleteDialog(state.snapshot?.id);
+$('cancel-delete-game').onclick=()=>{$('delete-game-dialog').close();deleteTarget=null;};
+$('delete-game-dialog').oncancel=event=>{if(state.busy)event.preventDefault();else deleteTarget=null;};
+$('delete-game-form').onsubmit=guarded(async()=>{
+  if(!deleteTarget)return;
+  const target=deleteTarget;
+  try {await api('/games/'+encodeURIComponent(target.id),'DELETE',{revision:target.revision});}
+  catch(error){$('delete-game-error').textContent=error.message;show('delete-game-error',true);throw error;}
+  if(state.snapshot?.id===target.id){
+    state.snapshot=null;state.doc=null;state.index=-1;state.stageIndex=0;state.dirty=false;
+    sessionStorage.removeItem('builder-game');resetEditorNavigation();show('editor',false);show('empty',true);
+  }
+  $('delete-game-dialog').close();deleteTarget=null;await refresh();
+  notice('Игра удалена вместе с черновиком и медиа. В Mini App обнови список игр.');
+});
+const openLibraryGame=guarded(async event=>{const button=event.target.closest('[data-game]');if(button)await openGame(button.dataset.game);});
+$('game-list').onclick=event=>{const remove=event.target.closest('[data-delete-game]');if(remove)openDeleteDialog(remove.dataset.deleteGame);else openLibraryGame(event);};
 $('refresh').onclick=guarded(refresh);$('search').oninput=renderLibrary;
 async function entered() {show('login-panel',false);show('studio',true);show('account-actions',true);await refresh();const last=sessionStorage.getItem('builder-game');if(!state.doc&&state.games.some(g=>g.id===last))await openGame(last);}
 $('login-form').onsubmit=guarded(async()=>{await api('/login','POST',{password:$('password').value});$('password').value='';await entered();});

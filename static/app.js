@@ -186,7 +186,16 @@ async function join(code){const s=await api('/rooms/'+encodeURIComponent(code.tr
 async function create(){const s=await api('/rooms',{pack:$('pack').value});await join(s.code);}
 async function practice(){const s=await api('/practice',{pack:$('pack').value});apply(s);connect(s.code);}
 async function command(action,extra={}){apply(await api('/rooms/'+room.code+'/action',{action,...extra}));}
-async function refreshPacks(){const data=await api('/packs'),selected=$('pack').value;libraryPacks=data.packs;const demo=data.packs.find(p=>p.id==='library-demo-quiz');if(demo)$('pack').querySelector('[value=demo]').textContent=demo.title+' · '+demo.questions+' вопросов';$('pack').querySelectorAll('[data-library]').forEach(n=>n.remove());for(const p of data.packs.filter(p=>p.id!=='library-demo-quiz')){const o=document.createElement('option');o.value=p.id;o.dataset.library='1';o.textContent=p.title+' · '+p.questions+' вопросов';$('pack').append(o);}if([...$('pack').options].some(o=>o.value===selected))$('pack').value=selected;$('pack-errors').textContent=data.errors.map(e=>e.folder+': '+e.error).join('; ');renderPackPreview();}
+async function refreshPacks(){
+  const data=await api('/packs'),selected=$('pack').value;libraryPacks=data.packs;
+  $('pack').querySelectorAll('[data-library],[value=demo]').forEach(n=>n.remove());
+  for(const p of data.packs){
+    const o=document.createElement('option');o.value=p.id==='library-demo-quiz'?'demo':p.id;o.dataset.library='1';o.textContent=p.title+' · '+p.questions+' вопросов';
+    if(o.value==='demo')$('pack').insertBefore(o,$('pack').firstChild);else $('pack').append(o);
+  }
+  if([...$('pack').options].some(o=>o.value===selected))$('pack').value=selected;
+  $('pack-errors').textContent=data.errors.map(e=>e.folder+': '+e.error).join('; ');renderPackPreview();
+}
 $('pack').onchange=renderPackPreview;
 $('reload-packs').onclick=guard(refreshPacks);$('event-next').onclick=guard(()=>command('next'));
 async function entered(){await refreshPacks();sessionStorage.setItem('auth',JSON.stringify(auth));$('identity').textContent=auth.user.name;show('login',false);show('home',true);const p=new URLSearchParams(location.search),code=tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam')||p.get('room')||sessionStorage.getItem('room');if(code&&/^[A-Z2-9]{6}$/i.test(code)){try{await join(code);}catch(e){notice(e.message);sessionStorage.removeItem('room');}}}

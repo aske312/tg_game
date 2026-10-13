@@ -134,6 +134,10 @@ def create_app(catalog, password_hash):
     def save(game_id: str, body: SaveGame):
         return invoke(catalog.save, game_id, body.document, body.revision)
 
+    @app.delete('/api/games/{game_id}', dependencies=[Depends(author)])
+    def delete(game_id: str, body: Version):
+        return invoke(catalog.delete, game_id, body.revision)
+
     @app.post('/api/games/{game_id}/publish', dependencies=[Depends(author)])
     def publish(game_id: str, body: Version):
         return invoke(catalog.publish, game_id, body.revision)

@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 
 from app.media import MAX_MEDIA_BYTES, detect_media
-from app.packs import MAX_PACK_BYTES, load_pack
+from app.packs import MAX_PACK_BYTES, load_pack, pack_deleted
 
 
 class Conflict(ValueError):
@@ -73,6 +73,8 @@ class Catalog:
         return result
 
     def published_folder(self, game_id):
+        if pack_deleted([self.games], game_id):
+            return None
         for root in (self.games, self.bundled):
             folder = self.folder(root, game_id)
             if (folder / 'game.json').is_file():
@@ -130,12 +132,62 @@ class Catalog:
             shutil.copyfile(src, dst)
 
     def snapshot(self, game_id):
+        self.ensure_active(game_id)
         folder = self.folder(self.drafts, game_id)
         doc = self.read_doc(folder)
         metadata = self.meta(folder)
         published = self.published_folder(game_id)
-        return dict(id=game_id, document=doc, revision=revision(doc),
+        return dict(id=game_id, document=doc, revision=revision(doc), delete_revision=self.deletion_revision(game_id),
                     published=bool(published), dirty=revision(doc) != metadata.get('published_revision'))
+
+    def ensure_active(self, game_id):
+        self.folder(self.games, game_id)
+        if pack_deleted([self.games], game_id):
+            raise ValueError('Игра удалена из библиотеки')
+
+    def deletion_revision(self, game_id):
+        draft = self.folder(self.drafts, game_id) / 'game.json'
+        published = self.published_folder(game_id)
+        if not draft.is_file() and not published:
+            raise ValueError('Игра не найдена')
+        def digest(path):
+            path = self.asset(path.parent, path.name)
+            return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+        return revision(dict(id=game_id, draft=digest(draft), published=digest(published/'game.json') if published else None))
+
+    def delete(self, game_id, expected):
+        with self.lock:
+            self.ensure_active(game_id)
+            if self.deletion_revision(game_id) != expected:
+                raise Conflict('Игра изменена в другом окне или вне конструктора. Обнови библиотеку перед удалением.')
+            draft = self.folder(self.drafts, game_id)
+            live = self.folder(self.games, game_id)
+            if draft != self.drafts/game_id or live != self.games/game_id:
+                raise ValueError('Нельзя удалить игру через ссылку на другую папку')
+            published = self.published_folder(game_id)
+            backup = self.asset(self.data, f'backups/{game_id}/{time.time_ns()}-deleted.zip')
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            temporary = backup.with_suffix('.part')
+            try:
+                # Keep a private recovery copy, including uploaded and orphaned media.
+                with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as archive:
+                    for label, folder in [('draft', draft), ('published', published)]:
+                        if folder and folder.is_dir():
+                            for path in sorted(folder.rglob('*')):
+                                relative = path.relative_to(folder)
+                                source = self.asset(folder, str(relative))
+                                if source.is_file():
+                                    archive.write(source, label+'/'+relative.as_posix())
+                temporary.replace(backup)
+            finally:
+                temporary.unlink(missing_ok=True)
+            # Hide first so deleting an override cannot expose its bundled version.
+            marker = self.asset(self.games, f'.deleted/{game_id}.json')
+            atomic_write(marker, encode(dict(deleted_at=time.time())))
+            for folder in (draft, live):
+                if folder.is_dir():
+                    shutil.rmtree(folder)
+            return dict(ok=True)
 
     def list(self):
         with self.lock:
@@ -145,6 +197,8 @@ class Catalog:
                     names.update(p.name for p in root.iterdir() if p.is_dir() and re.fullmatch(r'[A-Za-z0-9_-]{1,64}', p.name))
             items = []
             for name in sorted(names):
+                if pack_deleted([self.games], name):
+                    continue
                 draft = self.folder(self.drafts, name)
                 published = self.published_folder(name)
                 if not (draft / 'game.json').is_file() and not published:
@@ -159,10 +213,10 @@ class Catalog:
                     items.append(dict(id=name, title=str(doc.get('title', name)), description=str(doc.get('description', '')),
                                       questions=sum(isinstance(q, dict) and q.get('type') == 'question' for q in rounds),
                                       rounds=len(rounds), stages_count=len(doc['stages']) if isinstance(doc.get('stages'), list) else 1,
-                                      published=bool(published), dirty=dirty, error=''))
+                                      published=bool(published), dirty=dirty, delete_revision=self.deletion_revision(name), error=''))
                 except ValueError as error:
                     items.append(dict(id=name, title=name, description='', questions=0, rounds=0,
-                                      published=bool(published), dirty=False, error=str(error)))
+                                      published=bool(published), dirty=False, delete_revision=self.deletion_revision(name), error=str(error)))
             return items
 
     def create(self, title):
@@ -177,6 +231,7 @@ class Catalog:
 
     def open(self, game_id):
         with self.lock:
+            self.ensure_active(game_id)
             draft = self.folder(self.drafts, game_id)
             if not (draft / 'game.json').is_file():
                 source = self.published_folder(game_id)
@@ -191,6 +246,7 @@ class Catalog:
 
     def save(self, game_id, doc, expected):
         with self.lock:
+            self.ensure_active(game_id)
             folder = self.folder(self.drafts, game_id)
             current = self.read_doc(folder)
             if revision(current) != expected:
@@ -210,6 +266,7 @@ class Catalog:
 
     def upload(self, game_id, temporary, kind):
         with self.lock:
+            self.ensure_active(game_id)
             folder = self.folder(self.drafts, game_id)
             self.read_doc(folder)
             data = temporary.read_bytes()
@@ -225,6 +282,7 @@ class Catalog:
 
     def publish(self, game_id, expected):
         with self.lock:
+            self.ensure_active(game_id)
             draft = self.folder(self.drafts, game_id)
             doc = self.read_doc(draft)
             if revision(doc) != expected:
@@ -262,6 +320,7 @@ class Catalog:
 
     def reload(self, game_id):
         with self.lock:
+            self.ensure_active(game_id)
             source = self.published_folder(game_id)
             if not source:
                 raise ValueError('У игры ещё нет опубликованной версии')
@@ -276,6 +335,7 @@ class Catalog:
 
     def export(self, game_id):
         with self.lock:
+            self.ensure_active(game_id)
             folder = self.folder(self.drafts, game_id)
             load_pack(folder)
             doc = self.read_doc(folder)

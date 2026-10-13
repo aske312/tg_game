@@ -117,10 +117,22 @@ def load_pack(directory):
     return dict(title=title.strip(), description=str(doc.get('description', ''))[:500], questions=questions, stages=stages)
 
 
+def pack_deleted(roots, name):
+    """Persistent tombstones also hide bundled packages after a code update."""
+    for root in roots:
+        root = Path(root).resolve()
+        marker = (root / '.deleted' / (name + '.json')).resolve()
+        if marker.is_relative_to(root) and marker.is_file():
+            return True
+    return False
+
+
 def find_pack(roots, pack_id):
     if not pack_id.startswith('library-') or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', pack_id[8:]):
         raise ValueError('Недопустимый идентификатор пакета')
     name = pack_id[8:]
+    if pack_deleted(roots, name):
+        raise ValueError('Игра удалена из библиотеки')
     for root in roots:
         root = Path(root).resolve()
         folder = (root / name).resolve()
@@ -135,7 +147,7 @@ def list_packs(roots):
         if not Path(root).exists():
             continue
         for folder in sorted(Path(root).iterdir()):
-            if not folder.is_dir() or folder.name in seen or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', folder.name):
+            if not folder.is_dir() or folder.name in seen or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', folder.name) or pack_deleted(roots, folder.name):
                 continue
             seen.add(folder.name)
             try:

@@ -1,4 +1,7 @@
 /* The editor follows game → round → question, with settings in separate panes. */
+.game-library-item{position:relative;min-width:0}.game-library-item .game-card{padding-right:38px}.game-delete{position:absolute;right:4px;top:8px;width:30px;min-height:32px;opacity:.65}.game-delete:hover:not(:disabled),.game-delete:focus-visible{opacity:1}.game-delete svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.game-danger-zone{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}.game-danger-zone h3{margin-bottom:7px}.game-danger-zone button{flex-shrink:0}#delete-game-title{display:block;font-size:16px;overflow-wrap:anywhere;line-height:1.5;margin-bottom:16px}#delete-game-description{font-size:12px;margin-bottom:16px}#delete-unsaved-note{color:var(--danger);margin-bottom:16px}.delete-confirm{background:#78574f;color:#f1e9e5}.delete-confirm:hover:not(:disabled){background:#906a60}
+@media(max-width:640px){.game-danger-zone{align-items:flex-start;flex-direction:column}.game-danger-zone button{width:100%}}
 .app-header{padding:16px 24px;min-height:76px}
 .studio{max-width:1800px;grid-template-columns:220px minmax(0,1fr)}
 .library{padding:24px 16px;position:sticky;top:0;align-self:start;max-height:100vh;overflow-y:auto}
