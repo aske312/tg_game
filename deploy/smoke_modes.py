@@ -79,6 +79,8 @@ async def main():
             response=await client.post('/api/practice',headers=headers[0],json={'pack':'demo'})
             response.raise_for_status();state=response.json();rooms.append(state['code'])
             assert state['question_count']==23
+            # Browser media requests authenticate with the session cookie.
+            (await client.get('/api/me',headers=headers[0])).raise_for_status()
             media=await client.get(state['question']['media']['url'],headers=dict(headers[0],Range='bytes=0-7'))
             assert media.status_code==206
             print('Editable built-in demo and its authenticated media are available in practice.')
