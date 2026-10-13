@@ -1,0 +1,25 @@
+[Unit]
+Description=Rat Race Telegram launcher bot
+After=network-online.target rat-race-web.service
+Wants=network-online.target
+Requires=rat-race-web.service
+
+[Service]
+Type=simple
+User=ratrace
+Group=ratrace
+WorkingDirectory=/opt/rat-race/current
+EnvironmentFile=/etc/rat-race/app.env
+EnvironmentFile=-/etc/rat-race/release.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/rat-race/.venv/bin/python -m app.bot
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

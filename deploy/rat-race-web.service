@@ -1,0 +1,25 @@
+[Unit]
+Description=Rat Race Telegram Mini App
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ratrace
+Group=ratrace
+WorkingDirectory=/opt/rat-race/current
+EnvironmentFile=/etc/rat-race/app.env
+EnvironmentFile=-/etc/rat-race/release.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/rat-race/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8010 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/rat-race
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
