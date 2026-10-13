@@ -5,11 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101e18">
   <title>Конструктор · Крысиные бега</title>
-  <link rel="stylesheet" href="/static/builder.css?v=5">
-  <link rel="stylesheet" href="/static/editor.css?v=5">
-  <script src="/static/navigation.js?v=5" defer></script>
-  <script src="/static/categories.js?v=5" defer></script>
-  <script src="/static/builder.js?v=5" defer></script>
+  <link rel="stylesheet" href="/static/builder.css?v=6">
+  <link rel="stylesheet" href="/static/editor.css?v=6">
+  <script src="/static/navigation.js?v=6" defer></script>
+  <script src="/static/categories.js?v=6" defer></script>
+  <script src="/static/events.js?v=6" defer></script>
+  <script src="/static/media-editor.js?v=6" defer></script>
+  <script src="/static/builder.js?v=6" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -56,19 +58,25 @@
                 <div id="text-answer-fields"><label for="answer">Правильный ответ</label><input id="answer" maxlength="500" placeholder="Ответ для ведущего">
                 <details id="answer-variants" class="field-details"><summary>Допустимые ответы для тренировки</summary><label for="accepted-answers">Другие допустимые ответы <span class="optional">по одному на строке</span></label><textarea id="accepted-answers" rows="2" placeholder="Варианты для проверки в тренировке"></textarea></details></div>
                 <div id="binary-answer-fields" hidden><div class="field-pair"><div><label for="choice-a">Первый вариант</label><input id="choice-a" maxlength="100" placeholder="Да"></div><div><label for="choice-b">Второй вариант</label><input id="choice-b" maxlength="100" placeholder="Нет"></div></div><label for="correct-choice">Правильный вариант</label><select id="correct-choice"><option value="0">Первый</option><option value="1">Второй</option></select><p class="hint">Игрок выбирает кнопку. Ответы проверяются автоматически после закрытия вопроса.</p></div>
-                <div class="field-pair"><div><label for="points">Очки</label><input id="points" type="number" min="10" max="1000" step="1"></div><div><label for="time-limit">Время, сек.</label><input id="time-limit" type="number" min="10" max="300" step="1"></div></div>
+                <div class="field-pair"><div><label for="points">Очки</label><input id="points" type="number" min="0" step="1"></div><div><label for="time-limit">Время, сек.</label><input id="time-limit" type="number" min="1" step="1"></div></div>
                 <div id="grid-category-field" hidden><div class="label-row"><label for="grid-category">Категория <span class="required-note">обязательно</span></label><button id="open-categories" class="quiet" type="button">Настроить →</button></div><select id="grid-category" required></select></div>
                 <details id="material-panel" class="field-details"><summary>Медиаматериал <span id="material-status" class="hint">не добавлен</span></summary><div class="media-heading"><h3>Материал к вопросу</h3><span class="hint">до 25 МБ</span></div>
                 <label for="media-type" class="sr-only">Тип материала</label><select id="media-type"><option value="">Без материала</option><option value="image">Изображение</option><option value="audio">Аудио</option><option value="video">Видео</option></select>
                 <div id="media-fields" hidden><label for="media-file" class="upload-zone"><span id="upload-label">Выбрать файл</span><span class="hint">Нажми, чтобы загрузить или заменить материал</span><input id="media-file" type="file"></label><div id="attached-file" class="attached-file"><span id="file-name"></span><button id="remove-media" class="quiet danger-text" type="button">Убрать</button></div></div>
-                <div id="clip-fields" class="field-pair" hidden><div><label for="clip-start">Начало отрывка, сек.</label><input id="clip-start" type="number" min="0" max="86400" step="0.1"></div><div><label for="clip-end">Конец, сек. <span class="optional">необязательно</span></label><input id="clip-end" type="number" min="0.1" max="86400" step="0.1"></div></div></details>
+                <div id="clip-fields" class="clip-editor" hidden>
+                  <h3>Выбор отрывка</h3><p class="hint">Отрывок не меняет время на ответ.</p><div id="clip-player-slot" class="clip-player-slot"></div><p id="clip-duration" class="hint"></p>
+                  <div class="clip-timeline"><div class="clip-range-label"><label for="clip-start-range">Начало</label><span id="clip-start-label"></span></div><input id="clip-start-range" type="range" min="0" max="1" step="0.1" value="0"><div class="clip-range-label"><label for="clip-end-range">Конец</label><span id="clip-end-label"></span></div><input id="clip-end-range" type="range" min="0" max="1" step="0.1" value="1"></div>
+                  <div class="field-pair clip-time-fields"><div><label for="clip-start">Начало · мин:сек</label><input id="clip-start" type="text" inputmode="decimal" placeholder="00:00"><button id="clip-use-start" class="quiet" type="button">Начало по позиции плеера</button></div><div><label for="clip-end">Конец · мин:сек</label><input id="clip-end" type="text" inputmode="decimal" placeholder="До конца записи"><button id="clip-use-end" class="quiet" type="button">Конец по позиции плеера</button></div></div>
+                  <div id="clip-presets" class="clip-presets"><button type="button" class="secondary" data-clip-length="10">10 секунд</button><button type="button" class="secondary" data-clip-length="30">30 секунд</button><button type="button" class="quiet" data-clip-length="all">Вся запись</button></div><p id="clip-warning" class="category-warning" role="status" hidden></p><button id="clip-play" class="secondary" type="button">▶ Прослушать отрывок</button>
+                </div></details>
               </div>
               <div id="event-fields" hidden>
                 <label for="event-title">Название события</label><input id="event-title" maxlength="100" placeholder="Например: сырный бонус">
                 <label for="event-text">Описание <span class="optional">необязательно</span></label><textarea id="event-text" maxlength="2000" rows="3" placeholder="Что происходит в забеге?"></textarea>
-                <label for="effect-type">Эффект</label><select id="effect-type"><option value="random_buff">Усиление · случайный бонус</option><option value="random_debuff">Ослабление · случайный штраф</option></select>
-                <label for="effect-target">Кому достанется?</label><select id="effect-target"><option value="random_player">Случайному игроку</option><option value="all_players">Всем игрокам</option></select>
-                <label for="effect-duration">Длительность, вопросов</label><input id="effect-duration" type="number" min="1" max="5" step="1">
+                <label for="effect-polarity">Характер события</label><select id="effect-polarity"><option value="positive">Положительный эффект</option><option value="negative">Отрицательный эффект</option></select>
+                <label for="effect-type">Что изменится?</label><select id="effect-type"></select><div id="effect-param-field" hidden><label id="effect-param-label" for="effect-value">Величина эффекта</label><input id="effect-value" type="number" min="1" step="1"><p id="effect-param-hint" class="hint"></p></div>
+                <label for="effect-target">Кому достанется?</label><select id="effect-target"><option value="random_player">Случайному игроку</option><option value="all_players">Всем игрокам</option><option value="leader">Лидеру · при ничьей случайному</option><option value="last_player">Последнему игроку · при ничьей случайному</option></select>
+                <label for="effect-duration">Длительность, вопросов</label><input id="effect-duration" type="number" min="1" step="1">
                 <p id="effect-explanation" class="info-note"></p>
               </div>
               <details id="preview-panel" class="preview-panel"><summary>Предпросмотр <span>⌄</span></summary><div id="preview-content" class="preview-content"></div></details>

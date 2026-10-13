@@ -16,6 +16,7 @@ from app.auth import validate_telegram
 from app.store import Store
 from app.media import MAX_MEDIA_BYTES, detect_media
 from app.packs import list_packs, find_pack, materialize_pack
+from app.limits import MAX_SAFE_INTEGER
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / '.env')
@@ -60,11 +61,11 @@ class CreateRoom(BaseModel):
 class Question(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     answer: str = Field(min_length=1, max_length=500)
-    value: int = Field(default=100, ge=10, le=1000)
-    seconds: int = Field(default=45, ge=10, le=300)
+    value: int = Field(default=100, ge=0, le=MAX_SAFE_INTEGER)
+    seconds: int = Field(default=45, ge=1, le=MAX_SAFE_INTEGER)
     media_id: str = Field(default='', max_length=64)
-    clip_start: float = Field(default=0, ge=0, le=86400)
-    clip_end: Optional[float] = Field(default=None, gt=0, le=86400)
+    clip_start: float = Field(default=0, ge=0, allow_inf_nan=False)
+    clip_end: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
     stage: str = Field(default='', max_length=64)
     choices: Optional[list[str]] = None
     correct_choice: Optional[int] = Field(default=None, ge=0, le=1)

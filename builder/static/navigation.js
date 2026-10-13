@@ -1,5 +1,6 @@
 const editorNav={gameTab:'rounds',stageTab:'questions',filter:null,search:'',libraryOpen:false};
 function resetStageNavigation() {
+  pauseClipEditor();
   editorNav.stageTab='questions';editorNav.filter=null;editorNav.search='';
   $('question-search').value='';$('add-stage-panel').open=false;
 }
@@ -41,6 +42,7 @@ function renderEditorNavigation() {
   if(!state.doc)return;
   const s=stage(),grid=s?.type==='grid';
   if(!grid&&editorNav.stageTab==='categories')editorNav.stageTab='questions';
+  if(editorNav.gameTab!=='rounds'||editorNav.stageTab!=='questions')pauseClipEditor();
   show('stage-tab-categories',grid);
   for(const button of $('game-tabs').querySelectorAll('[data-game-tab]')){const active=button.dataset.gameTab===editorNav.gameTab;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;button.disabled=state.busy;}
   for(const tab of ['rounds','info','files'])show('game-'+tab+'-pane',editorNav.gameTab===tab);

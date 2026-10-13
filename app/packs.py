@@ -7,6 +7,8 @@ from pathlib import Path
 
 from app.media import MAX_MEDIA_BYTES, detect_media
 from app.modes import stages_from_doc, binary_fields, grid_category
+from app.events import normalize_effect
+from app.limits import integer, finite_number
 
 MAX_PACK_BYTES = 1024 * 1024
 
@@ -49,11 +51,10 @@ def load_pack(directory):
             if mode == 'grid':
                 raise ValueError(f'Раунд {i}: события добавляйте в блиц или выбор из двух')
             effect = item.get('effect')
-            if not isinstance(effect, dict) or effect.get('type') not in ('random_buff', 'random_debuff') or effect.get('target') not in ('random_player', 'all_players'):
-                raise ValueError(f'Раунд {i}: событие требует effect.type и effect.target')
-            duration = effect.get('questions', 1)
-            if type(duration) is not int or not 1 <= duration <= 5:
-                raise ValueError(f'Раунд {i}: эффект действует от 1 до 5 вопросов')
+            try:
+                effect = normalize_effect(effect)
+            except ValueError as error:
+                raise ValueError(f'Раунд {i}: {error}') from None
             event_title = item.get('title', 'Событие')
             text = item.get('text', '')
             if not isinstance(event_title, str) or not event_title.strip() or len(event_title) > 100 or not isinstance(text, str) or len(text) > 2000:
@@ -63,7 +64,7 @@ def load_pack(directory):
                 raise ValueError(f'Раунд {i}: категория события до 100 символов')
             questions.append(dict(id=qid, stage=stage_id, type='event', title=event_title, text=text,
                                   category=category.strip(),
-                                  effect=dict(type=effect['type'], target=effect['target'], questions=duration)))
+                                  effect=effect))
             continue
         if item.get('type') != 'question':
             raise ValueError(f'Раунд {i}: type должен быть question или event')
@@ -75,8 +76,8 @@ def load_pack(directory):
             if not isinstance(item.get(field), str) or not item[field].strip() or len(item[field]) > limit:
                 raise ValueError(f'Вопрос {i}: заполните {field} (до {limit} символов)')
         points, seconds = item.get('points', 100), item.get('time_limit', 45)
-        if type(points) is not int or not 10 <= points <= 1000 or type(seconds) is not int or not 10 <= seconds <= 300:
-            raise ValueError(f'Вопрос {i}: points 10–1000, time_limit 10–300')
+        integer(points, f'Вопрос {i}, очки', minimum=0)
+        integer(seconds, f'Вопрос {i}, время ответа')
         accepted = item.get('accepted_answers', [])
         if not isinstance(accepted, list) or len(accepted) > 20 or any(not isinstance(v, str) or not v.strip() or len(v) > 500 for v in accepted):
             raise ValueError(f'Вопрос {i}: accepted_answers должен быть списком ответов')
@@ -103,7 +104,10 @@ def load_pack(directory):
             with source.open('rb') as f:
                 detect_media(f.read(128), media['type'])
             start, end = media.get('start', 0), media.get('end')
-            if type(start) not in (int, float) or not 0 <= start <= 86400 or (end is not None and (type(end) not in (int, float) or not start < end <= 86400)):
+            finite_number(start, f'Вопрос {i}, начало отрывка')
+            if end is not None:
+                finite_number(end, f'Вопрос {i}, конец отрывка')
+            if end is not None and end <= start:
                 raise ValueError(f'Вопрос {i}: недопустимые границы отрывка')
             q['media'] = dict(kind=media['type'], source=str(source), start=start, end=end)
         questions.append(q)

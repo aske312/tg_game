@@ -37,7 +37,7 @@ function effectBadge(s, uid) {
   const active=(['question','review','reveal'].includes(s.phase)?s.round_modifiers:s.modifiers)?.[uid];
   if(!active)return '';
   const titles={double_reward:'Двойная награда',shield:'Защита от штрафа',half_reward:'Половина награды',double_penalty:'Двойной штраф'};
-  return `<small class="effect-badge">${titles[active.kind]}</small>`;
+  return `<small class="effect-badge">${esc(active.title||titles[active.kind]||'Эффект события')}</small>`;
 }
 
 function renderMedia(q) {
@@ -137,7 +137,7 @@ function apply(s){
   show('question-list-panel',isHost()&&s.phase==='lobby'&&!!s.question_count);
   $('question-list').innerHTML=(s.question_list||[]).map((q,i)=>`<p><span class="question-list-number">${String(i+1).padStart(2,'0')}</span><span class="question-list-text">${esc(q.type==='event'?'✳ '+q.title:q.text)}${q.media?' · '+({image:'Изображение',video:'Видео',audio:'Аудио'}[q.media.kind]):''}</span></p>`).join('');
   show('event',s.phase==='event');
-  if(s.phase==='event'){const e=s.event;$('event-title').textContent=e.event_title;$('event-text').textContent=e.text;$('effect-title').textContent=e.title;$('effect-description').textContent=e.description;$('effect-targets').textContent='Получатели: '+e.targets.join(', ')+' · действует '+e.questions+' вопросов';show('event-next',hasControls());}
+  if(s.phase==='event'){const e=s.event;$('event-title').textContent=e.event_title;$('event-text').textContent=e.text;$('effect-title').textContent=e.title;$('effect-description').textContent=e.description;$('effect-targets').textContent='Получатели: '+e.targets.join(', ')+' · действует '+countLabel(e.questions,['вопрос','вопроса','вопросов']);show('event-next',hasControls());}
   const q=s.question;
   if(!q||s.phase==='finished')renderMedia(null);show('question',!!q&&s.phase!=='finished');
   if(q){

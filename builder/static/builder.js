@@ -56,6 +56,7 @@ function updateActions() {
   // Freeze editable fields while saving so a delayed response cannot replace new typing.
   for(const input of $('editor').querySelectorAll('input:not([type=file]), textarea, select'))input.disabled=state.busy;
   updateCategoryActions();
+  updateClipActions();
   renderEditorNavigation();
   const message=state.dirty?'Есть несохранённые изменения':state.snapshot?.dirty?'Черновик сохранён':'Опубликована';
   $('save-status').textContent=message;$('save-status').dataset.dirty=state.dirty;
@@ -128,7 +129,7 @@ function moveStage(delta) {const target=state.stageIndex+delta;if(target<0||targ
 $('stage-up').onclick=()=>moveStage(-1);$('stage-down').onclick=()=>moveStage(1);
 $('stage-delete').onclick=()=>{if(state.doc.stages.length<=1||!confirm('Удалить этот игровой раунд вместе с его вопросами?'))return;const sid=stage().id;state.doc.rounds=state.doc.rounds.filter(q=>q.stage!==sid);state.doc.stages.splice(state.stageIndex,1);selectStage(Math.min(state.stageIndex,state.doc.stages.length-1));markDirty();};
 function renderRound() {
-  const q=round();show('round-empty',!q);show('round-details',!!q);if(!q)return;
+  const q=round();show('round-empty',!q);show('round-details',!!q);if(!q){renderClipEditor();return;}
   const event=q.type==='event';show('question-fields',!event);show('event-fields',event);
   $('round-type').textContent=event?'СОБЫТИЕ':'ВОПРОС';$('round-heading').textContent=(event?'Событие ':'Вопрос ')+(stageQuestions().findIndex(({i})=>i===state.index)+1);
   if(event) {
@@ -144,10 +145,7 @@ function renderRound() {
     $('material-panel').open=!!q.media;
     $('media-type').value=q.media?.type||'';renderMediaFields();renderCategorySelect();
   }
-  renderPreview();updateActions();
-}
-function renderEffect() {
-  $('effect-explanation').textContent=$('effect-type').value==='random_buff'?'Случайно выбирается двойная награда или защита от штрафа. Новое событие заменяет предыдущий эффект.':'Случайно выбирается половина награды или двойной штраф. Новое событие заменяет предыдущий эффект.';
+  renderClipEditor();renderPreview();updateActions();
 }
 function renderMediaFields() {
   const m=round()?.media,type=m?.type||'';
@@ -156,14 +154,15 @@ function renderMediaFields() {
   $('media-file').value='';$('media-file').accept=type==='image'?'.png,.jpg,.jpeg,.gif,.webp':type==='audio'?'.mp3,.wav,.ogg,.m4a':'.mp4,.webm';
   $('upload-label').textContent=m?.file?'Заменить материал':'Выбрать файл';
   $('material-status').textContent=m?.file?'файл добавлен':type?'выбери файл':'не добавлен';
-  $('clip-start').value=m?.start??0;$('clip-end').value=m?.end??'';
+  renderClipEditor();
 }
 function mediaURL(file) {return '/api/games/'+id()+'/media?file='+encodeURIComponent(file);}
 function renderPreview() {
   const q=round();if(!q)return;
   const box=$('preview-content');
   if(q.type==='event') {
-    box.innerHTML=`<div class="preview-meta"><span>СОБЫТИЕ</span><span>${esc(q.effect?.questions??1)} вопросов</span></div><h3>${esc(q.title||'Название события')}</h3><p>${esc(q.text||'Описание события появится здесь.')}</p><div class="preview-answer">${q.effect?.type==='random_debuff'?'Ослабление':'Усиление'} · ${q.effect?.target==='all_players'?'всем игрокам':'случайному игроку'}</div>`;
+    const targetTitles={all_players:'всем игрокам',random_player:'случайному игроку',leader:'лидеру',last_player:'последнему игроку'};
+    box.innerHTML=`<div class="preview-meta"><span>СОБЫТИЕ · ${eventOption(q.effect)?.positive?'ПОЛОЖИТЕЛЬНОЕ':'ОТРИЦАТЕЛЬНОЕ'}</span><span>${esc(countLabel(q.effect?.questions??1,['вопрос','вопроса','вопросов']))}</span></div><h3>${esc(q.title||'Название события')}</h3><p>${esc(q.text||'Описание события появится здесь.')}</p><div class="preview-answer">${esc(eventOption(q.effect)?.title||'Эффект')} · ${esc(targetTitles[q.effect?.target]||'получатели не заданы')}<p>${esc(eventDescription(q.effect))}</p></div>`;
     return;
   }
   box.innerHTML=`<div class="preview-meta"><span>${esc(stage()?.type==='grid'?q.category||'Категория не выбрана':modeTitles[stage()?.type]||'ВОПРОС')}</span><span>${esc(q.points??100)} очков · ${esc(q.time_limit??45)} сек.</span></div><h3>${esc(q.text||'Текст вопроса появится здесь.')}</h3><div id="preview-media"></div><div class="preview-answer">Ответ для ведущего: <strong>${esc(q.choices?.[q.correct_choice]||q.answer||'Ещё не указан')}</strong></div>`;
@@ -174,7 +173,7 @@ function renderPreview() {
   if(m.type==='image')node.alt='Материал к вопросу';
   else {
     node.controls=true;node.preload='metadata';if(m.type==='video')node.setAttribute('playsinline','');
-    const start=m.start||0,end=m.end;
+    const start=typeof m.start==='number'&&Number.isFinite(m.start)?m.start:0,end=typeof m.end==='number'&&Number.isFinite(m.end)?m.end:null;
     node.addEventListener('loadedmetadata',()=>{if(start<node.duration)node.currentTime=start;});
     node.addEventListener('play',()=>{if(node.currentTime<start||(end!=null&&node.currentTime>=end))node.currentTime=start;});
     node.addEventListener('timeupdate',()=>{if(end!=null&&node.currentTime>=end)node.pause();});
@@ -189,8 +188,7 @@ for(const [field,key] of [['points','points'],['time-limit','time_limit']])bind(
 for(const [field,index] of [['choice-a',0],['choice-b',1]])bind(field,v=>v,(q,v)=>{binaryDefaults(q);q.choices[index]=v;q.answer=q.choices[q.correct_choice];});
 bind('correct-choice',Number,(q,v)=>{binaryDefaults(q);q.correct_choice=v;q.answer=q.choices[v];});
 bind('accepted-answers',v=>v.split('\n').map(s=>s.trim()).filter(Boolean),(q,v)=>q.accepted_answers=v);
-for(const [field,key] of [['effect-type','type'],['effect-target','target'],['effect-duration','questions']])bind(field,v=>field==='effect-duration'?Number(v):v,(q,v)=>{q.effect??={};q.effect[key]=v;renderEffect();});
-for(const [field,key] of [['clip-start','start'],['clip-end','end']])bind(field,v=>v===''?null:Number(v),(q,v)=>{if(q.media)q.media[key]=key==='start'?v??0:v;});
+for(const [field,key] of [['effect-target','target'],['effect-duration','questions']])bind(field,v=>field==='effect-duration'?Number(v):v,(q,v)=>{q.effect??={};q.effect[key]=v;renderEffect();});
 $('media-type').onchange=()=>{if(!round())return;const type=$('media-type').value;if(type)round().media={type,file:'',start:0};else delete round().media;markDirty();renderMediaFields();renderPreview();};
 $('remove-media').onclick=()=>{delete round().media;$('media-type').value='';markDirty();renderMediaFields();renderPreview();};
 $('media-file').onchange=guarded(async()=>{
@@ -223,9 +221,9 @@ async function save() {
   accept(snapshot,state.index,stage()?.id);await refresh();
 }
 $('save').onclick=guarded(async()=>{await save();notice('Черновик сохранён. Опубликованная игра пока без изменений.');});
-$('publish').onclick=guarded(async()=>{validateGridCategories();await save();const snapshot=await api('/games/'+id()+'/publish','POST',{revision:state.snapshot.revision});accept(snapshot,state.index,stage()?.id);await refresh();notice('Игра опубликована. В Mini App нажми «Обновить список игр».');});
+$('publish').onclick=guarded(async()=>{validateGridCategories();validateMediaClips();await save();const snapshot=await api('/games/'+id()+'/publish','POST',{revision:state.snapshot.revision});accept(snapshot,state.index,stage()?.id);await refresh();notice('Игра опубликована. В Mini App нажми «Обновить список игр».');});
 $('reload-published').onclick=guarded(async()=>{if(!confirm('Загрузить опубликованную версию? Текущий черновик будет заменён, его резервная копия сохранится.'))return;accept(await api('/games/'+id()+'/reload','POST'));await refresh();notice('Загружена опубликованная версия.');});
-$('export').onclick=guarded(async()=>{await save();const response=await fetch('/api/games/'+id()+'/export');if(!response.ok){const result=await response.json();throw new Error(result.detail||'Не удалось скачать пакет.');}const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');link.href=url;link.download=state.snapshot.id+'.zip';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);});
+$('export').onclick=guarded(async()=>{validateMediaClips();await save();const response=await fetch('/api/games/'+id()+'/export');if(!response.ok){const result=await response.json();throw new Error(result.detail||'Не удалось скачать пакет.');}const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');link.href=url;link.download=state.snapshot.id+'.zip';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);});
 $('import-json').onchange=guarded(async()=>{const file=$('import-json').files[0];if(!file)return;try{if(file.size>1024*1024)throw new Error('Документ должен быть не больше 1 МБ.');const doc=JSON.parse(await file.text());if(!doc||typeof doc!=='object'||Array.isArray(doc)||!Array.isArray(doc.rounds)||doc.rounds.length>100||(doc.stages!==undefined&&(!Array.isArray(doc.stages)||!doc.stages.length||doc.stages.length>30||doc.stages.some(s=>!s||typeof s.id!=='string'||!modeTitles[s.type])))||doc.rounds.some(q=>!q||typeof q!=='object'||!['question','event'].includes(q.type)))throw new Error('Нужен game.json со списком вопросов и событий.');if(!confirm('Заменить содержание игры из файла? Опубликованная версия не изменится до публикации.'))return;normalizeStages(doc);state.doc=doc;state.stageIndex=0;resetStageNavigation();editorNav.gameTab='rounds';state.index=stageQuestions()[0]?.i??-1;$('game-title').value=doc.title||'';$('game-description').value=doc.description||'';$('editor-title').textContent=doc.title||'Без названия';markDirty();renderStageSettings();renderRound();notice('Вопросы импортированы. При необходимости загрузи материалы к ним.');}finally{$('import-json').value='';}});
 
 function newGameDialog() {if(!state.busy&&canLeave()){$('new-title').value='';$('create-dialog').showModal();$('new-title').focus();}}
@@ -263,8 +261,10 @@ $('game-list').onclick=event=>{const remove=event.target.closest('[data-delete-g
 $('refresh').onclick=guarded(refresh);$('search').oninput=renderLibrary;
 async function entered() {show('login-panel',false);show('studio',true);show('account-actions',true);await refresh();const last=sessionStorage.getItem('builder-game');if(!state.doc&&state.games.some(g=>g.id===last))await openGame(last);}
 $('login-form').onsubmit=guarded(async()=>{await api('/login','POST',{password:$('password').value});$('password').value='';await entered();});
-$('logout').onclick=guarded(async()=>{if(!canLeave())return;await api('/logout','POST');setLibraryOpen(false);sessionStorage.removeItem('builder-game');state.snapshot=null;state.doc=null;state.index=-1;state.dirty=false;show('editor',false);show('empty',true);loginScreen();});
+$('logout').onclick=guarded(async()=>{if(!canLeave())return;await api('/logout','POST');pauseClipEditor();setLibraryOpen(false);sessionStorage.removeItem('builder-game');state.snapshot=null;state.doc=null;state.index=-1;state.dirty=false;show('editor',false);show('empty',true);loginScreen();});
 initCategories();
 initEditorNavigation();
+initEvents();
+initMediaEditor();
 window.addEventListener('beforeunload',event=>{if(state.dirty||state.busy){event.preventDefault();event.returnValue='';}});
 guarded(async()=>{try{await api('/me');await entered();}catch(error){loginScreen();if(error.message!=='Войдите в конструктор')notice(error.message,'error');}})();
