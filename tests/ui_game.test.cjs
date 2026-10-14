@@ -177,3 +177,42 @@ test('Telegram role selection only offers player and host; host has a web screen
   assert(h.node('display-fullscreen').hidden);
   assert(!fs.readFileSync(path.join(root,'static/index.html'),'utf8').includes('data-role="display"'));
 });
+
+test('display lobby previews the game and grid without participants or question text',()=>{
+  const h=harness({pathname:'/display'});
+  h.apply({display:true,phase:'lobby',question:null,active:null,pack_title:'Космос и музыка'});
+  assert(!h.node('display-preview').hidden);assert(h.node('lobby').hidden);
+  assert(h.node('scoreboard').hidden);assert.equal(h.node('players').innerHTML,'');
+  assert.equal(h.node('display-preview-title').textContent,'Космос и музыка');
+  assert.equal(h.node('display-preview-code').textContent,'ABC234');
+  assert.equal(h.node('display-preview-rounds').textContent,'1 раунд');
+  assert(!h.node('display-preview-grid').hidden);
+  assert.match(h.node('display-preview-cells').innerHTML,/Space.*200/s);
+  assert.doesNotMatch(h.node('display-preview-cells').innerHTML,/Question|Player|Host/);
+  h.apply({display:true,phase:'lobby',stage:{id:'b',type:'blitz'},board:[],question:null});
+  assert(h.node('display-preview-grid').hidden);
+});
+
+test('display shows the grid or the question as a single scene with no roster',()=>{
+  const h=harness({pathname:'/display'});
+  h.apply({display:true,phase:'board',question:null,active:null});
+  assert(!h.node('question-board').hidden);assert(h.node('question').hidden);
+  for(const phase of ['question','review','reveal']){
+    h.apply({display:true,phase});
+    assert(!h.node('question').hidden,phase);assert(h.node('question-board').hidden,phase);
+    assert(h.node('scoreboard').hidden,phase);assert(h.node('display-preview').hidden,phase);
+  }
+  h.apply({display:true,phase:'board',question:null,active:null});
+  assert(!h.node('question-board').hidden);assert(h.node('scoreboard').hidden);
+});
+
+test('display retains dedicated round scores and awards; host keeps their roster',()=>{
+  const h=harness({pathname:'/display'});
+  h.apply({display:true,phase:'reveal',stage_complete:true,scores_visible:true});
+  assert(!h.node('round-scores').hidden);assert(h.node('question').hidden);assert(h.node('scoreboard').hidden);
+  assert.match(h.node('round-results').innerHTML,/Player/);
+  h.apply({display:true,phase:'finished',question:null,finished_at:1000});
+  assert(!h.node('finished').hidden);assert(h.node('display-preview').hidden);assert(h.node('scoreboard').hidden);
+  const host=harness();host.run("auth.user.id='h'");host.apply({phase:'lobby',question:null});
+  assert(!host.node('scoreboard').hidden);assert(!host.node('lobby').hidden);assert(host.node('display-preview').hidden);
+});

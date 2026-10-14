@@ -40,7 +40,7 @@ async def main():
             assert 'id="grid-intro"' in page.text and 'id="pause-game"' in page.text and 'id="award-spotlight"' in page.text
             screen_page=await client.get('/display');screen_page.raise_for_status()
             assert 'id="display-form"' in screen_page.text and 'telegram.org/js/telegram-web-app.js' not in screen_page.text
-            for asset in ('/static/experience.js?v=1','/static/experience.css?v=1','/static/app.js?v=17'):
+            for asset in ('/static/experience.js?v=1','/static/experience.css?v=1','/static/app.js?v=18','/static/display.css?v=1'):
                 response=await client.get(asset);response.raise_for_status()
                 assert len(response.content)>100
             (await client.post(path+'/join',headers=headers[1])).raise_for_status()

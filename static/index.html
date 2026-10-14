@@ -3,8 +3,8 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101e18"><title>Клан крыс · Крысиные бега</title>
 <link rel="icon" href="/static/rat.svg?v=2" type="image/svg+xml">
-<link rel="stylesheet" href="/static/style.css?v=9"><link rel="stylesheet" href="/static/roles.css?v=5"><link rel="stylesheet" href="/static/quiz.css?v=9"><link rel="stylesheet" href="/static/modes.css?v=9"><link rel="stylesheet" href="/static/experience.css?v=1">
-<script src="https://telegram.org/js/telegram-web-app.js"></script><script defer src="/static/experience.js?v=1"></script><script defer src="/static/app.js?v=17"></script>
+<link rel="stylesheet" href="/static/style.css?v=9"><link rel="stylesheet" href="/static/roles.css?v=5"><link rel="stylesheet" href="/static/quiz.css?v=9"><link rel="stylesheet" href="/static/modes.css?v=9"><link rel="stylesheet" href="/static/experience.css?v=1"><link rel="stylesheet" href="/static/display.css?v=1">
+<script src="https://telegram.org/js/telegram-web-app.js"></script><script defer src="/static/experience.js?v=1"></script><script defer src="/static/app.js?v=18"></script>
 </head><body><main>
 <header class="app-header"><a id="brand-link" href="/" class="brand" aria-label="Клан крыс — главная"><span class="brand-mark"><img src="/static/rat.svg?v=2" alt="" width="36" height="36"></span><span>клан<br><span>крыс.</span></span></a><div class="identity"><i aria-hidden="true"></i><span id="identity">Квиз для своих</span></div></header>
 <div id="notice" role="status" aria-live="polite"></div>
@@ -37,6 +37,11 @@
   <div class="game-grid">
     <aside id="scoreboard" class="scoreboard panel" aria-label="Участники и очки"><div class="scoreboard-heading"><h2>Участники</h2><span id="player-count" class="count-badge"></span></div><div id="players" class="players"></div></aside>
     <div class="game-stage">
+      <section id="display-preview" class="display-preview" aria-labelledby="display-preview-title" hidden>
+        <div class="display-preview-main"><span class="eyebrow">КЛАН КРЫС · СЕГОДНЯ ИГРАЕМ</span><h1 id="display-preview-title"></h1><div class="display-preview-facts"><span id="display-preview-rounds"></span><span id="display-preview-questions"></span></div><p id="display-preview-modes" class="display-preview-modes"></p><p class="display-preview-wait"><span aria-hidden="true"></span>Скоро начинаем</p><p class="display-preview-hint">Приготовьтесь. Ведущий запустит игру, когда все будут на месте.</p></div>
+        <div class="display-preview-join"><img src="/static/rat.svg?v=2" alt="" width="96" height="96"><span class="eyebrow">ПРИСОЕДИНЯЙТЕСЬ К ИГРЕ</span><strong id="display-preview-code" aria-label="Код комнаты"></strong><p>Откройте игру в Telegram<br>и введите этот код комнаты</p></div>
+        <section id="display-preview-grid" class="display-preview-grid" aria-label="Превью поля первого раунда" hidden><div class="display-preview-grid-heading"><span class="eyebrow">ПОЛЕ ПЕРВОГО РАУНДА</span><h2 id="display-preview-stage"></h2></div><div id="display-preview-cells" class="display-preview-cells"></div></section>
+      </section>
       <section id="pause-panel" class="panel pause-panel" hidden><span class="eyebrow">ПЕРЕРЫВ</span><h2>Клан на паузе</h2><p>Время остановлено. Продолжим по сигналу ведущего.</p></section>
       <section id="round-scores" class="panel" hidden><span class="eyebrow">РАУНД ЗАВЕРШЁН</span><h2 id="scores-title"></h2><div id="round-results" class="final-results"></div><button id="scores-next" class="button-wide" hidden>Следующий раунд →</button></section>
       <section id="grid-intro" class="grid-intro" hidden aria-label="Темы раунда"><div class="crawl-viewport"><div id="theme-crawl" class="theme-crawl"></div></div><p class="intro-caption">Сейчас начнём · <span id="intro-countdown"></span></p><button id="skip-intro" class="secondary small" hidden>Перейти к вопросам →</button></section>

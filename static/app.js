@@ -15,7 +15,7 @@ function renderModes() {
   const stage=room.stage;
   show('stage-banner',!isPlayer()&&!!stage&&!['lobby','finished'].includes(room.phase));
   if(stage){$('stage-mode').textContent=`Раунд ${room.stage_number} / ${room.stage_count} · ${modeTitles[stage.type]}`;$('stage-name').textContent=stage.title;$('stage-hint').textContent=stage.type==='grid'?'Выбираем тему и стоимость, затем все отвечают.':stage.type==='binary'?'Два варианта. Одна попытка. Проверка автоматически.':stage.order==='random'?'Вопросы в случайном порядке.':'Вопросы идут один за другим.';}
-  const boardVisible=stage?.type==='grid'&&['board','reveal'].includes(room.phase)&&!room.stage_complete&&(!isPlayer()||room.can_pick);
+  const boardVisible=stage?.type==='grid'&&['board','reveal'].includes(room.phase)&&!room.stage_complete&&(!isPlayer()||room.can_pick)&&(!isDisplay()||room.phase==='board');
   show('question-board',boardVisible);
   if(isPlayer()&&boardVisible)show('question',false);
   const chooser=room.players.find(p=>p.id===room.chooser);
@@ -26,6 +26,24 @@ function renderModes() {
   show('binary-options',binary&&room.phase!=='finished');
   $('binary-options').innerHTML=binary?q.choices.map((choice,i)=>`<button data-choice="${i}" ${canAnswer()?'':'disabled'} class="${ownAnswer()?.choice===i?'chosen':''} ${q.correct_choice===i?'correct-option':''} ${ownAnswer()?.choice===i&&ownAnswer()?.verdict==='wrong'?'wrong-option':''}">${esc(choice)}</button>`).join(''):'';
   show('auto-next',!!room.advance_at&&room.phase==='reveal');
+}
+
+function renderDisplayPreview() {
+  const visible=isDisplay()&&room.phase==='lobby';
+  show('display-preview',visible);
+  if(!visible)return;
+  $('display-preview-title').textContent=room.pack_title||'Крысиные бега';
+  $('display-preview-code').textContent=room.code;
+  $('display-preview-rounds').textContent=countLabel(room.stage_count,['раунд','раунда','раундов']);
+  $('display-preview-questions').textContent=countLabel(room.question_count,['вопрос','вопроса','вопросов']);
+  $('display-preview-modes').textContent=[...new Set(room.stages.map(s=>modeTitles[s.type]))].join(' · ');
+  const grid=room.stage?.type==='grid'&&(room.board||[]).length>0;
+  show('display-preview-grid',grid);
+  if(grid){
+    $('display-preview-stage').textContent=room.stage.title;
+    const categories=[...new Set(room.board.map(q=>q.category))];
+    $('display-preview-cells').innerHTML=categories.map(category=>`<div class="preview-board-row"><strong>${esc(category)}</strong><div>${room.board.filter(q=>q.category===category).sort((a,b)=>a.value-b.value).map(q=>`<span>${q.value}</span>`).join('')}</div></div>`).join('');
+  }else $('display-preview-cells').replaceChildren();
 }
 
 async function api(path, body) {
@@ -232,17 +250,17 @@ function apply(s){
     $('display-address').textContent=(location.origin||'')+'/display';$('display-room-code').textContent=s.code;
   }
   $('room-footer').textContent='Комната '+s.code;
-  show('scoreboard',!isPlayer());show('reactions',!isDisplay());
+  show('scoreboard',isHost());show('reactions',!isDisplay());
   $('lobby-title').textContent=isHost()?'Все на месте?':isDisplay()?'Клан собирается':'Ты в игре';
   if(s.host_practice)$('lobby-title').textContent='Ты — ведущий';
   show('home',false);show('game',true);
   $('room-code').textContent=s.code;
   $('phase').textContent=(s.practice?'Тренировка · ':'')+({board:'Выбираем вопрос',event:'Событие',lobby:'Ожидание игроков',question:s.question?.choices?'Выбираем вариант':'Все пишут ответы',review:'Ведущий проверяет ответы',reveal:'Результаты вопроса',ready:'Готовы продолжить',finished:'Квиз завершён'}[s.phase]||'');
-  if(!isPlayer())renderPlayers(s);else $('players').replaceChildren();
+  if(isHost())renderPlayers(s);else $('players').replaceChildren();
   show('round-status',s.phase!=='lobby');
   $('round-label').textContent=`Раунд ${s.stage_number} / ${s.stage_count} · Вопрос ${s.question_number} / ${s.question_count}`;
   $('round-progress').max=Math.max(1,s.round_count);$('round-progress').value=s.used.length;
-  show('invite',isHost()&&!s.practice);show('lobby',s.phase==='lobby');show('start',isHost());$('start').disabled=uploading||s.players.length<2||!s.question_count;
+  show('invite',isHost()&&!s.practice);show('lobby',s.phase==='lobby'&&!isDisplay());show('start',isHost());$('start').disabled=uploading||s.players.length<2||!s.question_count;
   $('pack-count').textContent=`В игре ${s.question_count} вопросов, ${s.stage_count} игровых раундов: ${s.stages.map(stage=>modeTitles[stage.type]).join(' → ')}.`;show('waiting',!isHost());show('editor',isHost()&&s.phase==='lobby');
   if(s.host_practice)$('pack-count').textContent+=' Три бота уже в комнате. Запусти игру, дождись их ответов и оцени их сам. В сетке выбирай за бота, если ход достался ему.';
   if(s.phase==='lobby'){const selected=$('q-stage').value;$('q-stage').innerHTML=s.stages.map(stage=>`<option value="${esc(stage.id)}">${esc(stage.title)} · ${modeTitles[stage.type]}</option>`).join('');if(s.stages.some(stage=>stage.id===selected))$('q-stage').value=selected;renderQuestionEditor();}
@@ -263,7 +281,7 @@ function apply(s){
     if(oldQuestion!==s.code+':'+s.active){$('answer-text').value='';}
     if(s.phase!=='finished')renderMedia(q);renderReview();
   }
-  renderHostAnswers();renderModes();renderManagement();
+  renderHostAnswers();renderModes();renderManagement();renderDisplayPreview();
   show('ready',s.phase==='ready'&&hasControls());show('finished',s.phase==='finished');show('finish',hasControls()&&['reveal','event','board'].includes(s.phase));
   show('another',!isDisplay());
   $('another').textContent=isPlayer()&&!s.practice?'На главный экран':s.practice?'Ещё одна тренировка':'Новая комната';
