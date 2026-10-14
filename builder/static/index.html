@@ -6,20 +6,20 @@
   <meta name="theme-color" content="#101e18">
   <title>Конструктор · Крысиные бега</title>
   <link rel="stylesheet" href="/static/builder.css?v=6">
-  <link rel="stylesheet" href="/static/editor.css?v=7">
+  <link rel="stylesheet" href="/static/editor.css?v=8">
   <script src="/static/navigation.js?v=6" defer></script>
   <script src="/static/categories.js?v=6" defer></script>
   <script src="/static/events.js?v=6" defer></script>
   <script src="/static/media-editor.js?v=6" defer></script>
   <script src="/static/validation.js?v=2" defer></script>
-  <script src="/static/builder.js?v=8" defer></script>
+  <script src="/static/builder.js?v=9" defer></script>
 </head>
 <body>
   <header class="app-header">
     <a class="brand" href="/"><span class="brand-mark">кб.</span><span>крысиные бега<span class="brand-caption">КОНСТРУКТОР ИГР</span></span></a>
     <div id="account-actions" hidden><button id="toggle-games" class="secondary" aria-expanded="false" aria-controls="game-library">Мои игры</button><button id="new-game" class="primary">+ Новая игра</button><button id="logout" class="quiet">Выйти</button></div>
   </header>
-  <div id="notice" role="status" aria-live="polite" hidden></div>
+  <div id="notice" role="status" aria-live="polite" hidden><span id="notice-text"></span><button id="dismiss-notice" type="button" aria-label="Закрыть уведомление">×</button></div>
   <section id="login-panel" class="login-panel panel" hidden>
     <span class="eyebrow">МАСТЕРСКАЯ КВИЗОВ</span><h1>Хорошая игра<br>начинается с идеи.</h1>
     <p>Создавай вопросы, добавляй материалы и собирай забеги для своей компании.</p>

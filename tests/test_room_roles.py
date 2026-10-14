@@ -32,6 +32,7 @@ def test_display_does_not_take_player_slot_or_control_game(room):
 def test_display_hides_host_solution_and_pending_answers(room):
     store, code, host, player, screen = room
     store.change(code, host, 'start')
+    store.change(code, host, 'next')
     store.change(code, screen, 'watch')
     for uid in (host['id'], screen['id']):
         state = store.public(code, uid, display=True)
@@ -49,6 +50,7 @@ def test_display_hides_host_solution_and_pending_answers(room):
 def test_reactions_broadcast_during_question_and_are_limited(room, monkeypatch):
     store, code, host, player, screen = room
     store.change(code, host, 'start')
+    store.change(code, host, 'next')
     store.change(code, screen, 'watch')
     store.change(code, player, 'reaction', text='🔥')
     assert store.public(code, host['id'])['reactions'][0]['emoji'] == '🔥'
@@ -83,6 +85,9 @@ def test_display_websocket_keeps_role_when_room_updates(room, monkeypatch):
             response = client.post(f'/api/rooms/{code}/action', json={'action': 'start'}, headers={'Authorization': 'Bearer '+host_token})
             assert response.status_code == 200
             state = ws.receive_json()
-            assert state['display'] and state['phase'] == 'question'
+            assert state['display'] and state['phase'] == 'intro' and state['question'] is None
+            client.post(f'/api/rooms/{code}/action', json={'action': 'next'}, headers={'Authorization': 'Bearer '+host_token}).raise_for_status()
+            state = ws.receive_json()
+            assert state['phase'] == 'question'
             assert 'answer' not in state['question']
             assert len(state['players']) == 2

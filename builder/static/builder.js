@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const show = (id, visible) => { $(id).hidden = !visible; };
 const state = {games:[], snapshot:null, doc:null, index:-1, stageIndex:0, dirty:false, busy:false};
-let deleteTarget=null;
+let deleteTarget=null, noticeTimer=null;
 const modeTitles={blitz:'Блиц',grid:'Сетка вопросов',binary:'Выбор из двух'};
 function normalizeStages(doc) {
   if(!Array.isArray(doc.stages)||!doc.stages.length)doc.stages=[{id:'legacy',type:'blitz',title:'Раунд 1',order:'sequential',chooser:'winner',auto_advance:false}];
@@ -19,8 +19,11 @@ function binaryDefaults(q) {
 }
 
 function notice(message='', type='info') {
-  $('notice').textContent=message; $('notice').dataset.type=type; show('notice',!!message);
+  clearTimeout(noticeTimer);noticeTimer=null;
+  $('notice-text').textContent=message; $('notice').dataset.type=type; show('notice',!!message);
+  if(message&&type!=='error')noticeTimer=setTimeout(()=>notice(),6000);
 }
+$('dismiss-notice').onclick=()=>notice();
 function loginScreen() {show('login-panel',true);show('studio',false);show('account-actions',false);}
 async function api(path, method='GET', data) {
   const response=await fetch('/api'+path, {method,headers:{'X-Builder-Request':'1',...(data!==undefined?{'Content-Type':'application/json'}:{})},...(data!==undefined?{body:JSON.stringify(data)}:{})});

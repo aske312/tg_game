@@ -15,6 +15,7 @@
 .editor-header{position:sticky;top:0;z-index:12;background:var(--bg);margin:0;padding:20px 0 16px;min-width:0;border-bottom:1px solid var(--line)}
 .editor-identity{min-width:0}.editor-header h1{font-size:23px;line-height:1.2;max-width:650px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .editor-header .eyebrow{margin-bottom:8px;color:var(--muted)}#editor-location{font-weight:400;letter-spacing:.5px}.save-status{margin-top:8px}
+#notice{display:flex;align-items:flex-start;gap:12px}#notice-text{flex:1}#dismiss-notice{flex:none;background:none;border:0;color:inherit;padding:0 4px;min-height:24px;min-width:24px;font-size:22px;line-height:1;cursor:pointer}.save-status[data-dirty=true]{display:inline-flex;align-items:center;gap:7px;padding:6px 9px;border:1px solid var(--accent);border-radius:6px;color:var(--accent)}.save-status[data-dirty=true]::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
 .editor-actions{flex-shrink:0}.editor-actions button{min-height:42px;padding:10px 14px}.editor-actions .primary{font-size:12px}
 .editor-tabs{display:flex;gap:4px;align-items:center;border-bottom:1px solid var(--line);margin-bottom:20px;min-width:0}
 .editor-tabs button{border-radius:0;background:transparent;color:var(--muted);border-bottom:2px solid transparent;min-height:46px;padding:12px 14px;font-weight:500;white-space:nowrap}

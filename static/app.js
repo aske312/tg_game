@@ -165,7 +165,7 @@ function renderHostLayout() {
     (room.phase==='board'||(room.phase==='reveal'&&room.display_scene==='board'))&&!room.paused&&!room.scores_visible;
   show('question-board',board);
   if(board)show('question',false);
-  show('presentation-controls',active&&!room.paused&&!room.scores_visible);
+  show('presentation-controls',active&&room.phase!=='intro'&&!room.paused&&!room.scores_visible);
   show('scene-question',!!room.question&&room.phase==='reveal');
   show('scene-answer',room.phase==='reveal');
   show('scene-board',room.stage?.type==='grid'&&!room.stage_complete&&['board','reveal'].includes(room.phase));

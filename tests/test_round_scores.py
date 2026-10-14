@@ -19,8 +19,9 @@ def round_game(tmp_path, mode='blitz', media=None):
     code = db.create(host, stages=stages, questions=[first, dict(id='q2', stage='s2', text='Next', answer='Yes', value=100)])
     for p in (a, b): db.change(code, p, 'join')
     db.change(code, host, 'start')
+    db.change(code, host, 'next')
     if mode == 'grid':
-        db.change(code, host, 'next'); db.change(code, host, 'pick', question='q1')
+        db.change(code, host, 'pick', question='q1')
     return db, code, host, a, b
 
 
@@ -50,7 +51,9 @@ def test_completed_round_waits_for_host_to_choose_scores_or_progression(tmp_path
     db.change(code, host, 'show_scores')
     assert db.read(code)['scores_visible'] and db.read(code)['scores_round'] == 's1'
     db.change(code, host, 'next')
-    assert db.read(code)['active'] == 'q2' and not db.read(code)['scores_visible']
+    assert db.read(code)['phase'] == 'intro' and not db.read(code)['scores_visible']
+    db.change(code, host, 'next')
+    assert db.read(code)['active'] == 'q2'
     db.change(code, host, 'close')
     assert not db.read(code)['scores_visible'] and db.read(code)['display_scene'] == 'round_end'
     results = db.read(code)['round_results']
@@ -112,6 +115,7 @@ def test_event_at_end_of_round_also_waits_for_host_choice(tmp_path):
                       effect=dict(type='double_penalty', target='all_players', questions=1))]
     code = db.create(host, stages=[stage], questions=questions)
     db.change(code, player, 'join'); db.change(code, host, 'start')
+    db.change(code, host, 'next')
     db.change(code, host, 'close'); db.change(code, host, 'next')
     state = db.read(code)
     assert not state['scores_visible'] and state['phase'] == 'event' and state['display_scene'] == 'round_end'

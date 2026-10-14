@@ -15,6 +15,7 @@ def media_game(tmp_path, monkeypatch):
                dict(id='video',text='?',answer='Yes',value=100,seconds=3600,media=dict(kind='video',url='/video.mp4',start=5))]
     code=db.create(host,questions=questions)
     db.change(code,player,'join');db.change(code,host,'start')
+    db.change(code, host, 'next')
     return db,code,host,player,now
 
 

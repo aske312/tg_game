@@ -16,6 +16,7 @@ def game(tmp_path):
     for p in (a, b):
         db.change(code, p, 'join')
     db.change(code, host, 'start')
+    db.change(code, host, 'next')
     return db, code, host, a, b
 
 
@@ -81,6 +82,7 @@ def test_event_scoring_and_duration(tmp_path, monkeypatch, kind, correct, points
     db.change(code, player, 'join')
     monkeypatch.setattr(events.secrets, 'choice', lambda options: kind if isinstance(options[0], str) else options[0])
     db.change(code, host, 'start')
+    db.change(code, host, 'next')
     assert Store(db.path).public(code,player['id'])['event']['targets'] == ['P']
     assert not db.tick(code)
     db.change(code, host, 'next')
@@ -159,6 +161,8 @@ def test_api_library_media_and_websocket(tmp_path, monkeypatch):
             ws.send_json({'token':player['token']})
             assert ws.receive_json()['phase']=='lobby'
             assert client.post('/api/rooms/'+code+'/action',headers=hh,json={'action':'start'}).status_code==200
+            assert ws.receive_json()['phase']=='intro'
+            client.post('/api/rooms/'+code+'/action',headers=hh,json={'action':'next'}).raise_for_status()
             s=ws.receive_json()
             assert s['phase']=='question' and 'answer' not in s['question']
             client.post('/api/rooms/'+code+'/action',headers=ph,json={'action':'answer','text':'red'})
@@ -191,6 +195,7 @@ def test_complete_library_sequence(tmp_path):
     code=db.create(host,questions=pack['questions'])
     db.change(code,player,'join')
     db.change(code,host,'start')
+    db.change(code, host, 'next')
     phases=[]
     while db.read(code)['phase']!='finished':
         state=db.read(code)

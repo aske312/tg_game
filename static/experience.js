@@ -1,4 +1,19 @@
-let crawlKey='', ceremonyKey='', ceremonyStep=-1, ceremonyStart=0, audioContext=null;
+let introKey='', ceremonyKey='', ceremonyStep=-1, ceremonyStart=0, audioContext=null;
+
+function roundPreview(stage) {
+  const input='Введите ответ на телефоне и нажмите «Отправить ответ». На вопрос даётся одна попытка.';
+  const single=stage.type==='grid'&&stage.answer_mode==='single';
+  let rules;
+  if(stage.type==='grid'){
+    rules=[stage.chooser==='host'?'Тему и стоимость каждого вопроса выбирает ведущий.':'Первый вопрос выбирает ведущий, следующий — первый верно ответивший. Если верных ответов нет, выбирает ведущий.',
+      single?'Нажмите «Ответить» быстрее остальных. Только первый нажавший получает право ввести и отправить ответ. Остальные ждут проверки.':'На выбранный вопрос отвечают все игроки — каждый со своего телефона.',input];
+  }else if(stage.type==='binary'){
+    rules=['Все игроки отвечают на каждый вопрос.', 'Нажмите один из двух вариантов на телефоне. Выбор отправляется сразу, изменить его нельзя.', 'Правильный вариант откроется после завершения приёма ответов.'];
+  }else{
+    rules=[stage.order==='random'?'Вопросы идут в случайном порядке. На каждый отвечают все игроки.':'Вопросы идут один за другим. На каждый отвечают все игроки.',input,'Смотрите и слушайте материалы на общем экране. Ответ отправляйте со своего телефона.'];
+  }
+  return {rules,single};
+}
 
 function rankedPlayers(players,host) {
   const sorted=players.filter(p=>p.id!==host).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name));
@@ -52,7 +67,7 @@ function renderExperience() {
   if(paused||scores||intro||finished)show('finish',false);
   if(paused)$('phase').textContent='Игра на паузе';
   else if(scores)$('phase').textContent='Счёт после раунда';
-  else if(intro)$('phase').textContent='Знакомимся с темами';
+  else if(intro)$('phase').textContent='Перед началом раунда';
   else if(endScreen)$('phase').textContent='Раунд завершён';
   if(scores){
     const results=room.round_results||[],selected=results.find(r=>r.stage_id===room.scores_round)||results.find(r=>r.stage_id===room.stage.id);
@@ -66,15 +81,14 @@ function renderExperience() {
   show('results-back',scores&&hasControls());
   if(intro){
     const key=room.code+':'+room.stage.id;
-    if(crawlKey!==key){
-      crawlKey=key;
-      const categories=room.stage.categories||[...new Set(room.board.map(q=>q.category))];
-      $('theme-crawl').innerHTML=`<span class="eyebrow">РАУНД ${room.stage_number}</span><h2>${esc(room.stage.title)}</h2><p class="crawl-opening">Темы этого забега</p>`+categories.map((c,i)=>`<p class="crawl-category"><small>${String(i+1).padStart(2,'0')}</small>${esc(c)}</p>`).join('')+'<p class="crawl-ending">Да пребудет с кланом сыр.</p>';
+    if(introKey!==key){
+      introKey=key;
+      const {rules,single}=roundPreview(room.stage),grid=room.stage.type==='grid';
+      const categories=grid?(room.stage.categories||[...new Set((room.board||[]).map(q=>q.category))]):[];
+      $('round-preview-content').innerHTML=`<span class="eyebrow">РАУНД ${room.stage_number} ИЗ ${room.stage_count}</span><h2>${esc(room.stage.title)}</h2><p class="intro-mode">${esc(modeTitles[room.stage.type])}${grid?' · '+(single?'Отвечает один':'Отвечают все'):''}</p><div class="intro-rules"><h3>Как отвечать</h3><ol>${rules.map(rule=>`<li>${esc(rule)}</li>`).join('')}</ol></div>`+
+        (categories.length?`<div class="intro-categories"><h3>Темы раунда</h3><div>${categories.map(c=>`<span>${esc(c)}</span>`).join('')}</div></div>`:'')+
+        `<p class="intro-scoring">Верный ответ приносит стоимость вопроса, неверный — штраф.${single?'':' Ответ не отправлен — тоже штраф при завершении вопроса ведущим.'} Активные эффекты меняют награды и штрафы.</p>`;
     }
-    const elapsed=Math.max(0,(room.paused?room.paused_at:Date.now()/1000+offset/1000)-room.intro_started_at);
-    $('theme-crawl').style.animationDuration=(room.intro_until-room.intro_started_at)+'s';
-    $('theme-crawl').style.animationDelay=-elapsed+'s';
-    $('theme-crawl').style.animationPlayState=paused?'paused':'running';
   }
   if(finished&&ceremonyKey!==room.code){
     ceremonyKey=room.code;ceremonyStep=-1;ceremonyStart=room.finished_at||Date.now()/1000+offset/1000;
@@ -88,7 +102,7 @@ function tickExperience() {
   if(!room)return;
   if(room.phase==='intro'){
     const now=room.paused?room.paused_at:Date.now()/1000+offset/1000;
-    $('intro-countdown').textContent=Math.max(0,Math.ceil(room.intro_until-now))+' сек.';
+    $('intro-countdown').textContent=room.intro_until!=null?'Начало через '+Math.max(0,Math.ceil(room.intro_until-now))+' сек.':hasControls()?'Когда игроки готовы, начните раунд.':'Раунд начнётся по команде ведущего.';
   }
   if(room.phase!=='finished')return;
   const plan=ceremonyPlan(room.players,room.host),elapsed=Math.max(0,Date.now()/1000+offset/1000-ceremonyStart);
@@ -144,7 +158,7 @@ function confetti(count) {
   }
 }
 function resetExperience() {
-  crawlKey='';ceremonyKey='';ceremonyStep=-1;$('confetti-layer').replaceChildren();
+  introKey='';ceremonyKey='';ceremonyStep=-1;$('confetti-layer').replaceChildren();
 }
 document.addEventListener('pointerdown',()=>{if(!audioContext||audioContext.state!=='running')void unlockSound();});
 document.addEventListener('keydown',()=>{if(!audioContext||audioContext.state!=='running')void unlockSound();});

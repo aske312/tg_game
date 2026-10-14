@@ -14,8 +14,9 @@ def game(tmp_path, mode='blitz', single=False, media=False):
     code = db.create(host, stages=[stage], questions=[q, dict(q, id='q2')])
     for p in (a, b): db.change(code, p, 'join')
     db.change(code, host, 'start')
+    db.change(code, host, 'next')
     if mode == 'grid':
-        db.change(code, host, 'next'); db.change(code, host, 'pick', question='q1')
+        db.change(code, host, 'pick', question='q1')
     db.change(code, dict(id='screen', name='Screen'), 'watch')
     return db, code, host, a, b
 

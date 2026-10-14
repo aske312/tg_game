@@ -16,6 +16,7 @@ def game(tmp_path):
     for p in (a, b):
         db.change(code, p, 'join')
     db.change(code, host, 'start')
+    db.change(code, host, 'next')
     return db, code, host, a, b
 
 
@@ -122,6 +123,7 @@ def test_skip_event_and_grid_board(game):
     other = db.create(host, questions=[event, dict(id='q', text='?', answer='Yes', value=100)])
     db.change(other, a, 'join')
     db.change(other, host, 'start')
+    db.change(other, host, 'next')
     db.change(other, host, 'skip_stage')
     assert db.read(other)['phase'] == 'finished'
     db.change(code, host, 'skip_stage')

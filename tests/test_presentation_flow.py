@@ -156,6 +156,7 @@ def test_full_media_prevents_three_second_auto_advance(tmp_path, kind):
                       media=dict(kind=kind, url='/media', start=10, end=12)) for i in range(2)]
     code = db.create(host, questions=questions, stages=[stage])
     db.change(code, player, 'join'); db.change(code, host, 'start')
+    db.change(code, host, 'next')
     db.change(code, player, 'answer', text='Yes')
     db.change(code, host, 'correct', player='p')
     s = db.read(code)

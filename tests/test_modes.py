@@ -46,10 +46,10 @@ def test_six_mixed_rounds_share_score_and_persist(tmp_path):
     for index,s in enumerate(stages):
         state=Store(db.path).public(code,'a')
         assert state['stage_number']==index+1 and state['stage_count']==6
+        if state['phase']=='intro':
+            db.change(code,host,'next')
+            state=db.public(code,'a')
         if s['type']=='grid':
-            if state['phase']=='intro':
-                db.change(code,host,'next')
-                state=db.public(code,'a')
             assert state['phase']=='board' and not state['can_pick']
             assert all(set(cell)=={'id','category','value','used'} for cell in state['board'])
             db.change(code,host,'pick',question='q'+s['id'])
@@ -189,6 +189,7 @@ def test_http_choice_and_full_length_grid_id(tmp_path,monkeypatch):
         assert client.post(path+'/action',headers=hh,json={'action':'pick','question':'q'*64}).status_code==200
         client.post(path+'/action',headers=ph,json={'action':'answer','text':'Да'})
         client.post(path+'/action',headers=hh,json={'action':'correct','player':users[1]['user']['id']})
+        assert client.post(path+'/action',headers=hh,json={'action':'next'}).json()['phase']=='intro'
         client.post(path+'/action',headers=hh,json={'action':'next'})
         response=client.post(path+'/action',headers=ph,json={'action':'answer','choice':0})
         assert response.status_code==200 and response.json()['phase']=='reveal'

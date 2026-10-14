@@ -50,6 +50,10 @@ def migrate(s):
     s.setdefault('scores_visible', False)
     s.setdefault('omission_penalties', {})
     s.setdefault('round_results', [])
+    introduced = s.setdefault('introduced_stages', [])
+    # Rooms already playing when this version is deployed must not get a mid-round preview.
+    if s['phase'] in ('board', 'question', 'review', 'reveal', 'event') and current_stage(s)['id'] not in introduced:
+        introduced.append(current_stage(s)['id'])
     for stage in s['stages']:
         if stage['type'] == 'grid' and 'categories' not in stage:
             stage['categories'] = list(dict.fromkeys(q['category'] for q in s['pack'] if q.get('stage') == stage['id'] and q.get('type') != 'event'))
@@ -190,14 +194,12 @@ def start_question(s, selected=None):
         s['score_stage'] = current_stage(s)['id']
     s['advance_at'] = None
     s['scores_visible'] = False
+    if selected is None and not player_practice(s) and current_stage(s)['id'] not in s.setdefault('introduced_stages', []):
+        s['introduced_stages'].append(current_stage(s)['id'])
+        s.update(phase='intro', active=None, answers={}, deadline=None, event=None,
+                 intro_started_at=time.time(), intro_until=None, bot_due={})
+        return  # The host starts the round after everyone has read its rules.
     if current_stage(s)['type'] == 'grid' and selected is None:
-        if not player_practice(s) and current_stage(s)['id'] not in s.setdefault('introduced_stages', []):
-            s['introduced_stages'].append(current_stage(s)['id'])
-            categories = current_stage(s).get('categories', [])
-            now = time.time()
-            s.update(phase='intro', active=None, answers={}, deadline=None, event=None,
-                     intro_started_at=now, intro_until=now+min(40, 12+len(categories)*2))
-            return
         s.update(phase='board', active=None, answers={}, deadline=None, event=None)
         s['display_scene'] = 'board'
         return
@@ -707,7 +709,7 @@ class Store:
             if s['paused']:
                 return False
             now = time.time()
-            if s['phase'] == 'intro' and now >= s['intro_until']:
+            if s['phase'] == 'intro' and s.get('intro_until') is not None and now >= s['intro_until']:
                 start_question(s)
                 changed = True
             elif s['phase'] == 'question':

@@ -178,12 +178,38 @@ test('round end waits for the host and historical results show round points and 
   }
 });
 
-test('intro survives reaction updates without restarting crawl',()=>{
-  const h=harness(),state=h.apply({phase:'intro',question:null,active:null,intro_started_at:1000,intro_until:1014});
+test('round preview survives reaction updates and waits for the host',()=>{
+  const h=harness(),state=h.apply({phase:'intro',question:null,active:null,intro_started_at:1000,intro_until:null});
   assert(!h.node('grid-intro').hidden);assert(h.node('question-board').hidden);assert(h.node('question').hidden);
-  const writes=h.node('theme-crawl').writes;
+  const writes=h.node('round-preview-content').writes;
   h.apply({...state,version:state.version+1,reactions:[{id:1,time:1000,emoji:'👏'}]});
-  assert.equal(h.node('theme-crawl').writes,writes);
+  assert.equal(h.node('round-preview-content').writes,writes);
+  h.advance(60000);
+  assert.match(h.node('intro-countdown').textContent,/по команде ведущего/);
+});
+
+test('all presentation previews explain the mode, answer controls and configured grid rules',async()=>{
+  for(const [type,settings,expected] of [
+    ['blitz',{order:'random'},/Блиц.*случайном порядке.*Отправить ответ/s],
+    ['binary',{},/Выбор из двух.*один из двух вариантов.*сразу/s],
+    ['grid',{answer_mode:'all',chooser:'host'},/Отвечают все.*выбирает ведущий.*отвечают все игроки/s],
+    ['grid',{answer_mode:'single',chooser:'winner'},/Отвечает один.*первый верно ответивший.*быстрее остальных.*Только первый/s],
+  ]){
+    const h=harness();
+    const preview={phase:'intro',question:null,active:null,deadline:null,intro_until:null,display:true,
+      stage:{id:type,type,title:'Round title <script>',categories:['Music <theme>'],...settings}};
+    h.apply(preview);
+    const html=h.node('round-preview-content').innerHTML;
+    assert.match(html,expected);assert.match(html,/Round title &lt;script&gt;/);
+    if(type==='grid')assert.match(html,/Темы раунда.*Music &lt;theme&gt;/s);
+    else assert.doesNotMatch(html,/Темы раунда/);
+    assert(!h.node('grid-intro').hidden);assert(h.node('skip-intro').hidden);
+    for(const id of ['question','question-board','buzz-answer','binary-options','presentation-controls'])assert(h.node(id).hidden,id);
+    h.run("auth.user.id='h'");h.apply({...preview,display:false});
+    assert(!h.node('skip-intro').hidden);assert(h.node('presentation-controls').hidden);
+    h.ctx.calls=[];h.run('command=async action=>calls.push(action)');
+    await h.node('skip-intro').onclick();assert.deepEqual(Array.from(h.ctx.calls),['next']);
+  }
 });
 
 test('ceremony reveals lower places then third, second and first on all player screens',()=>{

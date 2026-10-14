@@ -31,6 +31,8 @@ def test_configured_effect_scoring_expiration_and_binary_answers(tmp_path,kind,p
     code=db.create(host,questions=[event,question,binary,dict(question,id='q3')])
     for player in (a,b):db.change(code,player,'join')
     db.change(code,host,'start')
+    assert db.read(code)['phase']=='intro' and db.read(code)['event'] is None and not db.read(code)['modifiers']
+    db.change(code, host, 'next')
     assert db.read(code)['event']['kind']==kind
     db.change(code,host,'next')
     db.change(code,a,'answer',text='Yes');db.change(code,b,'answer',text='No')

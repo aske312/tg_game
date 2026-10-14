@@ -14,6 +14,8 @@ def test_host_practice_starts_in_lobby_and_requires_manual_grading(tmp_path,monk
     assert len(state['players'])==4 and sum(bool(p.get('synthetic')) for p in state['players'])==3
     assert not any(p['id'].startswith('sim-host-') for p in state['players'])
     db.change(code,host,'start')
+    assert db.read(code)['phase']=='intro'
+    db.change(code,host,'next')
     with pytest.raises(ValueError):db.change(code,host,'answer',text='4')
     now=[max(db.read(code)['bot_due'].values())+.1]
     monkeypatch.setattr('app.store.time.time',lambda:now[0])
@@ -68,5 +70,6 @@ def test_api_allows_both_practice_perspectives_and_preserves_host_media_access(t
         path='/api/rooms/'+response.json()['code']
         assert client.post(path+'/action',headers=headers,json={'action':'start'}).status_code==400
         assert client.post(path+'/questions',headers=headers,json={'text':'2+2?','answer':'4'}).status_code==200
-        assert client.post(path+'/action',headers=headers,json={'action':'start'}).json()['phase']=='question'
+        assert client.post(path+'/action',headers=headers,json={'action':'start'}).json()['phase']=='intro'
+        assert client.post(path+'/action',headers=headers,json={'action':'next'}).json()['phase']=='question'
         assert client.post('/api/practice',headers=headers,json={'role':'player','pack':'custom'}).status_code==400

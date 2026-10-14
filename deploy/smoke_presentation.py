@@ -108,6 +108,9 @@ async def main():
                 await action(0,'pause')
                 await action(0,'unpause')
                 state,_=await action(0,'next')
+                assert state['phase']=='intro' and state['question'] is None and state['deadline'] is None
+                await denied(1,'answer',text='4')
+                state,_=await action(0,'next')
                 assert state['active']=='b1' and not state['scores_visible']
                 await action(1,'answer',text='4')
                 state,_=await action(0,'correct',player=users[1]['id'])
@@ -130,7 +133,7 @@ async def main():
             async with websockets.connect(host_ws) as ws:
                 await ws.send(json.dumps({'token':tokens[0]}))
                 assert json.loads(await asyncio.wait_for(ws.recv(),8))['phase']=='lobby'
-                for kind,extra in [('start',{})]:
+                for kind,extra in [('start',{}),('next',{})]:
                     response=await client.post(host_path+'/action',headers=headers[0],json=dict(action=kind,**extra))
                     response.raise_for_status()
                 while True:

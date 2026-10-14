@@ -79,6 +79,8 @@ def test_websocket_forces_display_role_and_hides_pending_answers(web_screen):
         ws.send_json(dict(token=guest['token'], display=False))
         assert ws.receive_json()['display']
         client.post(path, headers=host_headers, json=dict(action='start')).raise_for_status()
+        assert ws.receive_json()['phase'] == 'intro'
+        client.post(path, headers=host_headers, json=dict(action='next')).raise_for_status()
         state = ws.receive_json()
         assert state['display'] and state['phase'] == 'question' and 'answer' not in state['question']
         client.post(path, headers=player_headers, json=dict(action='answer', text='Signals')).raise_for_status()
@@ -125,5 +127,5 @@ def test_display_does_not_replace_host_login_and_can_renew(web_screen):
     with db.connect() as connection:
         connection.execute('UPDATE sessions SET expires=0 WHERE token=?', (guest['token'],))
     renewed = client.post('/api/display', json=dict(code=code)).json()
-    assert renewed['token'] != guest['token'] and renewed['state']['phase'] == 'question'
+    assert renewed['token'] != guest['token'] and renewed['state']['phase'] == 'intro'
     assert len(renewed['state']['players']) == 2
