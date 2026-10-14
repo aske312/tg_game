@@ -63,7 +63,7 @@ function renderPresentation() {
   $('game').dataset.scene=scene;
   const active=!['lobby','intro','finished'].includes(room.phase);
   show('presentation-controls',hasControls()&&active);
-  $('presentation-status').textContent='На экране: '+({question:'вопрос',answer:'ответ',board:'сетка',scores:'счёт',pause:'перерыв'}[scene]||'вопрос');
+  $('presentation-status').textContent='На экране: '+({question:'вопрос',answer:'ответ',board:'сетка',scores:'счёт',pause:'перерыв',round_end:'раунд завершён'}[scene]||'вопрос');
   for(const name of ['question','answer','board']){
     const button=$('scene-'+name);
     button.setAttribute('aria-pressed',scene===name?'true':'false');
@@ -82,7 +82,7 @@ function renderPresentation() {
     const waiting=room.stage?.type==='grid'&&(room.phase==='board'||(room.phase==='reveal'&&scene==='board'))&&!room.paused&&!room.scores_visible;
     show('board-waiting',waiting&&$('question-board').hidden);
     if(waiting)show('question',false);
-    else if(room.question&&!room.paused&&!room.scores_visible&&active)show('question',true);
+    else if(room.question&&!room.paused&&!room.scores_visible&&active&&$('round-end').hidden)show('question',true);
   }
   const scoresOnDisplay=isDisplay()&&room.phase!=='lobby'&&room.phase!=='finished'&&!!room.paused&&room.pause_view==='scores';
   show('presentation-scores',scoresOnDisplay);
@@ -140,8 +140,9 @@ function renderMedia(q) { renderQuestionMedia(q); }
 
 function renderReview() {
   const answers=Object.values(room.answers),checked=answers.filter(a=>a.verdict).length;
-  show('host-review-status',isHost()&&['review','reveal'].includes(room.phase)&&answers.length>0);
-  $('host-review-status').textContent=`Проверено ${checked} из ${answers.length} ответов`;
+  const missed=Object.keys(room.omission_penalties||{}).length;
+  show('host-review-status',isHost()&&['review','reveal'].includes(room.phase)&&(answers.length>0||missed>0));
+  $('host-review-status').textContent=`Проверено ${checked} из ${answers.length} ответов`+(missed?` · Пропусков: ${missed}, штрафы учтены`:'');
   const visible=isHost()&&room.phase==='review';
   $('review-list').innerHTML=visible?'<h3 class="review-heading">Проверить ответы</h3>'+room.players.filter(p=>room.answers[p.id]&&!room.answers[p.id].verdict).map(p=>{
     const a=room.answers[p.id];
@@ -151,7 +152,9 @@ function renderReview() {
 
 function renderHostLayout() {
   const controls=hasControls(),active=!['lobby','finished'].includes(room.phase);
-  show('host-console',controls&&active);
+  const roundEnd=room.stage_complete&&['reveal','event'].includes(room.phase);
+  const intermission=roundEnd&&!room.paused&&(room.display_scene==='round_end'||room.scores_visible);
+  show('host-console',controls&&active&&!intermission);
   show('host-options',controls&&room.phase!=='finished');
   show('host-player-count',isHost()&&room.phase==='lobby');
   $('host-player-count').textContent=`Игроков: ${room.players.length-1} / 8`;
@@ -251,10 +254,14 @@ function apply(s){
   if(q){
     $('category').textContent=`Вопрос ${s.question_number}/${s.question_count} · ${q.category}`;$('value').textContent=q.value+' очков';$('question-text').textContent=q.text;
     $('answer-count').textContent=`Ответили ${s.answered_ids.length} из ${s.stage?.answer_mode==='single'?1:s.players.length-1}`;
-    show('answer-form',canAnswer()&&!q.choices);show('my-answer',isPlayer()&&!!ownAnswer()&&s.phase==='question');
-    $('my-answer').textContent=ownAnswer()?'Твой ответ: '+ownAnswer().text+' · отправлен':'';
+    const penalty=s.omission_penalties?.[auth.user.id];
+    show('answer-form',canAnswer()&&!q.choices);show('my-answer',isPlayer()&&((!!ownAnswer()&&s.phase==='question')||penalty!==undefined));
+    $('my-answer').textContent=penalty!==undefined?`Ответ не отправлен · ${penalty} очков`:ownAnswer()?'Твой ответ: '+ownAnswer().text+' · отправлен':'';
     show('solution',!!q.answer);$('solution').textContent=q.answer?'Правильный ответ: '+q.answer:'';
-    show('close',hasControls()&&s.phase==='question');show('next',hasControls()&&s.phase==='reveal');
+    show('close',hasControls()&&s.phase==='question');show('next',hasControls()&&s.phase==='reveal'&&!s.stage_complete);
+    const missing=s.players.length-1-s.answered_ids.length,all=s.stage?.type!=='grid'||s.stage.answer_mode!=='single';
+    $('close').textContent=all&&missing>0?`Завершить вопрос · без ответа: ${missing}`:'Завершить вопрос';
+    show('close-hint',hasControls()&&s.phase==='question'&&all&&missing>0);
     $('next').textContent=s.stage_complete?'Показать счёт раунда →':s.stage?.type==='grid'?'Вернуться к сетке →':'Следующий вопрос →';
     if(oldQuestion!==s.code+':'+s.active){$('answer-text').value='';}
     if(s.phase!=='finished')renderMedia(q);renderReview();
@@ -273,6 +280,8 @@ function tick(){
   const now=room.paused?room.paused_at*1000:Date.now()+offset;
   const left=room.deadline?Math.max(0,room.deadline*1000-now):null;
   const n=left===null?null:Math.ceil(left/1000),urgent=n!==null&&n<=10;
+  show('timeout-hint',room.phase==='question'&&n===0&&!room.paused);
+  $('timeout-hint').textContent=hasControls()?'Время вышло. Завершите вопрос, чтобы перейти к проверке и результатам.':'Время вышло. Дождитесь завершения вопроса ведущим.';
   $('timer').textContent=n===null?'':n===0?'Время вышло':`${n} сек.`;
   $('timer').dataset.urgent=urgent;$('timer-track').dataset.urgent=urgent;
   show('timer-track',n!==null);
@@ -320,6 +329,10 @@ $('continue-game').onclick=guard(()=>command('unpause'));
 $('show-scores').onclick=guard(()=>command('show_scores'));
 $('hide-scores').onclick=guard(()=>command('hide_scores'));
 $('scores-next').onclick=guard(()=>command('next'));
+$('round-next').onclick=guard(()=>command('next'));
+$('round-results-button').onclick=guard(()=>command('show_scores'));
+$('results-back').onclick=guard(()=>command('hide_scores'));
+$('results-round').onchange=guard(()=>command('show_scores',{question:$('results-round').value}));
 $('skip-intro').onclick=guard(()=>command('next'));
 $('manage-player').onchange=renderManagement;
 $('score-form').onsubmit=guard(()=>command('adjust_score',{player:$('manage-player').value,delta:Number($('score-delta').value)}));

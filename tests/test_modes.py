@@ -137,18 +137,19 @@ def test_auto_blitz_waits_for_grading_then_moves_once(tmp_path,monkeypatch):
     assert not db.tick(code)
 
 
-def test_auto_event_and_empty_question_advance_without_scoring(tmp_path,monkeypatch):
-    event=dict(id='e',stage='b',type='event',title='Event',text='',effect=dict(type='random_buff',target='all_players',questions=1))
+def test_auto_event_then_timeout_waits_for_host_and_penalizes_skips(tmp_path,monkeypatch):
+    event=dict(id='e',stage='b',type='event',title='Event',text='',effect=dict(type='double_reward',target='all_players',questions=1))
     db,code,host,a,b=room(tmp_path,[stage('b','blitz',auto_advance=True)],[event,question('q','b')])
     now=[db.read(code)['advance_at']+.1]
     monkeypatch.setattr('app.store.time.time',lambda:now[0])
     assert db.tick(code) and db.read(code)['phase']=='question'
     now[0]=db.read(code)['deadline']+.1
-    assert db.tick(code) and db.read(code)['phase']=='reveal'
+    assert db.tick(code) and db.read(code)['phase']=='question'
+    db.change(code,host,'close')
     assert db.read(code)['advance_at'] is None
     db.change(code,host,'next')
     assert db.read(code)['phase']=='finished'
-    assert all(p['score']==0 for p in db.read(code)['players'])
+    assert [p['score'] for p in db.read(code)['players']]==[0,-100,-100]
 
 
 def test_practice_grid_and_binary_robots(tmp_path,monkeypatch):

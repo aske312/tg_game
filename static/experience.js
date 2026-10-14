@@ -7,6 +7,11 @@ function rankedPlayers(players,host) {
 function resultRows(players) {
   return players.map(p=>`<div class="final-result"><span>${p.rank}</span><span class="result-name">${esc(p.name)}</span><strong>${p.score} очков</strong></div>`).join('');
 }
+function roundResultRows(result) {
+  const players=rankedPlayers(result.players,room.host);
+  return '<div class="round-result-heading"><span></span><span>Игрок</span><span>За раунд</span><span>Всего</span></div>'+players.map(p=>
+    `<div class="round-result-row"><span>${p.rank}</span><span class="result-name">${esc(p.name)}</span><strong>${p.round_points==null?'—':(p.round_points>0?'+':'')+p.round_points}</strong><strong>${p.score} очков</strong></div>`).join('');
+}
 function ceremonyPlan(players,host) {
   const ranked=rankedPlayers(players,host);
   return {ranked,lower:ranked.filter(p=>p.rank>3).reverse(),podium:[...new Set(ranked.filter(p=>p.rank<=3).map(p=>p.rank))].sort((a,b)=>b-a)};
@@ -21,6 +26,13 @@ function renderExperience() {
   show('show-scores',roundEnd&&!scores);show('hide-scores',scores);
   show('pause-panel',paused);show('round-scores',scores&&!paused);
   show('grid-intro',intro&&!paused&&!scores);
+  const endScreen=roundEnd&&!paused&&!scores&&(!isDisplay()||room.display_scene==='round_end');
+  show('round-end',endScreen);
+  show('round-next',hasControls());show('round-results-button',hasControls());
+  $('round-end-title').textContent='Раунд завершён';
+  $('round-end-name').textContent=room.stage?.title||'';
+  $('round-end-caption').textContent=hasControls()?'Перейдите дальше или покажите промежуточные результаты.':room.stage_number===room.stage_count?'Дальше — итоги игры. Ждём решения ведущего.':'Дальше — следующий раунд. Ждём решения ведущего.';
+  $('round-next').textContent=room.stage_number===room.stage_count?'К награждению →':'Следующий раунд →';
   show('skip-intro',hasControls());show('scores-next',hasControls()&&!paused);
   $('scores-next').textContent=room.stage_number===room.stage_count?'К награждению →':'Следующий раунд →';
   show('scores-waiting',scores&&!hasControls());
@@ -33,15 +45,25 @@ function renderExperience() {
     for(const id of ['question','question-board','event','ready','stage-banner','board-waiting'])show(id,false);
     const media=$('media-content').querySelector('audio,video');media?.pause();
   }
+  if(endScreen&&(!isHost()||room.display_scene==='round_end')){
+    for(const id of ['question','question-board','event','stage-banner','board-waiting'])show(id,false);
+  }
   if(paused||scores||intro||finished)show('round-status',false);
   if(paused||scores||intro||finished)show('finish',false);
   if(paused)$('phase').textContent='Игра на паузе';
   else if(scores)$('phase').textContent='Счёт после раунда';
   else if(intro)$('phase').textContent='Знакомимся с темами';
+  else if(endScreen)$('phase').textContent='Раунд завершён';
   if(scores){
-    $('scores-title').textContent=room.stage.title;
-    $('round-results').innerHTML=resultRows(rankedPlayers(room.players,room.host));
+    const results=room.round_results||[],selected=results.find(r=>r.stage_id===room.scores_round)||results.find(r=>r.stage_id===room.stage.id);
+    $('scores-title').textContent=selected?.title||room.stage.title;
+    $('round-results').innerHTML=selected?roundResultRows(selected):resultRows(rankedPlayers(room.players,room.host));
+    const select=$('results-round'),key=JSON.stringify(results.map(r=>[r.stage_id,r.title]));
+    if(select.dataset.rounds!==key){select.innerHTML=results.map((r,i)=>`<option value="${esc(r.stage_id)}">Раунд ${r.stage_index+1} · ${esc(r.title)}</option>`).join('');select.dataset.rounds=key;}
+    select.value=selected?.stage_id||'';
   }
+  show('round-results-picker',scores&&hasControls()&&(room.round_results||[]).length>1);
+  show('results-back',scores&&hasControls());
   if(intro){
     const key=room.code+':'+room.stage.id;
     if(crawlKey!==key){

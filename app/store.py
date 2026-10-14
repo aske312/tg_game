@@ -48,6 +48,8 @@ def migrate(s):
     s.setdefault('paused', False)
     s.setdefault('pause_view', 'break')
     s.setdefault('scores_visible', False)
+    s.setdefault('omission_penalties', {})
+    s.setdefault('round_results', [])
     for stage in s['stages']:
         if stage['type'] == 'grid' and 'categories' not in stage:
             stage['categories'] = list(dict.fromkeys(q['category'] for q in s['pack'] if q.get('stage') == stage['id'] and q.get('type') != 'event'))
@@ -100,12 +102,39 @@ def finish_reveal(s):
         s['media_playback'] = dict(question=q['id'], mode='full', playing=True, position=0,
                                    updated_at=time.time(), revision=previous.get('revision', 0)+1)
         s['advance_at'] = None  # The host decides when the full recording ends.
+        if not remaining_stage(s):
+            complete_round(s, show_end=False)
     elif not remaining_stage(s):
-        show_round_scores(s)
+        complete_round(s)
 
 
-def show_round_scores(s):
-    s.update(scores_visible=True, advance_at=None)
+def record_round_result(s):
+    stage = current_stage(s)
+    baseline = s.get('stage_start_scores') if s.get('score_stage') == stage['id'] else None
+    result = dict(stage_id=stage['id'], stage_index=s['stage_index'], title=stage['title'],
+                  players=[dict(id=p['id'], name=p['name'], score=p['score'],
+                                round_points=p['score']-baseline.get(p['id'], 0) if baseline is not None else None)
+                           for p in s['players'] if p['id'] != s['host']])
+    results = s.setdefault('round_results', [])
+    results[:] = sorted([r for r in results if r['stage_id'] != stage['id']]+[result], key=lambda r:r['stage_index'])
+
+
+def complete_round(s, show_end=True):
+    record_round_result(s)
+    if s.get('scores_visible'):
+        s['advance_at'] = None
+        return
+    s.update(scores_visible=False, advance_at=None)
+    if show_end:
+        s['display_scene'] = 'round_end'
+
+
+def show_round_scores(s, stage_id=None):
+    record_round_result(s)
+    stage_id = stage_id or current_stage(s)['id']
+    if not any(r['stage_id'] == stage_id for r in s['round_results']):
+        raise ValueError('Результаты этого раунда ещё недоступны')
+    s.update(scores_visible=True, advance_at=None, scores_round=stage_id)
     if s.get('media_playback'):
         now = time.time()
         playback = s['media_playback']
@@ -141,9 +170,12 @@ def media_position(s, now):
 
 
 def start_question(s, selected=None):
+    previous_stage = current_stage(s)['id']
+    was_lobby = s['phase'] == 'lobby'
     s['media_playback'] = None
     s['display_scene'] = 'question'
     s['responder'] = None
+    s.update(time_expired=False, omission_penalties={})
     available = remaining_stage(s)
     while not available:
         if s['stage_index']+1 == len(s['stages']):
@@ -153,6 +185,9 @@ def start_question(s, selected=None):
         s['stage_index'] += 1
         s['chooser'] = s['host']
         available = remaining_stage(s)
+    if s.get('score_stage') != current_stage(s)['id']:
+        s['stage_start_scores'] = {p['id']: p['score'] for p in s['players']} if was_lobby or previous_stage != current_stage(s)['id'] else None
+        s['score_stage'] = current_stage(s)['id']
     s['advance_at'] = None
     s['scores_visible'] = False
     if current_stage(s)['type'] == 'grid' and selected is None:
@@ -175,7 +210,7 @@ def start_question(s, selected=None):
         if current_stage(s)['auto_advance'] and remaining_stage(s):
             s['advance_at'] = time.time()+3
         if not remaining_stage(s):
-            show_round_scores(s)
+            complete_round(s)
         message(s, 'Ведущий', s['event']['title']+' · '+s['event']['description']+' Участники: '+', '.join(s['event']['targets']), 'system')
         return
     now = time.time()
@@ -187,9 +222,17 @@ def start_question(s, selected=None):
     message(s, 'Ведущий', f"Вопрос {len(s['used'])+1}: {q['text']}", 'system')
 
 
-def close_question(s):
-    s.update(phase='review' if s['answers'] else 'reveal', deadline=None, auto_at=time.time()+1.5)
+def close_question(s, penalize_missing=False):
     q = current_question(s)
+    if penalize_missing and not single_answer(s):
+        for player in s['players']:
+            uid = player['id']
+            if uid != s['host'] and uid not in s['answers']:
+                delta = score_delta(s, uid, q['value'], False)
+                player['score'] += delta
+                s['omission_penalties'][uid] = delta
+                message(s, 'Ведущий', f"{player['name']}: ответ не отправлен ({delta:+d})", 'system')
+    s.update(phase='review' if s['answers'] else 'reveal', deadline=None, auto_at=time.time()+1.5)
     if q['id'] not in s['used']:
         s['used'].append(q['id'])
     consume_modifiers(s)
@@ -399,6 +442,8 @@ class Store:
                     if media_mode is not None and media_mode != playback.get('mode', 'excerpt'):
                         return False  # Ignore delayed commands from the previous excerpt player.
                     if s.get('display_scene', 'question') not in ('question', 'answer'):
+                        if action == 'media_pause':
+                            return False  # A display may finish reporting after its scene was hidden.
                         raise ValueError('Сначала покажите вопрос или ответ на демонстрации')
                     if action == 'media_seek' and position is None:
                         raise ValueError('Укажите позицию в отрывке')
@@ -420,7 +465,7 @@ class Store:
                                                position=position, updated_at=now, revision=playback['revision']+1, duration=duration, mode=playback.get('mode', 'excerpt'))
                     if (action == 'media_pause' and playback.get('mode') == 'full' and s['phase'] == 'reveal'
                             and not remaining_stage(s) and duration is not None and position >= duration-.05):
-                        show_round_scores(s)
+                        complete_round(s)
                 elif action in ('display_question', 'display_answer', 'display_board'):
                     scene = action.removeprefix('display_')
                     if s['phase'] in ('lobby', 'intro', 'finished'):
@@ -445,6 +490,8 @@ class Store:
                         if type(delta) is not int or abs(delta) > MAX_SAFE_INTEGER or abs(target['score'] + delta) > MAX_SAFE_INTEGER:
                             raise ValueError('Укажите допустимое целое изменение счёта')
                         target['score'] += delta
+                        if s['phase'] in ('reveal', 'event') and not remaining_stage(s):
+                            record_round_result(s)
                         message(s, 'Ведущий', f"Корректировка: {target['name']} {delta:+d} · счёт {target['score']}", 'system')
                     else:
                         # Closed questions retain their scoring snapshot; changes apply to future questions.
@@ -470,6 +517,7 @@ class Store:
                     skipped = [q['id'] for q in s['pack'] if q.get('stage', 'legacy') == current_stage(s)['id'] and q['id'] not in s['used']]
                     s.setdefault('skipped', []).extend(skipped)
                     s['used'].extend(skipped)
+                    record_round_result(s)
                     message(s, 'Ведущий', f"Раунд «{current_stage(s)['title']}» пропущен. Неоценённые ответы не начисляют очки.", 'system')
                     s.update(active=None, answers={}, deadline=None, advance_at=None, auto_at=None, bot_due={}, event=None,
                              round_modifiers={}, scores_visible=False, chooser=s['host'])
@@ -558,9 +606,9 @@ class Store:
                     if s['phase'] not in ('reveal', 'event') or remaining_stage(s):
                         raise ValueError('Счёт можно показать после завершения раунда')
                     if action == 'show_scores':
-                        show_round_scores(s)
+                        show_round_scores(s, question)
                     else:
-                        s.update(scores_visible=False, advance_at=None)
+                        s.update(scores_visible=False, advance_at=None, display_scene='round_end')
                 elif action == 'message':
                     text = text.strip()
                     if s['phase'] == 'question':
@@ -571,7 +619,7 @@ class Store:
                 elif action == 'close':
                     if s['phase'] != 'question':
                         raise ValueError('Приём ответов уже закрыт')
-                    close_question(s)
+                    close_question(s, penalize_missing=True)
                 elif action in ('correct', 'wrong'):
                     grade(s, player, action == 'correct')
                 elif action == 'next':
@@ -617,6 +665,7 @@ class Store:
                     s['question']['correct_choice'] = q['correct_choice']
         s['answered_ids'] = list(s['answers'])
         if uid != s['host'] and not display:
+            s['omission_penalties'] = {k: v for k, v in s['omission_penalties'].items() if k == uid}
             s['answers'] = {k: v for k, v in s['answers'].items() if k == uid}
             s['messages'] = [m for m in s['messages'] if m['kind'] != 'answer' or m.get('user_id') == uid]
         if s['phase'] == 'question' and (uid != s['host'] or display):
@@ -630,6 +679,7 @@ class Store:
             s['question_list'] = s['pack']
         if display:
             s.pop('display_answers', None)
+            s.pop('omission_penalties', None)
             s['answers'] = {}
             s['messages'] = []
         s['display'] = display
@@ -662,8 +712,9 @@ class Store:
                 changed = True
             elif s['phase'] == 'question':
                 if now >= s['deadline']:
-                    close_question(s)
-                    changed = True
+                    if not s.get('time_expired'):
+                        s['time_expired'] = True
+                        changed = True
                 elif s['practice']:
                     for i, p in enumerate(s['players']):
                         if p.get('synthetic') and p['id'] != s['host'] and p['id'] not in s['answers'] and now >= s['bot_due'].get(p['id'], float('inf')):
@@ -690,7 +741,7 @@ class Store:
                 if remaining_stage(s):
                     start_question(s)
                 else:
-                    show_round_scores(s)
+                    complete_round(s)
                 changed = True
             if changed:
                 s['version'] += 1

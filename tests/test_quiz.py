@@ -59,8 +59,10 @@ def test_timeout_and_skipped_answer(game, monkeypatch):
     with pytest.raises(ValueError):
         db.change(code, b, 'answer', text='4')
     assert db.tick(code)
+    assert db.read(code)['phase'] == 'question'
+    db.change(code, host, 'close')
     db.change(code, host, 'correct', player=a['id'])
-    assert db.read(code)['players'][2]['score'] == 0
+    assert db.read(code)['players'][2]['score'] == -100
     with pytest.raises(ValueError):
         db.public(code, 'outsider')
 

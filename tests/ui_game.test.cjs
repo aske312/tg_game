@@ -127,6 +127,22 @@ test('pause keeps countdown frozen and round scores replace the question',()=>{
   assert.match(h.node('round-results').innerHTML,/Player/);
 });
 
+test('expired questions keep waiting for host and show skipped-answer penalties privately',()=>{
+  const host=harness();host.run("auth.user.id='h'");
+  host.apply({deadline:999,can_answer:false,time_expired:true});
+  assert(!host.node('question').hidden);assert(!host.node('timeout-hint').hidden);
+  assert.match(host.node('close').textContent,/Завершить вопрос.*1/);
+  assert(!host.node('close-hint').hidden);assert(host.node('review-list').innerHTML==='');
+  const screen=harness();screen.apply({display:true,deadline:999,time_expired:true});
+  assert(!screen.node('question').hidden);assert(screen.node('solution').hidden);assert(!screen.node('timeout-hint').hidden);
+  const player=harness();player.apply({deadline:999,can_answer:false,time_expired:true});
+  assert(player.node('answer-form').hidden);assert(player.node('answer-send').disabled);
+  player.apply({phase:'review',omission_penalties:{p:-100}});
+  assert(!player.node('my-answer').hidden);assert.match(player.node('my-answer').textContent,/-100/);
+  player.apply({phase:'review',omission_penalties:{p:0}});
+  assert(!player.node('my-answer').hidden);assert.match(player.node('my-answer').textContent,/0 очков/);
+});
+
 test('round scores offer only the host a next-round action',()=>{
   for(const role of ['host','player','display']){
     const h=harness();if(role==='host')h.run("auth.user.id='h'");
@@ -137,6 +153,28 @@ test('round scores offer only the host a next-round action',()=>{
     assert.equal(h.node('scores-next').textContent,'Следующий раунд →');
     h.apply({display:role==='display',phase:'reveal',stage_complete:true,scores_visible:true,stage_count:1});
     assert.equal(h.node('scores-next').textContent,'К награждению →');
+  }
+});
+
+test('round end waits for the host and historical results show round points and totals',async()=>{
+  const results=[{stage_id:'g',stage_index:0,title:'First',players:[{id:'p',name:'Player',score:100,round_points:100}]},
+    {stage_id:'b',stage_index:1,title:'Second',players:[{id:'p',name:'Player',score:50,round_points:-50}]}];
+  for(const role of ['host','player','display']){
+    const h=harness();if(role==='host')h.run("auth.user.id='h'");
+    h.apply({display:role==='display',phase:'reveal',display_scene:'round_end',stage_complete:true,round_results:results});
+    assert(!h.node('round-end').hidden);assert(h.node('question').hidden);assert(h.node('round-scores').hidden);
+    assert.equal(h.node('round-next').hidden,role!=='host');assert.equal(h.node('round-results-button').hidden,role!=='host');
+    h.apply({display:role==='display',phase:'reveal',display_scene:'round_end',stage_complete:true,scores_visible:true,round_results:results,scores_round:'g'});
+    assert(h.node('round-end').hidden);assert(!h.node('round-scores').hidden);
+    assert.match(h.node('round-results').innerHTML,/За раунд.*Всего.*\+100.*100 очков/s);
+    assert.equal(h.node('scores-title').textContent,'First');
+    h.apply({display:role==='display',phase:'reveal',stage_complete:true,scores_visible:true,round_results:results,scores_round:'b'});
+    assert.match(h.node('round-results').innerHTML,/-50.*50 очков/s);
+    if(role==='host'){
+      h.ctx.calls=[];h.run('command=async action=>calls.push(action)');
+      await h.node('round-next').onclick();await h.node('round-results-button').onclick();
+      assert.deepEqual(Array.from(h.ctx.calls),['next','show_scores']);
+    }
   }
 });
 
