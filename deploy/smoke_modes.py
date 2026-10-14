@@ -50,6 +50,8 @@ async def main():
                 while state['phase']!='finished':
                     mode=state['stage']['type']
                     if not seen or seen[-1]!=mode:seen.append(mode)
+                    if state['phase']=='intro':
+                        state=await action(0,'next')
                     if state['phase'] in ('board','reveal') and mode=='grid' and not state['stage_complete']:
                         cell=next(q for q in state['board'] if not q['used'])
                         await action(2,'pick',expected=400,question=cell['id'])

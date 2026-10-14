@@ -287,8 +287,9 @@ async def watch(code: str, authorization: str = Header(default='')):
 async def action(code: str, body: Command, authorization: str = Header(default='')):
     user = current_user(authorization)
     try:
-        store.change(code.upper(), user, body.action, body.question, body.text, body.player, body.choice)
-        await publish(code.upper())
+        changed = store.change(code.upper(), user, body.action, body.question, body.text, body.player, body.choice)
+        if changed:
+            await publish(code.upper())
         return store.public(code.upper(), user['id'])
     except ValueError as e:
         raise HTTPException(400, str(e))

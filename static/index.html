@@ -3,8 +3,8 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101e18"><title>Клан крыс · Крысиные бега</title>
 <link rel="icon" href="/static/rat.svg?v=2" type="image/svg+xml">
-<link rel="stylesheet" href="/static/style.css?v=9"><link rel="stylesheet" href="/static/roles.css?v=1"><link rel="stylesheet" href="/static/quiz.css?v=9"><link rel="stylesheet" href="/static/modes.css?v=9">
-<script src="https://telegram.org/js/telegram-web-app.js"></script><script defer src="/static/app.js?v=12"></script>
+<link rel="stylesheet" href="/static/style.css?v=9"><link rel="stylesheet" href="/static/roles.css?v=2"><link rel="stylesheet" href="/static/quiz.css?v=9"><link rel="stylesheet" href="/static/modes.css?v=9"><link rel="stylesheet" href="/static/experience.css?v=1">
+<script src="https://telegram.org/js/telegram-web-app.js"></script><script defer src="/static/experience.js?v=1"></script><script defer src="/static/app.js?v=13"></script>
 </head><body><main>
 <header class="app-header"><a href="/" class="brand" aria-label="Клан крыс — главная"><span class="brand-mark"><img src="/static/rat.svg?v=2" alt="" width="36" height="36"></span><span>клан<br><span>крыс.</span></span></a><div class="identity"><i aria-hidden="true"></i><span id="identity">Квиз для своих</span></div></header>
 <div id="notice" role="status" aria-live="polite"></div>
@@ -23,9 +23,14 @@
 <section id="game" hidden>
   <div class="room-head"><div><span class="eyebrow">КОМНАТА</span><h1 id="room-code"></h1></div><button id="invite" class="secondary small">Пригласить ↗</button></div>
   <div class="status-line"><span id="phase"></span><span id="connection">Подключение…</span></div><div id="round-status" class="round-progress" hidden><span id="round-label"></span><progress id="round-progress" max="1" value="0" aria-label="Прогресс игры"></progress></div>
+  <div id="host-toolbar" class="host-toolbar" hidden><button id="pause-game" class="secondary small">Пауза</button><button id="continue-game" class="small" hidden>Продолжить игру</button><button id="show-scores" class="secondary small" hidden>Показать счёт раунда</button><button id="hide-scores" class="secondary small" hidden>Скрыть счёт</button></div>
   <div class="game-grid">
     <aside id="scoreboard" class="scoreboard panel" aria-label="Участники и очки"><div class="scoreboard-heading"><h2>Участники</h2><span id="player-count" class="count-badge"></span></div><div id="players" class="players"></div></aside>
     <div class="game-stage">
+      <section id="pause-panel" class="panel pause-panel" hidden><span class="eyebrow">ПЕРЕРЫВ</span><h2>Клан на паузе</h2><p>Время остановлено. Продолжим по сигналу ведущего.</p></section>
+      <section id="round-scores" class="panel" hidden><span class="eyebrow">РАУНД ЗАВЕРШЁН</span><h2 id="scores-title"></h2><div id="round-results" class="final-results"></div><button id="scores-next" class="button-wide" hidden>Следующий раунд →</button></section>
+      <section id="grid-intro" class="grid-intro" hidden aria-label="Темы раунда"><div class="crawl-viewport"><div id="theme-crawl" class="theme-crawl"></div></div><p class="intro-caption">Сейчас начнём · <span id="intro-countdown"></span></p><button id="skip-intro" class="secondary small" hidden>Перейти к вопросам →</button></section>
+      <section id="board-waiting" class="panel board-waiting" hidden><span class="eyebrow">ВЫБОР ВОПРОСА</span><h2>Следующий ход</h2><p id="chooser-waiting"></p></section>
       <section id="lobby" class="panel lobby-panel" hidden><span class="eyebrow">ПЕРЕД СТАРТОМ</span><h2 id="lobby-title">Все на месте?</h2><p id="pack-count"></p><div class="lobby-rule"><span aria-hidden="true">↗</span><p>Дождись всех игроков и запусти игру. Ответы появятся в панели ведущего, счёт — на общем экране.</p></div><button id="start" class="button-wide" hidden>Начать игру <span aria-hidden="true">→</span></button><p id="waiting" class="waiting-note" hidden>Ведущий запустит игру, когда все соберутся.</p></section>
       <details id="editor" class="panel editor-panel" hidden><summary>Добавить свой вопрос <span aria-hidden="true">+</span></summary><form id="question-form">
         <label for="q-stage">Раунд игры</label><select id="q-stage"></select>
@@ -45,11 +50,12 @@
       </article>
       <article id="event" class="panel event-panel" hidden><div class="event-top"><span class="eyebrow">ПОВОРОТ В ЗАБЕГЕ</span><span class="event-symbol" aria-hidden="true">✳</span></div><h2 id="event-title"></h2><p id="event-text"></p><div class="effect-card"><span class="eyebrow">ЧТО МЕНЯЕТСЯ</span><h3 id="effect-title"></h3><p id="effect-description"></p><p id="effect-targets"></p></div><button id="event-next" class="button-wide">Продолжить <span aria-hidden="true">→</span></button></article>
       <section id="ready" class="panel" hidden><span class="eyebrow">СНОВА НА СТАРТ</span><h2>Продолжим забег?</h2><button id="resume" class="button-wide">Следующий вопрос →</button></section>
-      <section id="finished" class="panel finished-panel" hidden><span class="eyebrow">ФИНИШНАЯ ПРЯМАЯ ПОЗАДИ</span><span class="finish-symbol" aria-hidden="true">⚑</span><h2>Вот это<br>был забег.</h2><p class="winner-label">ПОБЕДИТЕЛЬ</p><p id="winner"></p><div id="final-results" class="final-results"></div><button id="another" class="button-wide">Новая комната <span aria-hidden="true">↗</span></button></section>
+      <section id="finished" class="panel finished-panel ceremony" hidden><span class="eyebrow">КЛАН, ВСТРЕЧАЙ ПОБЕДИТЕЛЕЙ</span><h2 id="awards-title">Итоги игры</h2><p id="awards-caption">Начинаем с последних мест…</p><div id="award-spotlight" class="award-spotlight" aria-live="polite"></div><div id="final-results" class="final-results" aria-live="polite"></div><button id="enable-sound" class="secondary small">Включить фанфары</button><button id="another" class="button-wide">Новая комната <span aria-hidden="true">↗</span></button></section>
     </div>
 
   </div>
   <section id="reactions" class="reaction-panel" aria-label="Реакции"><span>Поддержи клан</span><div id="reaction-buttons"><button data-reaction="🐀" aria-label="Крыса">🐀</button><button data-reaction="🔥" aria-label="Огонь">🔥</button><button data-reaction="👏" aria-label="Аплодисменты">👏</button><button data-reaction="😂" aria-label="Смех">😂</button><button data-reaction="❤️" aria-label="Сердце">❤️</button><button data-reaction="🤯" aria-label="Удивление">🤯</button></div></section>
   <div id="reaction-stream" class="reaction-stream" role="status" aria-label="Реакции комнаты" aria-live="polite"></div>
+  <div id="confetti-layer" class="confetti-layer" aria-hidden="true"></div>
   <div class="game-footer"><span id="room-footer" class="room-footer"></span><button id="leave" class="text-button">← На главную</button><button id="finish" class="text-button" hidden>Завершить игру</button></div>
 </section></main></body></html>

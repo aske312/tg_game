@@ -27,6 +27,8 @@ def room(tmp_path, stages, questions):
     code=db.create(host,stages=stages,questions=questions)
     for user in (a,b):db.change(code,user,'join')
     db.change(code,host,'start')
+    if db.read(code)['phase']=='intro':
+        db.change(code,host,'next')
     return db,code,host,a,b
 
 
@@ -45,6 +47,9 @@ def test_six_mixed_rounds_share_score_and_persist(tmp_path):
         state=Store(db.path).public(code,'a')
         assert state['stage_number']==index+1 and state['stage_count']==6
         if s['type']=='grid':
+            if state['phase']=='intro':
+                db.change(code,host,'next')
+                state=db.public(code,'a')
             assert state['phase']=='board' and not state['can_pick']
             assert all(set(cell)=={'id','category','value','used'} for cell in state['board'])
             db.change(code,host,'pick',question='q'+s['id'])
@@ -140,8 +145,9 @@ def test_auto_event_and_empty_question_advance_without_scoring(tmp_path,monkeypa
     assert db.tick(code) and db.read(code)['phase']=='question'
     now[0]=db.read(code)['deadline']+.1
     assert db.tick(code) and db.read(code)['phase']=='reveal'
-    now[0]=db.read(code)['advance_at']+.1
-    assert db.tick(code) and db.read(code)['phase']=='finished'
+    assert db.read(code)['advance_at'] is None
+    db.change(code,host,'next')
+    assert db.read(code)['phase']=='finished'
     assert all(p['score']==0 for p in db.read(code)['players'])
 
 
@@ -177,6 +183,7 @@ def test_http_choice_and_full_length_grid_id(tmp_path,monkeypatch):
         path='/api/rooms/'+code
         assert client.post(path+'/join',headers=ph,json={}).status_code==200
         client.post(path+'/action',headers=hh,json={'action':'start'})
+        assert client.post(path+'/action',headers=hh,json={'action':'next'}).status_code==200
         assert client.post(path+'/action',headers=ph,json={'action':'pick','question':'q'*64}).status_code==400
         assert client.post(path+'/action',headers=hh,json={'action':'pick','question':'q'*64}).status_code==200
         client.post(path+'/action',headers=ph,json={'action':'answer','text':'Да'})

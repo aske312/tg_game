@@ -54,11 +54,12 @@ def test_reactions_broadcast_during_question_and_are_limited(room, monkeypatch):
     assert store.public(code, host['id'])['reactions'][0]['emoji'] == '🔥'
     assert store.public(code, screen['id'], display=True)['reactions'][0]['emoji'] == '🔥'
     assert store.read(code)['answers'] == {}
-    with pytest.raises(ValueError):
-        store.change(code, player, 'reaction', text='👏')
+    before=store.read(code)
+    assert store.change(code, player, 'reaction', text='👏') is False
+    assert store.read(code)['version']==before['version']
     with pytest.raises(ValueError):
         store.change(code, host, 'reaction', text='arbitrary text')
-    now = store.read(code)['reactions'][0]['time'] + 3
+    now = store.read(code)['reactions'][0]['time'] + 1
     monkeypatch.setattr('app.store.time.time', lambda: now)
     store.change(code, player, 'reaction', text='👏')
     assert len(store.read(code)['reactions']) == 2

@@ -43,6 +43,9 @@ def migrate(s):
     s.setdefault('stage_index', 0)
     s.setdefault('chooser', s['host'])
     s.setdefault('advance_at', None)
+    s.setdefault('ui_version', s['version'])
+    s.setdefault('paused', False)
+    s.setdefault('scores_visible', False)
     for stage in s['stages']:
         if stage['type'] == 'grid' and 'categories' not in stage:
             stage['categories'] = list(dict.fromkeys(q['category'] for q in s['pack'] if q.get('stage') == stage['id'] and q.get('type') != 'event'))
@@ -74,6 +77,7 @@ def remaining_stage(s):
 
 def can_pick(s, uid):
     return (current_stage(s)['type'] == 'grid' and s['phase'] in ('board', 'reveal')
+            and not s.get('paused') and not s.get('scores_visible')
             and bool(remaining_stage(s))
             and (uid in (s['host'], s['chooser']) or (s['practice'] and uid == s['owner'])))
 
@@ -82,20 +86,33 @@ def finish_reveal(s):
     s['phase'] = 'reveal'
     correct = [(a['time'], uid) for uid, a in s['answers'].items() if a['verdict'] == 'correct']
     s['chooser'] = min(correct)[1] if correct and current_stage(s)['chooser'] == 'winner' else s['host']
-    s['advance_at'] = time.time()+3 if current_stage(s)['type'] != 'grid' and current_stage(s)['auto_advance'] else None
+    s['advance_at'] = time.time()+3 if current_stage(s)['type'] != 'grid' and current_stage(s)['auto_advance'] and (remaining_stage(s) or s['practice']) else None
+
+
+def finish_game(s):
+    s.update(phase='finished', deadline=None, advance_at=None, finished_at=time.time(), scores_visible=False)
 
 
 def start_question(s, selected=None):
     available = remaining_stage(s)
     while not available:
         if s['stage_index']+1 == len(s['stages']):
-            s.update(phase='finished', active=None, deadline=None, advance_at=None)
+            finish_game(s)
+            s['active'] = None
             return
         s['stage_index'] += 1
         s['chooser'] = s['host']
         available = remaining_stage(s)
     s['advance_at'] = None
+    s['scores_visible'] = False
     if current_stage(s)['type'] == 'grid' and selected is None:
+        if not s['practice'] and current_stage(s)['id'] not in s.setdefault('introduced_stages', []):
+            s['introduced_stages'].append(current_stage(s)['id'])
+            categories = current_stage(s).get('categories', [])
+            now = time.time()
+            s.update(phase='intro', active=None, answers={}, deadline=None, event=None,
+                     intro_started_at=now, intro_until=now+min(40, 12+len(categories)*2))
+            return
         s.update(phase='board', active=None, answers={}, deadline=None, event=None)
         return
     q = next((q for q in available if q['id'] == selected), None) if selected else available[0]
@@ -104,7 +121,7 @@ def start_question(s, selected=None):
     if q.get('type') == 'event':
         s.update(phase='event', active=q['id'], answers={}, deadline=None, event=apply_event(s, q))
         s['used'].append(q['id'])
-        if current_stage(s)['auto_advance']:
+        if current_stage(s)['auto_advance'] and (remaining_stage(s) or s['practice']):
             s['advance_at'] = time.time()+3
         message(s, 'Ведущий', s['event']['title']+' · '+s['event']['description']+' Участники: '+', '.join(s['event']['targets']), 'system')
         return
@@ -278,6 +295,7 @@ class Store:
                     q.pop(key, None)
             s['pack'].append(q)
             s['version'] += 1
+            s['ui_version'] += 1
             db.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(s), code))
 
     def change(self, code, user, action, question=None, text='', player='', choice=None):
@@ -304,8 +322,10 @@ class Store:
                 if not member:
                     raise ValueError('Вы не участник комнаты')
                 practice_owner = s['practice'] and uid == s['owner']
-                if action not in ('answer', 'message', 'pick', 'reaction') and uid != s['host'] and not (practice_owner and action in ('close', 'next', 'finish')):
+                if action not in ('answer', 'message', 'pick', 'reaction') and uid != s['host'] and not (practice_owner and action in ('close', 'next', 'finish', 'pause', 'unpause', 'show_scores', 'hide_scores')):
                     raise ValueError('Это действие доступно только ведущему')
+                if s['paused'] and action not in ('reaction', 'unpause', 'show_scores', 'hide_scores'):
+                    raise ValueError('Игра на паузе')
                 if action == 'start':
                     if s['phase'] != 'lobby' or len(s['players']) < 2 or not s['pack']:
                         raise ValueError('Для старта нужны вопросы и хотя бы один игрок')
@@ -341,11 +361,29 @@ class Store:
                         raise ValueError('Выберите реакцию из списка')
                     reactions = s.setdefault('reactions', [])
                     now = time.time()
-                    if any(r['user_id'] == uid and now-r['time'] < 2 for r in reactions):
-                        raise ValueError('Следующую реакцию можно отправить через пару секунд')
+                    if any(r['user_id'] == uid and now-r['time'] < 1 for r in reactions):
+                        return False
                     s['reaction_seq'] = s.get('reaction_seq', 0)+1
                     reactions.append(dict(id=s['reaction_seq'], user_id=uid, emoji=text, time=now))
                     s['reactions'] = reactions[-30:]
+                elif action == 'pause':
+                    if s['phase'] in ('lobby', 'finished'):
+                        raise ValueError('Пауза доступна во время игры')
+                    s.update(paused=True, paused_at=time.time())
+                elif action == 'unpause':
+                    if not s['paused']:
+                        return False
+                    elapsed = time.time()-s.pop('paused_at')
+                    for key in ('deadline', 'advance_at', 'auto_at', 'intro_until', 'intro_started_at'):
+                        if s.get(key) is not None:
+                            s[key] += elapsed
+                    s['bot_due'] = {uid: due+elapsed for uid, due in s['bot_due'].items()}
+                    s['paused'] = False
+                elif action in ('show_scores', 'hide_scores'):
+                    if s['phase'] not in ('reveal', 'event') or remaining_stage(s):
+                        raise ValueError('Счёт можно показать после завершения раунда')
+                    s['scores_visible'] = action == 'show_scores'
+                    s['advance_at'] = None
                 elif action == 'message':
                     text = text.strip()
                     if s['phase'] == 'question':
@@ -360,7 +398,7 @@ class Store:
                 elif action in ('correct', 'wrong'):
                     grade(s, player, action == 'correct')
                 elif action == 'next':
-                    if s['phase'] not in ('reveal', 'ready', 'event'):
+                    if s['phase'] not in ('reveal', 'ready', 'event', 'intro'):
                         raise ValueError('Сначала оцените все ответы')
                     start_question(s)
                 elif action == 'finish':
@@ -368,11 +406,14 @@ class Store:
                         raise ValueError('Игра ещё не началась или уже завершена')
                     if s['phase'] == 'question' or (s['phase'] == 'review' and any(a['verdict'] is None for a in s['answers'].values())):
                         raise ValueError('Сначала закройте вопрос и оцените ответы')
-                    s.update(phase='finished', deadline=None, advance_at=None)
+                    finish_game(s)
                 else:
                     raise ValueError('Неизвестное действие')
             s['version'] += 1
+            if action not in ('reaction', 'watch'):
+                s['ui_version'] += 1
             db.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(s), code))
+            return True
 
     def public(self, code, uid, display=False):
         s = self.read(code)
@@ -429,8 +470,13 @@ class Store:
             raw = json.loads(row[0])
             changed = raw.get('schema') != 2
             s = migrate(raw)
+            if s['paused']:
+                return False
             now = time.time()
-            if s['phase'] == 'question':
+            if s['phase'] == 'intro' and now >= s['intro_until']:
+                start_question(s)
+                changed = True
+            elif s['phase'] == 'question':
                 if now >= s['deadline']:
                     close_question(s)
                     changed = True
@@ -457,5 +503,6 @@ class Store:
                 changed = True
             if changed:
                 s['version'] += 1
+                s['ui_version'] += 1
                 db.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(s), code))
             return changed
