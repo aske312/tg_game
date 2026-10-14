@@ -1,4 +1,4 @@
-const clipEditor={key:'',duration:null,segment:false,durations:new Map()};
+const clipEditor={key:'',duration:null,durations:new Map()};
 function clipMedia() {const q=round();return q?.type==='question'&&['audio','video'].includes(q.media?.type)?q.media:null;}
 function clipTime(value) {
   if(typeof value!=='number'||!Number.isFinite(value))return String(value??'');
@@ -22,14 +22,12 @@ function clipProblem(media,duration=null) {
   return '';
 }
 function clipDurationKey(media) {return state.snapshot.id+':'+media.file;}
-function pauseClipEditor() {$('clip-player')?.pause();$('preview-media')?.querySelector('audio,video')?.pause();clipEditor.segment=false;updateClipActions();}
+function pauseClipEditor() {$('clip-player')?.pause();$('preview-media')?.querySelector('audio,video')?.pause();updateClipActions();}
 function updateClipActions() {
-  const media=clipMedia(),ready=!!media?.file&&clipEditor.duration!=null&&!clipProblem(media,clipEditor.duration);
-  $('clip-play').disabled=state.busy||!ready;
+  const media=clipMedia();
   for(const id of ['clip-use-start','clip-use-end'])$(id).disabled=state.busy||!media?.file||clipEditor.duration==null;
   for(const id of ['clip-start-range','clip-end-range'])$(id).disabled=state.busy||clipEditor.duration==null;
   for(const button of $('clip-presets').querySelectorAll('button'))button.disabled=state.busy||!media;
-  $('clip-play').textContent=clipEditor.segment?'Ⅱ Остановить':'▶ Прослушать отрывок';
 }
 function updateClipControls() {
   const media=clipMedia();if(!media){updateClipActions();return;}
@@ -60,11 +58,16 @@ function renderClipEditor() {
       };
       player.onerror=()=>{if(clipEditor.key===key){clipEditor.duration=null;$('clip-duration').textContent='Не удалось открыть запись. Загрузи материал заново.';updateClipActions();}};
       player.ontimeupdate=()=>{
-        const current=clipMedia();if(!clipEditor.segment||!current)return;
+        const current=clipMedia();if(player.paused||!current)return;
         const end=current.end??clipEditor.duration;
         if(end!=null&&player.currentTime>=end){player.pause();player.currentTime=end;}
       };
-      player.onpause=player.onended=()=>{clipEditor.segment=false;updateClipActions();};
+      player.onplay=()=>{
+        const current=clipMedia();if(!current)return;
+        if(state.busy||clipProblem(current,clipEditor.duration)){player.pause();return;}
+        const start=current.start||0,end=current.end??clipEditor.duration;
+        if(player.currentTime<start||end!=null&&player.currentTime>=end)player.currentTime=start;
+      };
       $('clip-player-slot').append(player);
     }
   }
@@ -114,11 +117,5 @@ function initMediaEditor() {
     if(button.dataset.clipLength==='all')return commitClip(0,null);
     const start=Number(clipMedia().start)||0,length=Number(button.dataset.clipLength),end=start+length;
     commitClip(start,clipEditor.duration==null?end:Math.min(end,clipEditor.duration));
-  };
-  $('clip-play').onclick=async()=>{
-    const player=$('clip-player'),media=clipMedia();if(!player||!media||state.busy||clipProblem(media,clipEditor.duration))return;
-    if(clipEditor.segment)return pauseClipEditor();
-    player.currentTime=media.start||0;clipEditor.segment=true;updateClipActions();
-    try{await player.play();}catch{pauseClipEditor();notice('Не удалось воспроизвести запись. Попробуй кнопку плеера.','error');}
   };
 }

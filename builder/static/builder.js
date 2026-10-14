@@ -156,6 +156,7 @@ function renderRound() {
 function renderMediaFields() {
   const m=round()?.media,type=m?.type||'';
   show('media-fields',!!type);show('clip-fields',type==='audio'||type==='video');show('attached-file',!!m?.file);
+  show('video-audio-option',type==='video');$('video-audio-only').checked=m?.audio_only===true;
   $('file-name').textContent=typeof m?.file==='string'?m.file.split('/').pop():'';
   $('media-file').value='';$('media-file').accept=type==='image'?'.png,.jpg,.jpeg,.gif,.webp':type==='audio'?'.mp3,.wav,.ogg,.m4a':'.mp4,.webm';
   $('upload-label').textContent=m?.file?'Заменить материал':'Выбрать файл';
@@ -174,7 +175,7 @@ function renderPreview() {
   box.innerHTML=`<div class="preview-meta"><span>${esc(stage()?.type==='grid'?q.category||'Категория не выбрана':modeTitles[stage()?.type]||'ВОПРОС')}</span><span>${esc(q.points??100)} очков · ${esc(q.time_limit??45)} сек.</span></div><h3>${esc(q.text||'Текст вопроса появится здесь.')}</h3><div id="preview-media"></div><div class="preview-answer">Ответ для ведущего: <strong>${esc(q.choices?.[q.correct_choice]||q.answer||'Ещё не указан')}</strong></div>`;
   if(Array.isArray(q.choices)){const choices=document.createElement('div');choices.className='choice-preview';choices.innerHTML=q.choices.map(c=>`<span>${esc(c)}</span>`).join('');box.insertBefore(choices,box.querySelector('.preview-answer'));}
   const m=q.media;if(typeof m?.file!=='string'||!m.file||!['image','audio','video'].includes(m.type))return;
-  const node=document.createElement(m.type==='image'?'img':m.type);node.src=mediaURL(m.file);
+  const node=document.createElement(m.type==='image'?'img':m.type==='video'&&m.audio_only?'audio':m.type);node.src=mediaURL(m.file);
   node.onerror=()=>{$('preview-media')?.replaceChildren(Object.assign(document.createElement('p'),{textContent:'Материал не найден. Загрузи файл для этого вопроса.'}));};
   if(m.type==='image')node.alt='Материал к вопросу';
   else {
@@ -196,6 +197,7 @@ bind('correct-choice',Number,(q,v)=>{binaryDefaults(q);q.correct_choice=v;q.answ
 bind('accepted-answers',v=>v.split('\n').map(s=>s.trim()).filter(Boolean),(q,v)=>q.accepted_answers=v);
 for(const [field,key] of [['effect-target','target'],['effect-duration','questions']])bind(field,v=>field==='effect-duration'?Number(v):v,(q,v)=>{q.effect??={};q.effect[key]=v;renderEffect();});
 $('media-type').onchange=()=>{if(!round())return;const type=$('media-type').value;if(type)round().media={type,file:'',start:0};else delete round().media;markDirty();renderMediaFields();renderPreview();};
+$('video-audio-only').onchange=()=>{const media=round()?.media;if(media?.type!=='video'||state.busy)return;media.audio_only=$('video-audio-only').checked;markDirty();renderPreview();};
 $('remove-media').onclick=()=>{delete round().media;$('media-type').value='';markDirty();renderMediaFields();renderPreview();};
 $('media-file').onchange=guarded(async()=>{
   const file=$('media-file').files[0];if(!file)return;if(file.size>25*1024*1024)throw new Error('Файл должен быть не больше 25 МБ.');

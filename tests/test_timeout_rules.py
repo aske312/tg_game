@@ -71,10 +71,10 @@ def test_manual_close_penalizes_only_missing_answers_with_current_effect(tmp_pat
 
 def test_single_responder_timeout_does_not_penalize_other_players(tmp_path, monkeypatch):
     db, code, host, a, b = game(tmp_path, 'grid', single=True)
-    db.change(code, a, 'buzz')
     now = db.read(code)['deadline']+1
+    db.change(code, a, 'buzz')
     monkeypatch.setattr('app.store.time.time', lambda: now)
-    assert db.tick(code) and db.read(code)['phase'] == 'question'
+    assert not db.tick(code) and db.read(code)['phase'] == 'question'
     db.change(code, host, 'close')
     assert db.read(code)['phase'] == 'reveal' and db.read(code)['omission_penalties'] == {}
     assert all(p['score'] == 0 for p in db.read(code)['players'])

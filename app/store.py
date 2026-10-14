@@ -150,8 +150,24 @@ def single_answer(s):
     return current_stage(s)['type'] == 'grid' and current_stage(s).get('answer_mode', 'all') == 'single'
 
 
+def single_question_open(s):
+    return (single_answer(s) and s['phase'] in ('question', 'review')
+            and not s.get('single_closed', s['active'] in s['used']))
+
+
 def all_answered(s):
-    return bool(s['answers']) if single_answer(s) else len(s['answers']) == len(s['players'])-1
+    if single_answer(s):
+        answer = s['answers'].get(s.get('responder'))
+        return bool(answer and answer['verdict'] is None)
+    return len(s['answers']) == len(s['players'])-1
+
+
+def claim_answer(s, uid):
+    s.update(responder=uid, buzz_remaining=max(0, s['deadline']-time.time()), deadline=None)
+
+
+def review_single_answer(s):
+    s.update(phase='review', auto_at=time.time()+1.5)
 
 
 def finish_game(s):
@@ -179,7 +195,7 @@ def start_question(s, selected=None):
     s['media_playback'] = None
     s['display_scene'] = 'question'
     s['responder'] = None
-    s.update(time_expired=False, omission_penalties={})
+    s.update(time_expired=False, omission_penalties={}, single_closed=False, buzz_remaining=None)
     available = remaining_stage(s)
     while not available:
         if s['stage_index']+1 == len(s['stages']):
@@ -234,24 +250,35 @@ def close_question(s, penalize_missing=False):
                 player['score'] += delta
                 s['omission_penalties'][uid] = delta
                 message(s, 'Ведущий', f"{player['name']}: ответ не отправлен ({delta:+d})", 'system')
-    s.update(phase='review' if s['answers'] else 'reveal', deadline=None, auto_at=time.time()+1.5)
+    pending = any(a['verdict'] is None for a in s['answers'].values())
+    s.update(phase='review' if pending else 'reveal', deadline=None, auto_at=time.time()+1.5,
+             single_closed=True, buzz_remaining=None)
     if q['id'] not in s['used']:
         s['used'].append(q['id'])
     consume_modifiers(s)
     for uid, answer in s['answers'].items():
+        if answer['verdict'] is not None:
+            continue
         player = next(p for p in s['players'] if p['id'] == uid)
         message(s, player['name'], answer['text'], 'answer', uid)
-    message(s, 'Ведущий', 'Приём ответов закрыт. Проверяем ответы.' if s['answers'] else 'Никто не ответил. Вопрос завершён.', 'system')
-    if not s['answers']:
+    message(s, 'Ведущий', 'Приём ответов закрыт. Проверяем ответы.' if pending else 'Вопрос завершён.' if s['answers'] else 'Никто не ответил. Вопрос завершён.', 'system')
+    if not pending:
         finish_reveal(s)
     elif q.get('choices'):
         for uid, answer in s['answers'].items():
-            grade(s, uid, answer.get('choice') == q['correct_choice'])
+            if answer['verdict'] is None:
+                grade(s, uid, answer.get('choice') == q['correct_choice'])
 
 
 def grade(s, uid, correct):
+    single_open = single_question_open(s)
+    if single_open:
+        if s.get('responder') != uid:
+            raise ValueError('Оценить можно только игрока, получившего право ответа')
+        if uid not in s['answers']:
+            s['answers'][uid] = dict(text='', oral=True, time=time.time(), verdict=None)
     answer = s['answers'].get(uid)
-    if s['phase'] != 'review' or not answer or answer['verdict'] is not None:
+    if (s['phase'] != 'review' and not single_open) or not answer or answer['verdict'] is not None:
         raise ValueError('Этот ответ уже оценён или недоступен')
     player = next(p for p in s['players'] if p['id'] == uid)
     value = current_question(s)['value']
@@ -260,7 +287,16 @@ def grade(s, uid, correct):
     answer['points'] = delta
     answer['verdict'] = 'correct' if correct else 'wrong'
     message(s, 'Ведущий', f"{player['name']}: {'верно' if correct else 'неверно'} ({delta:+d})", 'system')
-    if all(a['verdict'] is not None for a in s['answers'].values()):
+    if single_open:
+        if correct:
+            close_question(s)
+        else:
+            remaining = s.get('buzz_remaining')
+            if remaining is None:
+                remaining = max(0, (s.get('deadline') or time.time())-time.time())
+            s.update(phase='question', responder=None, deadline=time.time()+remaining,
+                     buzz_remaining=None, auto_at=None, time_expired=False)
+    elif all(a['verdict'] is not None for a in s['answers'].values()):
         finish_reveal(s)
 
 
@@ -433,7 +469,7 @@ class Store:
                     raise ValueError('Это действие доступно только ведущему')
                 if s['paused'] and action not in ('reaction', 'pause', 'display_scores', 'unpause', 'show_scores', 'hide_scores', 'adjust_score', 'set_effect', 'clear_effect', 'skip_stage'):
                     raise ValueError('Игра на паузе')
-                if action in ('buzz', 'answer') and question and question != s['active']:
+                if action in ('buzz', 'answer', 'correct', 'wrong') and question and question != s['active']:
                     raise ValueError('Этот вопрос уже завершён. Дождитесь обновления экрана')
                 if action in ('media_play', 'media_pause', 'media_seek'):
                     q = current_question(s)
@@ -497,9 +533,10 @@ class Store:
                         message(s, 'Ведущий', f"Корректировка: {target['name']} {delta:+d} · счёт {target['score']}", 'system')
                     else:
                         # Closed questions retain their scoring snapshot; changes apply to future questions.
+                        effects_current = s['phase'] == 'question' or single_question_open(s)
                         if action == 'clear_effect':
                             s['modifiers'].pop(player, None)
-                            if s['phase'] == 'question':
+                            if effects_current:
                                 s['round_modifiers'].pop(player, None)
                             description = 'эффект снят'
                         else:
@@ -508,10 +545,10 @@ class Store:
                             modifier = dict(kind=normalized['type'], remaining=normalized['questions'], title=details['title'],
                                             **{k: normalized[k] for k in ('factor', 'amount') if k in normalized})
                             s['modifiers'][player] = modifier
-                            if s['phase'] == 'question':
+                            if effects_current:
                                 s['round_modifiers'][player] = copy.deepcopy(modifier)
                             description = f"{details['title']} · на {normalized['questions']} вопр."
-                        timing = ' со следующего вопроса' if s['phase'] in ('review', 'reveal') else ''
+                        timing = ' со следующего вопроса' if s['phase'] in ('review', 'reveal') and not effects_current else ''
                         message(s, 'Ведущий', f"{target['name']}: {description}{timing}", 'system')
                 elif action == 'skip_stage':
                     if s['phase'] in ('lobby', 'finished'):
@@ -541,17 +578,19 @@ class Store:
                         raise ValueError('Выберите вопрос в сетке')
                     start_question(s, selected=question)
                 elif action == 'buzz':
-                    if uid == s['host'] or not single_answer(s) or s['phase'] != 'question' or time.time() >= s['deadline']:
+                    if uid == s['host'] or not single_answer(s) or s['phase'] != 'question' or uid in s['answers']:
                         raise ValueError('Кнопка ответа сейчас недоступна')
                     if s.get('responder'):
                         if s['responder'] == uid:
                             return False
-                        raise ValueError('Другой игрок нажал раньше. Дождитесь следующего вопроса')
-                    s['responder'] = uid
+                        raise ValueError('Другой игрок нажал раньше. Дождитесь проверки ответа')
+                    if s['deadline'] is None or time.time() >= s['deadline']:
+                        raise ValueError('Время ответа вышло')
+                    claim_answer(s, uid)
                 elif action == 'answer':
                     if uid == s['host'] or s['phase'] != 'question' or uid in s['answers']:
                         raise ValueError('Ответ уже отправлен или приём ответов закрыт')
-                    if time.time() >= s['deadline']:
+                    if s['deadline'] is not None and time.time() >= s['deadline']:
                         raise ValueError('Время ответа вышло')
                     if single_answer(s) and s.get('responder') != uid:
                         raise ValueError('Сначала получите право ответа кнопкой «Ответить»')
@@ -569,7 +608,10 @@ class Store:
                     if q.get('choices'):
                         s['answers'][uid]['choice'] = choice
                     if all_answered(s):
-                        close_question(s)
+                        if single_answer(s):
+                            review_single_answer(s)
+                        else:
+                            close_question(s)
                 elif action == 'reaction':
                     if text not in ('🐀', '🔥', '👏', '😂', '❤️', '🤯'):
                         raise ValueError('Выберите реакцию из списка')
@@ -655,8 +697,10 @@ class Store:
         s['board'] = [dict(id=q['id'], category=q['category'], value=q['value'], used=q['id'] in s['used'])
                       for q in s['pack'] if q.get('stage', 'legacy') == stage['id'] and q.get('type') != 'event'] if stage['type'] == 'grid' else []
         s['stage_complete'] = not remaining_stage(s)
-        available = s['phase'] == 'question' and not s['paused'] and uid != s['host'] and not display and time.time() < s['deadline']
-        s['can_buzz'] = available and single_answer(s) and not s.get('responder')
+        time_available = ((single_answer(s) and s.get('responder') is not None and s['deadline'] is None)
+                          or (s['deadline'] is not None and time.time() < s['deadline']))
+        available = s['phase'] == 'question' and not s['paused'] and uid != s['host'] and not display and time_available
+        s['can_buzz'] = available and single_answer(s) and not s.get('responder') and uid not in s['answers']
         s['can_answer'] = available and uid not in s['answers'] and (not single_answer(s) or s.get('responder') == uid)
         s['question'] = None
         if q and q.get('type') != 'event':
@@ -675,8 +719,9 @@ class Store:
             s['messages'] = [m for m in s['messages'] if m['kind'] != 'answer']
         s['question_count'] = sum(q.get('type') != 'event' for q in s['pack'])
         s['round_count'] = len(s['pack'])
-        s['round_number'] = min(len(s['used'])+(s['phase'] == 'question'), len(s['pack']))
-        s['question_number'] = sum(q['id'] in s['used'] and q.get('type') != 'event' for q in s['pack'])+(s['phase'] == 'question')
+        active_question = s['phase'] == 'question' or single_question_open(s)
+        s['round_number'] = min(len(s['used'])+active_question, len(s['pack']))
+        s['question_number'] = sum(q['id'] in s['used'] and q.get('type') != 'event' for q in s['pack'])+active_question
         if uid == s['host'] and not display and s['phase'] == 'lobby':
             s['question_list'] = s['pack']
         if display:
@@ -713,7 +758,7 @@ class Store:
                 start_question(s)
                 changed = True
             elif s['phase'] == 'question':
-                if now >= s['deadline']:
+                if s['deadline'] is not None and now >= s['deadline']:
                     if not s.get('time_expired'):
                         s['time_expired'] = True
                         changed = True
@@ -723,7 +768,8 @@ class Store:
                             if single_answer(s):
                                 if s.get('responder') and s['responder'] != p['id']:
                                     continue
-                                s['responder'] = p['id']
+                                if not s.get('responder'):
+                                    claim_answer(s, p['id'])
                             correct = (i+len(s['used'])) % 2 == 0
                             q = current_question(s)
                             if q.get('choices'):
@@ -732,8 +778,13 @@ class Store:
                             else:
                                 s['answers'][p['id']] = dict(text=q['answer'] if correct else 'Не знаю', time=now, verdict=None)
                             changed = True
+                            if single_answer(s):
+                                break
                     if all_answered(s):
-                        close_question(s)
+                        if single_answer(s):
+                            review_single_answer(s)
+                        else:
+                            close_question(s)
             elif s['phase'] == 'review' and player_practice(s) and now >= (s.get('auto_at') or 0):
                 for uid, a in s['answers'].items():
                     if a['verdict'] is None:

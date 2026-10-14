@@ -116,7 +116,12 @@ def load_pack(directory):
                 finite_number(end, f'Вопрос {i}, конец отрывка')
             if end is not None and end <= start:
                 raise ValueError(f'Вопрос {i}: недопустимые границы отрывка')
+            audio_only = media.get('audio_only', False)
+            if type(audio_only) is not bool or audio_only and media['type'] != 'video':
+                raise ValueError(f'Вопрос {i}: режим «только звук» доступен для видео и должен быть true или false')
             q['media'] = dict(kind=media['type'], source=str(source), start=start, end=end)
+            if audio_only:
+                q['media']['audio_only'] = True
         questions.append(q)
     if sum(p.stat().st_size for p in paths) > 100 * 1024 * 1024:
         raise ValueError('Общий размер медиа пакета не должен превышать 100 МБ')

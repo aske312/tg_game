@@ -6,7 +6,8 @@ function roundPreview(stage) {
   let rules;
   if(stage.type==='grid'){
     rules=[stage.chooser==='host'?'Тему и стоимость каждого вопроса выбирает ведущий.':'Первый вопрос выбирает ведущий, следующий — первый верно ответивший. Если верных ответов нет, выбирает ведущий.',
-      single?'Нажмите «Ответить» быстрее остальных. Только первый нажавший получает право ввести и отправить ответ. Остальные ждут проверки.':'На выбранный вопрос отвечают все игроки — каждый со своего телефона.',input];
+      single?'Нажмите «Ответить» быстрее остальных. Первый нажавший отвечает голосом или отправляет текст с телефона. Таймер остановлен, пока ведущий проверяет ответ.':'На выбранный вопрос отвечают все игроки — каждый со своего телефона.',
+      single?'Ошибка — штраф и новая попытка для остальных игроков. У каждого одна попытка. Вопрос продолжается до первого верного ответа или завершения ведущим.':input];
   }else if(stage.type==='binary'){
     rules=['Все игроки отвечают на каждый вопрос.', 'Нажмите один из двух вариантов на телефоне. Выбор отправляется сразу, изменить его нельзя.', 'Правильный вариант откроется после завершения приёма ответов.'];
   }else{
@@ -22,10 +23,18 @@ function rankedPlayers(players,host) {
 function resultRows(players) {
   return players.map(p=>`<div class="final-result"><span>${p.rank}</span><span class="result-name">${esc(p.name)}</span><strong>${p.score} очков</strong></div>`).join('');
 }
-function roundResultRows(result) {
-  const players=rankedPlayers(result.players,room.host);
-  return '<div class="round-result-heading"><span></span><span>Игрок</span><span>За раунд</span><span>Всего</span></div>'+players.map(p=>
-    `<div class="round-result-row"><span>${p.rank}</span><span class="result-name">${esc(p.name)}</span><strong>${p.round_points==null?'—':(p.round_points>0?'+':'')+p.round_points}</strong><strong>${p.score} очков</strong></div>`).join('');
+function roundScoreTable() {
+  const results=room.round_results||[],stages=(room.stages||[room.stage]).slice(0,room.stage_number);
+  const points=(stage,uid)=>{
+    const result=results.find(r=>r.stage_id===stage.id);
+    if(result)return result.players.find(p=>p.id===uid)?.round_points;
+    if(stage.id===room.stage.id&&room.score_stage===stage.id&&room.stage_start_scores!=null){
+      return room.players.find(p=>p.id===uid).score-(room.stage_start_scores[uid]||0);
+    }
+    return null;
+  };
+  return '<div class="round-table-scroll" tabindex="0" role="region" aria-label="Очки по всем раундам"><table class="round-score-table"><thead><tr><th scope="col">Место</th><th scope="col">Игрок</th>'+stages.map((s,i)=>`<th scope="col"><span>Раунд ${i+1}</span><strong>${esc(s.title||room.stage.title)}</strong></th>`).join('')+'<th scope="col">Всего</th></tr></thead><tbody>'+rankedPlayers(room.players,room.host).map(p=>
+    `<tr><td>${p.rank}</td><th scope="row">${esc(p.name)}</th>`+stages.map(s=>{const value=points(s,p.id);return `<td>${value==null?'—':(value>0?'+':'')+value}</td>`;}).join('')+`<td><strong>${p.score} очков</strong></td></tr>`).join('')+'</tbody></table></div>';
 }
 function ceremonyPlan(players,host) {
   const ranked=rankedPlayers(players,host);
@@ -70,14 +79,9 @@ function renderExperience() {
   else if(intro)$('phase').textContent='Перед началом раунда';
   else if(endScreen)$('phase').textContent='Раунд завершён';
   if(scores){
-    const results=room.round_results||[],selected=results.find(r=>r.stage_id===room.scores_round)||results.find(r=>r.stage_id===room.stage.id);
-    $('scores-title').textContent=selected?.title||room.stage.title;
-    $('round-results').innerHTML=selected?roundResultRows(selected):resultRows(rankedPlayers(room.players,room.host));
-    const select=$('results-round'),key=JSON.stringify(results.map(r=>[r.stage_id,r.title]));
-    if(select.dataset.rounds!==key){select.innerHTML=results.map((r,i)=>`<option value="${esc(r.stage_id)}">Раунд ${r.stage_index+1} · ${esc(r.title)}</option>`).join('');select.dataset.rounds=key;}
-    select.value=selected?.stage_id||'';
+    $('scores-title').textContent='Счёт по раундам';
+    $('round-results').innerHTML=roundScoreTable();
   }
-  show('round-results-picker',scores&&hasControls()&&(room.round_results||[]).length>1);
   show('results-back',scores&&hasControls());
   if(intro){
     const key=room.code+':'+room.stage.id;

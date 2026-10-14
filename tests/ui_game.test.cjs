@@ -17,6 +17,45 @@ test('single answer shows the buzzer then input only for its winner',()=>{
   assert(h.node('buzz-answer').hidden);assert(h.node('answer-form').hidden);
 });
 
+test('host can grade an oral buzzer answer before any text is submitted',()=>{
+  const h=harness();h.run("auth.user.id='h'");
+  const stage={id:'g',type:'grid',title:'Grid',answer_mode:'single'};
+  const state={stage,phase:'question',responder:'p',deadline:null,buzz_remaining:38,single_closed:false,answers:{}};
+  h.apply(state);
+  assert.match(h.node('review-list').innerHTML,/Player.*голосом.*data-player="p".*Верно.*Неверно/s);
+  assert(h.node('host-answers').hidden);assert.match(h.node('timer').textContent,/38 сек/);
+  h.advance(120000);assert.match(h.node('timer').textContent,/38 сек/);
+  h.run("auth.user.id='p'");
+  h.apply({...state,responder:null,buzz_remaining:null,deadline:1160,can_buzz:false,can_answer:false,
+    answers:{p:{text:'',oral:true,verdict:'wrong',points:-100}},answered_ids:['p']});
+  assert(h.node('buzz-answer').hidden);assert(h.node('answer-form').hidden);
+  assert.match(h.node('my-answer').textContent,/-100.*продолжается/s);
+  h.run("auth.user.id='other'");
+  h.apply({...state,responder:null,buzz_remaining:null,deadline:1160,can_buzz:true,can_answer:false,answers:{},answered_ids:['p']});
+  assert(!h.node('buzz-answer').hidden);
+});
+
+test('video can play as audio for the question and reveal the full video after grading',()=>{
+  const h=harness();
+  const question={id:'q1',text:'Song?',answer:'Yes',media:{kind:'video',url:'/clip.webm',start:20,end:30,audio_only:true}};
+  h.apply({display:true,question,media_playback:{question:'q1',mode:'excerpt',playing:true,position:0,updated_at:1000,revision:0}});
+  const audio=h.node('media-content').children[0].children[0];
+  assert.equal(audio.tagName,'AUDIO');assert(audio.hidden);
+  audio.emit('loadedmetadata');assert.match(h.node('media-caption').textContent,/Аудиоотрывок/);
+  h.apply({display:true,phase:'reveal',question,display_scene:'answer',media_playback:{question:'q1',mode:'full',playing:true,position:0,updated_at:1000,revision:1}});
+  const video=h.node('media-content').children[0].children[0];
+  assert.equal(video.tagName,'VIDEO');assert(!video.hidden);
+  video.emit('loadedmetadata');assert.match(h.node('media-caption').textContent,/Полная запись/);
+});
+
+test('score pause shows completed round points and live points for the current round',()=>{
+  const h=harness();h.apply({display:true,paused:true,pause_view:'scores',stage_number:2,score_stage:'b',stage_start_scores:{p:100},
+    stages:[{id:'g',title:'First'},{id:'b',title:'Second'}],stage:{id:'b',type:'blitz',title:'Second'},
+    players:[{id:'h',name:'Host',score:0},{id:'p',name:'Player',score:125}],
+    round_results:[{stage_id:'g',players:[{id:'p',name:'Player',round_points:100,score:100}]}]});
+  assert.match(h.node('presentation-results').innerHTML,/First.*Second.*\+100.*\+25.*125 очков/s);
+});
+
 test('host scenes preserve answers and full media uses the whole file timeline',()=>{
   const h=harness();
   const question={id:'q1',text:'Song?',category:'Music',value:100,answer:'Artist',media:{kind:'audio',url:'/song.wav',start:20,end:30}};
@@ -80,7 +119,7 @@ function harness(options={}) {
   }
   const nodes=new Map([...fs.readFileSync(path.join(root,'static/index.html'),'utf8').matchAll(/id="([^"]+)"/g)].map(m=>[m[1],element()]));
   const storage=new Map(Object.entries(options.storage||{}));
-  const ctx={document:{getElementById(id){assert(nodes.has(id),'Missing DOM ID: '+id);return nodes.get(id);},querySelectorAll(){return [];},createElement:element,addEventListener(){},body:{dataset:{}}},
+  const ctx={document:{getElementById(id){assert(nodes.has(id),'Missing DOM ID: '+id);return nodes.get(id);},querySelectorAll(){return [];},createElement(name){return {...element(),tagName:name.toUpperCase()};},addEventListener(){},body:{dataset:{}}},
     window:{addEventListener(){},matchMedia(){return {matches:false};}},sessionStorage:{getItem(key){return storage.get(key)??null;},setItem(key,value){storage.set(key,value);},removeItem(key){storage.delete(key);}},location:{search:'',pathname:options.pathname||'/',origin:'http://localhost'},history:{replaceState(){}},URLSearchParams,
     fetch:()=>new Promise(()=>{}),setInterval(){},setTimeout(){},clearTimeout(){},Date:Clock,console};
   vm.createContext(ctx);
@@ -164,12 +203,18 @@ test('round end waits for the host and historical results show round points and 
     h.apply({display:role==='display',phase:'reveal',display_scene:'round_end',stage_complete:true,round_results:results});
     assert(!h.node('round-end').hidden);assert(h.node('question').hidden);assert(h.node('round-scores').hidden);
     assert.equal(h.node('round-next').hidden,role!=='host');assert.equal(h.node('round-results-button').hidden,role!=='host');
-    h.apply({display:role==='display',phase:'reveal',display_scene:'round_end',stage_complete:true,scores_visible:true,round_results:results,scores_round:'g'});
+    const scores={display:role==='display',phase:'reveal',display_scene:'round_end',stage_complete:true,scores_visible:true,round_results:results,scores_round:'g',
+      stage:{id:'b',type:'blitz',title:'Second'},stages:[{id:'g',title:'First'},{id:'b',title:'Second'}],stage_number:2,
+      players:[{id:'h',name:'Host',score:0},{id:'p',name:'Player',score:50}]};
+    h.apply(scores);
     assert(h.node('round-end').hidden);assert(!h.node('round-scores').hidden);
-    assert.match(h.node('round-results').innerHTML,/За раунд.*Всего.*\+100.*100 очков/s);
-    assert.equal(h.node('scores-title').textContent,'First');
-    h.apply({display:role==='display',phase:'reveal',stage_complete:true,scores_visible:true,round_results:results,scores_round:'b'});
-    assert.match(h.node('round-results').innerHTML,/-50.*50 очков/s);
+    assert.match(h.node('round-results').innerHTML,/Раунд 1.*First.*Раунд 2.*Second.*Всего.*\+100.*-50.*50 очков/s);
+    assert.equal(h.node('scores-title').textContent,'Счёт по раундам');
+    assert.equal(h.node('results-round'),undefined);
+    h.apply({...scores,scores_round:'b'});
+    assert.match(h.node('round-results').innerHTML,/\+100.*-50.*50 очков/s);
+    h.apply({...scores,paused:true,pause_view:'scores'});
+    if(role==='display')assert.match(h.node('presentation-results').innerHTML,/\+100.*-50.*50 очков/s);
     if(role==='host'){
       h.ctx.calls=[];h.run('command=async action=>calls.push(action)');
       await h.node('round-next').onclick();await h.node('round-results-button').onclick();
@@ -193,7 +238,7 @@ test('all presentation previews explain the mode, answer controls and configured
     ['blitz',{order:'random'},/Блиц.*случайном порядке.*Отправить ответ/s],
     ['binary',{},/Выбор из двух.*один из двух вариантов.*сразу/s],
     ['grid',{answer_mode:'all',chooser:'host'},/Отвечают все.*выбирает ведущий.*отвечают все игроки/s],
-    ['grid',{answer_mode:'single',chooser:'winner'},/Отвечает один.*первый верно ответивший.*быстрее остальных.*Только первый/s],
+    ['grid',{answer_mode:'single',chooser:'winner'},/Отвечает один.*первый верно ответивший.*быстрее остальных.*голосом.*Ошибка.*до первого верного/s],
   ]){
     const h=harness();
     const preview={phase:'intro',question:null,active:null,deadline:null,intro_until:null,display:true,

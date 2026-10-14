@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#101e18">
   <title>Конструктор · Крысиные бега</title>
   <link rel="stylesheet" href="/static/builder.css?v=6">
-  <link rel="stylesheet" href="/static/editor.css?v=8">
+  <link rel="stylesheet" href="/static/editor.css?v=9">
   <script src="/static/navigation.js?v=6" defer></script>
   <script src="/static/categories.js?v=6" defer></script>
   <script src="/static/events.js?v=6" defer></script>
-  <script src="/static/media-editor.js?v=6" defer></script>
-  <script src="/static/validation.js?v=2" defer></script>
-  <script src="/static/builder.js?v=9" defer></script>
+  <script src="/static/media-editor.js?v=7" defer></script>
+  <script src="/static/validation.js?v=3" defer></script>
+  <script src="/static/builder.js?v=10" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -65,11 +65,12 @@
                 <details id="material-panel" class="field-details"><summary>Медиаматериал <span id="material-status" class="hint">не добавлен</span></summary><div class="media-heading"><h3>Материал к вопросу</h3><span class="hint">до 25 МБ</span></div>
                 <label for="media-type" class="sr-only">Тип материала</label><select id="media-type"><option value="">Без материала</option><option value="image">Изображение</option><option value="audio">Аудио</option><option value="video">Видео</option></select>
                 <div id="media-fields" hidden><label for="media-file" class="upload-zone"><span id="upload-label">Выбрать файл</span><span class="hint">Нажми, чтобы загрузить или заменить материал</span><input id="media-file" type="file"></label><div id="attached-file" class="attached-file"><span id="file-name"></span><button id="remove-media" class="quiet danger-text" type="button">Убрать</button></div></div>
+                <div id="video-audio-option" class="video-audio-option" hidden><label for="video-audio-only"><input id="video-audio-only" type="checkbox">В вопросе воспроизводить только звук</label><p class="hint">Изображение видео скрыто до показа ответа. После проверки полная запись воспроизводится с видео.</p></div>
                 <div id="clip-fields" class="clip-editor" hidden>
                   <h3>Выбор отрывка</h3><p class="hint">Отрывок не меняет время на ответ.</p><div id="clip-player-slot" class="clip-player-slot"></div><p id="clip-duration" class="hint"></p>
                   <div class="clip-timeline"><div class="clip-range-label"><label for="clip-start-range">Начало</label><span id="clip-start-label"></span></div><input id="clip-start-range" type="range" min="0" max="1" step="0.1" value="0"><div class="clip-range-label"><label for="clip-end-range">Конец</label><span id="clip-end-label"></span></div><input id="clip-end-range" type="range" min="0" max="1" step="0.1" value="1"></div>
                   <div class="field-pair clip-time-fields"><div><label for="clip-start">Начало · мин:сек</label><input id="clip-start" type="text" inputmode="decimal" placeholder="00:00"><button id="clip-use-start" class="quiet" type="button">Начало по позиции плеера</button></div><div><label for="clip-end">Конец · мин:сек</label><input id="clip-end" type="text" inputmode="decimal" placeholder="До конца записи"><button id="clip-use-end" class="quiet" type="button">Конец по позиции плеера</button></div></div>
-                  <div id="clip-presets" class="clip-presets"><button type="button" class="secondary" data-clip-length="10">10 секунд</button><button type="button" class="secondary" data-clip-length="30">30 секунд</button><button type="button" class="quiet" data-clip-length="all">Вся запись</button></div><p id="clip-warning" class="category-warning" role="status" hidden></p><button id="clip-play" class="secondary" type="button">▶ Прослушать отрывок</button>
+                  <div id="clip-presets" class="clip-presets"><button type="button" class="secondary" data-clip-length="5">5 секунд</button><button type="button" class="secondary" data-clip-length="10">10 секунд</button><button type="button" class="secondary" data-clip-length="15">15 секунд</button><button type="button" class="secondary" data-clip-length="20">20 секунд</button><button type="button" class="secondary" data-clip-length="30">30 секунд</button><button type="button" class="secondary" data-clip-length="45">45 секунд</button><button type="button" class="secondary" data-clip-length="60">1 минута</button><button type="button" class="secondary" data-clip-length="120">2 минуты</button><button type="button" class="quiet" data-clip-length="all">Вся запись</button></div><p id="clip-warning" class="category-warning" role="status" hidden></p>
                 </div></details>
               </div>
               <div id="event-fields" hidden>

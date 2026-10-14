@@ -37,12 +37,13 @@ function renderQuestionMedia(q) {
   const previous=activeClip;activeClip=null;previous?.node.pause();
   $('media-content').replaceChildren();$('media-caption').textContent='';
   if(!visible)return;
-  const node=document.createElement(m.kind==='image'?'img':m.kind);
+  const audioOnly=m.kind==='video'&&m.audio_only&&!full;
+  const node=document.createElement(m.kind==='image'?'img':audioOnly?'audio':m.kind);
   node.onerror=()=>notice('Не удалось открыть материал. Проверьте формат файла или обновите игру.','error');
   if(m.kind==='image'){node.alt='Материал к вопросу';node.src=m.url;$('media-content').append(node);return;}
   node.preload='auto';node.controls=false;
   if(m.kind==='video')node.setAttribute('playsinline','');
-  $('media-content').append(clipPlayer(node,full?{...m,start:0,end:null,full:true}:m,q.id));
+  $('media-content').append(clipPlayer(node,full?{...m,start:0,end:null,full:true}:audioOnly?{...m,kind:'audio'}:m,q.id));
   node.src=m.url;
 }
 function clipPlayer(node,m,questionId) {

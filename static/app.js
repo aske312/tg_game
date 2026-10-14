@@ -74,9 +74,9 @@ function renderPresentation() {
   show('buzz-answer',isPlayer()&&!!room.can_buzz&&!room.paused);
   $('buzz-answer').disabled=!room.can_buzz||!!room.paused;
   const single=room.stage?.type==='grid'&&room.stage.answer_mode==='single';
-  show('responder-status',single&&room.phase==='question');
+  show('responder-status',single&&isPlayer()&&['question','review'].includes(room.phase));
   const responder=room.players.find(p=>p.id===room.responder);
-  $('responder-status').textContent=responder?(responder.id===auth.user.id?'Ты нажал первым. Отправь свой ответ.':`Право ответа: ${responder.name}.`):'Первый нажавший «Ответить» получит право ответа.';
+  $('responder-status').textContent=responder?(responder.id===auth.user.id?'Ты нажал первым. Ответь голосом или отправь текст. Ведущий проверит ответ.':`Право ответа: ${responder.name}.`):ownAnswer()?.verdict?'Попытка использована. Остальные игроки продолжают отвечать.':'Первый нажавший «Ответить» получит право ответа.';
   if(isPlayer()&&room.display_scene){
     show('question-board',!!room.practice&&!!room.can_pick&&scene==='board');
     const waiting=room.stage?.type==='grid'&&(room.phase==='board'||(room.phase==='reveal'&&scene==='board'))&&!room.paused&&!room.scores_visible;
@@ -88,7 +88,7 @@ function renderPresentation() {
   show('presentation-scores',scoresOnDisplay);
   if(scoresOnDisplay){
     for(const id of ['question','question-board','event','ready','stage-banner','board-waiting','pause-panel','round-scores','grid-intro'])show(id,false);
-    $('presentation-results').innerHTML=resultRows(rankedPlayers(room.players,room.host));
+    $('presentation-results').innerHTML=roundScoreTable();
   }
   if(isDisplay()&&active&&!room.paused&&!room.scores_visible){
     show('question',!!room.question&&['question','answer'].includes(scene));
@@ -139,14 +139,15 @@ function mediaTime(seconds) {
 function renderMedia(q) { renderQuestionMedia(q); }
 
 function renderReview() {
+  const single=room.stage?.type==='grid'&&room.stage.answer_mode==='single'&&!room.single_closed;
   const answers=Object.values(room.answers),checked=answers.filter(a=>a.verdict).length;
   const missed=Object.keys(room.omission_penalties||{}).length;
   show('host-review-status',isHost()&&['review','reveal'].includes(room.phase)&&(answers.length>0||missed>0));
   $('host-review-status').textContent=`Проверено ${checked} из ${answers.length} ответов`+(missed?` · Пропусков: ${missed}, штрафы учтены`:'');
-  const visible=isHost()&&room.phase==='review';
-  $('review-list').innerHTML=visible?'<h3 class="review-heading">Проверить ответы</h3>'+room.players.filter(p=>room.answers[p.id]&&!room.answers[p.id].verdict).map(p=>{
+  const visible=isHost()&&(room.phase==='review'||single&&room.phase==='question'&&room.responder);
+  $('review-list').innerHTML=visible?'<h3 class="review-heading">Проверить ответ</h3>'+room.players.filter(p=>single?p.id===room.responder&&!room.answers[p.id]?.verdict:room.answers[p.id]&&!room.answers[p.id].verdict).map(p=>{
     const a=room.answers[p.id];
-    return `<div class="review-answer" data-verdict="pending"><strong>${esc(p.name)}</strong><p>${esc(a.text)}</p><div class="inline"><button data-player="${esc(p.id)}" data-verdict="correct">✓ Верно</button><button class="danger" data-player="${esc(p.id)}" data-verdict="wrong">✕ Неверно</button></div></div>`;
+    return `<div class="review-answer" data-verdict="pending"><strong>${esc(p.name)}</strong><p>${esc(a?.text||'Игрок отвечает голосом. Можно оценить без ввода текста.')}</p><div class="inline"><button data-player="${esc(p.id)}" data-question="${esc(room.question.id)}" data-verdict="correct">✓ Верно</button><button class="danger" data-player="${esc(p.id)}" data-question="${esc(room.question.id)}" data-verdict="wrong">✕ Неверно</button></div></div>`;
   }).join(''):'';
 }
 
@@ -173,9 +174,10 @@ function renderHostLayout() {
 
 function renderHostAnswers() {
   const visible=isHost()&&room.phase==='question';
-  show('host-hint',visible);show('host-answers',visible&&Object.keys(room.answers).length>0);
-  $('host-hint').textContent=Object.keys(room.answers).length?'Ответы поступили · проверка после закрытия приёма':'Ждём ответы игроков…';
-  $('host-answers').innerHTML=visible?room.players.filter(p=>room.answers[p.id]).map(p=>`<div class="host-answer"><strong>${esc(p.name)}</strong><span>${esc(room.answers[p.id].text)}</span></div>`).join(''):'';
+  const single=room.stage?.type==='grid'&&room.stage.answer_mode==='single';
+  show('host-hint',visible);show('host-answers',visible&&!single&&Object.keys(room.answers).length>0);
+  $('host-hint').textContent=single?(room.responder?'Таймер остановлен. Оцените устный или письменный ответ.':room.answered_ids.length>=room.players.length-1?'Все игроки использовали попытку. Завершите вопрос.':'Ждём нажатия «Ответить». После ошибки вопрос продолжается.'):(Object.keys(room.answers).length?'Ответы поступили · проверка после закрытия приёма':'Ждём ответы игроков…');
+  $('host-answers').innerHTML=visible&&!single?room.players.filter(p=>room.answers[p.id]).map(p=>`<div class="host-answer"><strong>${esc(p.name)}</strong><span>${esc(room.answers[p.id].text)}</span></div>`).join(''):'';
 }
 
 function renderPackPreview() {
@@ -253,10 +255,10 @@ function apply(s){
   if(!q||s.phase==='finished')renderMedia(null);show('question',!!q&&s.phase!=='finished');
   if(q){
     $('category').textContent=`Вопрос ${s.question_number}/${s.question_count} · ${q.category}`;$('value').textContent=q.value+' очков';$('question-text').textContent=q.text;
-    $('answer-count').textContent=`Ответили ${s.answered_ids.length} из ${s.stage?.answer_mode==='single'?1:s.players.length-1}`;
+    $('answer-count').textContent=s.stage?.answer_mode==='single'?`Попыток: ${s.answered_ids.length}`:`Ответили ${s.answered_ids.length} из ${s.players.length-1}`;
     const penalty=s.omission_penalties?.[auth.user.id];
     show('answer-form',canAnswer()&&!q.choices);show('my-answer',isPlayer()&&((!!ownAnswer()&&s.phase==='question')||penalty!==undefined));
-    $('my-answer').textContent=penalty!==undefined?`Ответ не отправлен · ${penalty} очков`:ownAnswer()?'Твой ответ: '+ownAnswer().text+' · отправлен':'';
+    $('my-answer').textContent=penalty!==undefined?`Ответ не отправлен · ${penalty} очков`:ownAnswer()?.verdict==='wrong'?`Ответ неверный · ${ownAnswer().points} очков. Вопрос продолжается для остальных.`:ownAnswer()?'Твой ответ: '+ownAnswer().text+' · отправлен':'';
     show('solution',!!q.answer);$('solution').textContent=q.answer?'Правильный ответ: '+q.answer:'';
     show('close',hasControls()&&s.phase==='question');show('next',hasControls()&&s.phase==='reveal'&&!s.stage_complete);
     const missing=s.players.length-1-s.answered_ids.length,all=s.stage?.type!=='grid'||s.stage.answer_mode!=='single';
@@ -278,11 +280,12 @@ function apply(s){
 function tick(){
   if(!room)return;
   const now=room.paused?room.paused_at*1000:Date.now()+offset;
-  const left=room.deadline?Math.max(0,room.deadline*1000-now):null;
+  const held=room.stage?.answer_mode==='single'&&room.responder&&!room.single_closed&&room.buzz_remaining!=null;
+  const left=held?room.buzz_remaining*1000:room.deadline?Math.max(0,room.deadline*1000-now):null;
   const n=left===null?null:Math.ceil(left/1000),urgent=n!==null&&n<=10;
   show('timeout-hint',room.phase==='question'&&n===0&&!room.paused);
   $('timeout-hint').textContent=hasControls()?'Время вышло. Завершите вопрос, чтобы перейти к проверке и результатам.':'Время вышло. Дождитесь завершения вопроса ведущим.';
-  $('timer').textContent=n===null?'':n===0?'Время вышло':`${n} сек.`;
+  $('timer').textContent=n===null?'':n===0?'Время вышло':`${n} сек.${held?' · ответ игрока':''}`;
   $('timer').dataset.urgent=urgent;$('timer-track').dataset.urgent=urgent;
   show('timer-track',n!==null);
   $('timer-bar').style.width=(left===null?0:Math.min(100,left/(room.question?.seconds||45)/10))+'%';
@@ -332,7 +335,6 @@ $('scores-next').onclick=guard(()=>command('next'));
 $('round-next').onclick=guard(()=>command('next'));
 $('round-results-button').onclick=guard(()=>command('show_scores'));
 $('results-back').onclick=guard(()=>command('hide_scores'));
-$('results-round').onchange=guard(()=>command('show_scores',{question:$('results-round').value}));
 $('skip-intro').onclick=guard(()=>command('next'));
 $('manage-player').onchange=renderManagement;
 $('score-form').onsubmit=guard(()=>command('adjust_score',{player:$('manage-player').value,delta:Number($('score-delta').value)}));
@@ -377,7 +379,7 @@ $('review-list').onclick=async e=>{
   const b=e.target.closest('button[data-verdict]');if(!b||pendingGrades.has(b.dataset.player))return;
   const player=b.dataset.player;pendingGrades.add(player);notice('');
   for(const button of $('review-list').querySelectorAll('button'))if(button.dataset.player===player)button.disabled=true;
-  try{await command(b.dataset.verdict,{player});}catch(error){notice(error.message||'Нет связи с сервером','error');}
+  try{await command(b.dataset.verdict,{player,question:b.dataset.question});}catch(error){notice(error.message||'Нет связи с сервером','error');}
   finally{pendingGrades.delete(player);renderReview();}
 };
 $('reaction-buttons').onclick=async event=>{

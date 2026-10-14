@@ -1,5 +1,5 @@
 const publicationValidation={checked:false,issues:[],serial:0,timer:null};
-const publicationFields={text:'question-text',answer:'answer',points:'points',time_limit:'time-limit',accepted_answers:'accepted-answers','choices.0':'choice-a','choices.1':'choice-b',correct_choice:'correct-choice',category:'grid-category','effect.type':'effect-type','effect.target':'effect-target','effect.questions':'effect-duration','effect.value':'effect-value','media.type':'media-type','media.file':'media-file','media.start':'clip-start','media.end':'clip-end'};
+const publicationFields={text:'question-text',answer:'answer',points:'points',time_limit:'time-limit',accepted_answers:'accepted-answers','choices.0':'choice-a','choices.1':'choice-b',correct_choice:'correct-choice',category:'grid-category','effect.type':'effect-type','effect.target':'effect-target','effect.questions':'effect-duration','effect.value':'effect-value','media.type':'media-type','media.audio_only':'video-audio-only','media.file':'media-file','media.start':'clip-start','media.end':'clip-end'};
 
 function resetPublicationValidation() {
   clearTimeout(publicationValidation.timer);publicationValidation.serial++;
