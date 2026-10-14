@@ -29,7 +29,7 @@ def test_full_recording_starts_only_after_last_grade_and_survives_scene_switch(t
     assert db.read(code)['phase'] == 'review'
     assert 'answer' not in db.public(code, a['id'])['question']
     assert db.public(code, a['id'])['answers'].keys() == {a['id']}
-    assert db.public(code, 'screen', display=True)['display_answers'] == []
+    assert 'display_answers' not in db.public(code, 'screen', display=True)
     with pytest.raises(ValueError): db.change(code, host, 'display_answer')
     db.change(code, host, 'correct', player=a['id'])
     assert db.read(code)['media_playback']['mode'] == 'excerpt'
@@ -39,7 +39,9 @@ def test_full_recording_starts_only_after_last_grade_and_survives_scene_switch(t
     assert s['media_playback']['mode'] == 'full' and s['media_playback']['playing']
     assert s['media_playback']['position'] == 0 and s['advance_at'] is None
     assert media_position(s, s['media_playback']['updated_at']+60) == 60
-    assert len(db.public(code, 'screen', display=True)['display_answers']) == 2
+    display = db.public(code, 'screen', display=True)
+    assert 'display_answers' not in display and display['answers'] == {}
+    assert display['question']['answer'] == 'Yes'
     # A delayed end-of-excerpt notification must not stop the full recording.
     assert not db.change(code, host, 'media_pause', question='q1', position=10, duration=10, media_mode='excerpt')
     db.change(code, host, 'media_pause', question='q1', position=55, duration=120, media_mode='full')
@@ -48,6 +50,8 @@ def test_full_recording_starts_only_after_last_grade_and_survives_scene_switch(t
     assert db.read(code)['active'] == 'q1' and db.read(code)['answers'] == s['answers']
     assert not db.read(code)['media_playback']['playing']
     db.change(code, host, 'display_scores')
+    assert db.read(code)['paused'] and db.read(code)['display_scene'] == 'board'
+    db.change(code, host, 'unpause')
     db.change(code, host, 'display_answer')
     assert db.read(code)['media_playback']['position'] == 55
     db.change(code, host, 'pick', question='q2')
@@ -91,6 +95,29 @@ def test_grid_answer_mode_is_compatible_and_validated():
     stage['answer_mode'] = 'bad'
     with pytest.raises(ValueError): stages_from_doc(doc)
     assert any(i['field'] == 'answer_mode' for i in publication_issues(doc))
+
+
+def test_score_screen_pauses_and_resumes_question_without_losing_time(tmp_path, monkeypatch):
+    now = [1000.]
+    monkeypatch.setattr('app.store.time.time', lambda: now[0])
+    db, code, host, a, b = game(tmp_path)
+    now[0] += 5
+    with pytest.raises(ValueError): db.change(code, a, 'display_scores')
+    db.change(code, host, 'display_scores')
+    paused = db.read(code)
+    assert paused['paused'] and paused['display_scene'] == 'question'
+    assert media_position(paused, now[0]) == 5
+    remaining = paused['deadline']-now[0]
+    now[0] += 100
+    assert not db.tick(code)
+    assert not db.change(code, host, 'display_scores')
+    assert db.read(code)['paused_at'] == paused['paused_at']
+    with pytest.raises(ValueError): db.change(code, a, 'answer', text='Yes')
+    db.change(code, host, 'unpause')
+    resumed = db.read(code)
+    assert resumed['deadline']-now[0] == remaining
+    assert resumed['display_scene'] == 'question' and not resumed['paused']
+    assert resumed['media_playback']['playing'] and media_position(resumed, now[0]) == 5
 
 
 @pytest.mark.parametrize('kind', ['audio', 'video'])

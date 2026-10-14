@@ -59,7 +59,7 @@ function hasControls() {return !isDisplay() && (isHost() || (room?.practice && r
 function canAnswer() {return room?.phase==='question' && !room.paused && isPlayer() && !ownAnswer() && room.can_answer!==false;}
 
 function renderPresentation() {
-  const scene=room.display_scene||(room.phase==='board'?'board':room.phase==='reveal'?'answer':'question');
+  const scene=room.paused?'scores':room.display_scene||(room.phase==='board'?'board':room.phase==='reveal'?'answer':'question');
   $('game').dataset.scene=scene;
   const active=!['lobby','intro','finished'].includes(room.phase);
   show('presentation-controls',hasControls()&&active);
@@ -84,17 +84,18 @@ function renderPresentation() {
     if(waiting)show('question',false);
     else if(room.question&&!room.paused&&!room.scores_visible&&active)show('question',true);
   }
-  show('presentation-scores',isDisplay()&&active&&!room.paused&&!room.scores_visible&&scene==='scores');
+  const scoresOnDisplay=isDisplay()&&room.phase!=='lobby'&&room.phase!=='finished'&&!!room.paused;
+  show('presentation-scores',scoresOnDisplay);
+  if(scoresOnDisplay){
+    for(const id of ['question','question-board','event','ready','stage-banner','board-waiting','pause-panel','round-scores','grid-intro'])show(id,false);
+    $('presentation-results').innerHTML=resultRows(rankedPlayers(room.players,room.host));
+  }
   if(isDisplay()&&active&&!room.paused&&!room.scores_visible){
     show('question',!!room.question&&['question','answer'].includes(scene));
     show('question-board',scene==='board');
     show('solution',scene==='answer'&&!!room.question?.answer);
     show('event',scene==='question'&&room.phase==='event');
-    if(scene==='scores')$('presentation-results').innerHTML=resultRows(rankedPlayers(room.players,room.host));
   }
-  const answers=isDisplay()&&scene==='answer'&&room.phase==='reveal'?room.display_answers||[]:[];
-  $('display-answers').innerHTML=answers.map(a=>`<div class="display-answer-row" data-verdict="${a.verdict==='correct'?'correct':'wrong'}"><strong>${esc(a.player)}</strong><span>${esc(a.text)}</span><small>${a.verdict==='correct'?'✓':'✕'} ${a.points>0?'+':''}${a.points||0}</small></div>`).join('');
-  show('display-answers',answers.length>0);
 }
 function effectBadge(s, uid, future=false) {
   const current=['question','review','reveal'].includes(s.phase)&&!future;

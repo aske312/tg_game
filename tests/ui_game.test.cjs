@@ -26,11 +26,28 @@ test('host scenes preserve answers and full media uses the whole file timeline',
   assert(!h.node('solution').hidden);assert(!h.node('question').hidden);assert(h.node('question-board').hidden);
   h.apply({display:true,phase:'reveal',question,display_scene:'board'});
   assert(h.node('question').hidden);assert(!h.node('question-board').hidden);
-  h.apply({display:true,phase:'reveal',question,display_scene:'scores'});
+  h.apply({display:true,phase:'reveal',question,display_scene:'answer',paused:true,paused_at:1000});
   assert(h.node('question').hidden);assert(h.node('question-board').hidden);assert(!h.node('presentation-scores').hidden);
+  assert(h.node('pause-panel').hidden);assert(h.node('round-scores').hidden);
   assert.match(h.node('presentation-results').innerHTML,/Player/);
   h.apply({display:true,phase:'reveal',question,display_scene:'question'});
   assert(!h.node('question').hidden);assert(h.node('solution').hidden);
+});
+
+test('display pause replaces the whole scene with scores, players keep the pause notice',()=>{
+  const h=harness();
+  for(const phase of ['question','review','reveal','board','intro']){
+    h.apply({display:true,phase,paused:true,paused_at:1000,display_scene:phase==='board'?'board':'question'});
+    assert(!h.node('presentation-scores').hidden,phase);
+    for(const id of ['question','question-board','event','grid-intro','pause-panel','round-scores'])assert(h.node(id).hidden,id);
+    assert.match(h.node('presentation-results').innerHTML,/Player/);
+    assert.doesNotMatch(h.node('presentation-results').innerHTML,/data-verdict|Верно|Неверно/);
+  }
+  h.apply({display:true,paused:false,display_scene:'question'});
+  assert(h.node('presentation-scores').hidden);assert(!h.node('question').hidden);
+  h.apply({display:false,paused:true,paused_at:1000});
+  assert(h.node('presentation-scores').hidden);assert(!h.node('pause-panel').hidden);
+  assert(h.node('question').hidden);
 });
 
 function harness(options={}) {
