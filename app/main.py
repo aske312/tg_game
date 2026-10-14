@@ -58,6 +58,10 @@ class CreateRoom(BaseModel):
     pack: str = Field(default='demo', max_length=80)
 
 
+class PracticeRoom(CreateRoom):
+    role: Literal['player', 'host'] = 'player'
+
+
 class Question(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     answer: str = Field(min_length=1, max_length=500)
@@ -156,15 +160,18 @@ def packs(authorization: str = Header(default='')):
 
 
 @app.post('/api/practice')
-def practice(body: CreateRoom = CreateRoom(), authorization: str = Header(default='')):
+def practice(body: PracticeRoom = PracticeRoom(), authorization: str = Header(default='')):
     user = current_user(authorization)
     if body.pack == 'custom':
+        if body.role == 'host':
+            code = store.create(user, practice=True, host_practice=True, pack='custom')
+            return store.public(code, user['id'])
         raise HTTPException(400, 'Для тренировки выберите готовую игру')
     else:
         try:
             pack = find_pack(pack_roots(), 'library-demo-quiz' if body.pack == 'demo' else body.pack)
             assets = materialize_pack(pack, Path(store.path).parent / 'media')
-            code = store.create(user, practice=True, pack=body.pack, questions=pack['questions'], assets=assets, title=pack['title'], stages=pack['stages'])
+            code = store.create(user, practice=True, host_practice=body.role == 'host', pack=body.pack, questions=pack['questions'], assets=assets, title=pack['title'], stages=pack['stages'])
         except (ValueError, OSError) as e:
             raise HTTPException(400, str(e))
     return store.public(code, user['id'])

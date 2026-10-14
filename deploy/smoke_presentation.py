@@ -23,6 +23,7 @@ async def main():
     tokens=[db.session(user) for user in users]
     headers=[{'Authorization':'Bearer '+token} for token in tokens]
     code=None
+    host_code=None
     try:
         stages=stages_from_doc({'stages':[
             dict(id='grid',type='grid',title='Test grid',categories=['Space','Music']),
@@ -37,7 +38,7 @@ async def main():
             print('Public HTTPS health:',response.json(),flush=True)
             page=await client.get('/');page.raise_for_status()
             assert 'id="grid-intro"' in page.text and 'id="pause-game"' in page.text and 'id="award-spotlight"' in page.text
-            for asset in ('/static/experience.js?v=1','/static/experience.css?v=1','/static/app.js?v=13'):
+            for asset in ('/static/experience.js?v=1','/static/experience.css?v=1','/static/app.js?v=14'):
                 response=await client.get(asset);response.raise_for_status()
                 assert len(response.content)>100
             (await client.post(path+'/join',headers=headers[1])).raise_for_status()
@@ -111,9 +112,38 @@ async def main():
                 assert all(s['phase']=='finished' and s['finished_at']==state['finished_at'] for s in shadows)
                 assert next(p for p in state['players'] if p['id']==users[1]['id'])['score']==300
                 print('Public WebSocket: intro, silent reaction limit, pause, preserved deadline, grid choice, round scores and synchronized finish verified.',flush=True)
+            response=await client.post('/api/practice',headers=headers[0],json={'role':'host','pack':'custom'})
+            response.raise_for_status()
+            host_code=response.json()['code']
+            host_path='/api/rooms/'+host_code
+            response=await client.post(host_path+'/questions',headers=headers[0],json={'text':'Deployment check: 2+2?','answer':'4','seconds':45})
+            response.raise_for_status()
+            state=(await client.get(host_path,headers=headers[0])).json()
+            assert state['host_practice'] and state['phase']=='lobby' and state['host']==users[0]['id']
+            assert len(state['players'])==4
+            host_ws=url.replace('https://','wss://',1).replace('http://','ws://',1)+'/ws/'+host_code
+            async with websockets.connect(host_ws) as ws:
+                await ws.send(json.dumps({'token':tokens[0]}))
+                assert json.loads(await asyncio.wait_for(ws.recv(),8))['phase']=='lobby'
+                for kind,extra in [('start',{})]:
+                    response=await client.post(host_path+'/action',headers=headers[0],json=dict(action=kind,**extra))
+                    response.raise_for_status()
+                while True:
+                    shadow=json.loads(await asyncio.wait_for(ws.recv(),15))
+                    if shadow['phase']=='review':break
+                assert len(shadow['answers'])==3 and all(a['verdict'] is None for a in shadow['answers'].values())
+                await asyncio.sleep(2)
+                state=(await client.get(host_path,headers=headers[0])).json()
+                assert state['phase']=='review' and all(a['verdict'] is None for a in state['answers'].values())
+                for uid,answer in state['answers'].items():
+                    response=await client.post(host_path+'/action',headers=headers[0],json={'action':'correct' if answer['text']=='4' else 'wrong','player':uid})
+                    response.raise_for_status()
+                assert response.json()['phase']=='reveal'
+                print('Host rehearsal: human host, three answering bots and manual grading verified.',flush=True)
     finally:
         with db.connect() as conn:
             if code:conn.execute('DELETE FROM rooms WHERE code=?',(code,))
+            if host_code:conn.execute('DELETE FROM rooms WHERE code=?',(host_code,))
             conn.executemany('DELETE FROM sessions WHERE token=?',[(token,) for token in tokens])
         print('Only this check\'s temporary room and sessions were cleaned up.',flush=True)
 

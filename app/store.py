@@ -75,6 +75,10 @@ def remaining_stage(s):
     return [q for q in s['pack'] if q.get('stage', 'legacy') == current_stage(s)['id'] and q['id'] not in s['used']]
 
 
+def player_practice(s):
+    return s['practice'] and not s.get('host_practice')
+
+
 def can_pick(s, uid):
     return (current_stage(s)['type'] == 'grid' and s['phase'] in ('board', 'reveal')
             and not s.get('paused') and not s.get('scores_visible')
@@ -86,7 +90,7 @@ def finish_reveal(s):
     s['phase'] = 'reveal'
     correct = [(a['time'], uid) for uid, a in s['answers'].items() if a['verdict'] == 'correct']
     s['chooser'] = min(correct)[1] if correct and current_stage(s)['chooser'] == 'winner' else s['host']
-    s['advance_at'] = time.time()+3 if current_stage(s)['type'] != 'grid' and current_stage(s)['auto_advance'] and (remaining_stage(s) or s['practice']) else None
+    s['advance_at'] = time.time()+3 if current_stage(s)['type'] != 'grid' and current_stage(s)['auto_advance'] and (remaining_stage(s) or player_practice(s)) else None
 
 
 def finish_game(s):
@@ -106,7 +110,7 @@ def start_question(s, selected=None):
     s['advance_at'] = None
     s['scores_visible'] = False
     if current_stage(s)['type'] == 'grid' and selected is None:
-        if not s['practice'] and current_stage(s)['id'] not in s.setdefault('introduced_stages', []):
+        if not player_practice(s) and current_stage(s)['id'] not in s.setdefault('introduced_stages', []):
             s['introduced_stages'].append(current_stage(s)['id'])
             categories = current_stage(s).get('categories', [])
             now = time.time()
@@ -121,7 +125,7 @@ def start_question(s, selected=None):
     if q.get('type') == 'event':
         s.update(phase='event', active=q['id'], answers={}, deadline=None, event=apply_event(s, q))
         s['used'].append(q['id'])
-        if current_stage(s)['auto_advance'] and (remaining_stage(s) or s['practice']):
+        if current_stage(s)['auto_advance'] and (remaining_stage(s) or player_practice(s)):
             s['advance_at'] = time.time()+3
         message(s, 'Ведущий', s['event']['title']+' · '+s['event']['description']+' Участники: '+', '.join(s['event']['targets']), 'system')
         return
@@ -205,7 +209,7 @@ class Store:
             raise ValueError('Сессия истекла. Перезагрузите приложение')
         return json.loads(row[0])
 
-    def create(self, user, practice=False, pack='demo', questions=None, assets=None, title=None, stages=None):
+    def create(self, user, practice=False, pack='demo', questions=None, assets=None, title=None, stages=None, host_practice=False):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             while True:
@@ -216,7 +220,8 @@ class Store:
                      pack=copy.deepcopy(questions if questions is not None else QUESTIONS if pack == 'demo' else []),
                      pack_id=pack, pack_title=title or ('Демоквиз' if pack == 'demo' else 'Ваш квиз'), active=None, used=[], answers={},
                      deadline=None, version=0, practice=practice, messages=[], auto_at=None, bot_due={}, event=None, modifiers={}, round_modifiers={},
-                     stages=copy.deepcopy(stages or [LEGACY_STAGE]), stage_index=0, chooser=user['id'], advance_at=None)
+                     stages=copy.deepcopy(stages or [LEGACY_STAGE]), stage_index=0, chooser=user['id'], advance_at=None,
+                     host_practice=bool(practice and host_practice))
             for stage in s['stages']:
                 if stage['type'] != 'grid' and stage.get('order') == 'random':
                     positions = [i for i, q in enumerate(s['pack']) if q.get('stage', 'legacy') == stage['id'] and q.get('type') != 'event']
@@ -224,7 +229,11 @@ class Store:
                     SystemRandom().shuffle(shuffled)
                     for i, q in zip(positions, shuffled):
                         s['pack'][i] = q
-            if practice:
+            if practice and host_practice:
+                bots = [dict(id=f'sim-{i}-{code}', name=name, score=0, synthetic=True)
+                        for i, name in enumerate(('Сырник', 'Шустрик', 'Кусик'))]
+                s['players'].extend(bots)
+            elif practice:
                 host = dict(id='sim-host-'+code, name='Робоведущий', score=0, synthetic=True)
                 bots = [dict(id=f'sim-{i}-{code}', name=name, score=0, synthetic=True) for i, name in enumerate(('Сырник', 'Шустрик'))]
                 s.update(host=host['id'], chooser=host['id'], players=[host, dict(**user, score=0), *bots])
@@ -493,7 +502,7 @@ class Store:
                             changed = True
                     if len(s['answers']) == len(s['players'])-1:
                         close_question(s)
-            elif s['phase'] == 'review' and s['practice'] and now >= (s.get('auto_at') or 0):
+            elif s['phase'] == 'review' and player_practice(s) and now >= (s.get('auto_at') or 0):
                 for uid, a in s['answers'].items():
                     if a['verdict'] is None:
                         grade(s, uid, matches_question(a['text'], current_question(s)))

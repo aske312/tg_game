@@ -105,8 +105,9 @@ function renderPackPreview() {
   $('pack-description').textContent=pack.description||'Готовая игра для тебя и твоей компании.';
   const tags=id==='custom'?['Вопросы в лобби']:[countLabel(pack.questions,['вопрос','вопроса','вопросов']),countLabel(pack.stages?.length||1,['раунд','раунда','раундов']),...[...new Set((pack.stages||[]).map(s=>modeTitles[s.type]))]];
   $('pack-tags').innerHTML=tags.map(t=>`<span>${esc(t)}</span>`).join('');
-  $('practice').disabled=id==='custom';
-  $('practice-caption').textContent=id==='custom'?'Для тренировки выбери готовую игру.':'Тренировка на выбранной игре.';
+  $('practice').disabled=false;
+  $('player-practice').disabled=id==='custom';
+  $('practice-caption').textContent=id==='custom'?'Создай комнату с ботами и добавь свои вопросы в лобби.':'Ты ведущий. Боты отвечают, ты проверяешь и управляешь игрой.';
 }
 
 function setRole(role) {
@@ -145,6 +146,7 @@ function apply(s){
   $('room-footer').textContent='Комната '+s.code;
   show('scoreboard',!isPlayer());show('reactions',!isDisplay());
   $('lobby-title').textContent=isHost()?'Все на месте?':isDisplay()?'Клан собирается':'Ты в игре';
+  if(s.host_practice)$('lobby-title').textContent='Ты — ведущий';
   show('home',false);show('game',true);
   $('room-code').textContent=s.code;
   $('phase').textContent=(s.practice?'Тренировка · ':'')+({board:'Выбираем вопрос',event:'Событие',lobby:'Ожидание игроков',question:s.question?.choices?'Выбираем вариант':'Все пишут ответы',review:'Ведущий проверяет ответы',reveal:'Результаты вопроса',ready:'Готовы продолжить',finished:'Квиз завершён'}[s.phase]||'');
@@ -154,6 +156,7 @@ function apply(s){
   $('round-progress').max=Math.max(1,s.round_count);$('round-progress').value=s.used.length;
   show('invite',isHost()&&!s.practice);show('lobby',s.phase==='lobby');show('start',isHost());$('start').disabled=uploading||s.players.length<2||!s.question_count;
   $('pack-count').textContent=`В игре ${s.question_count} вопросов, ${s.stage_count} игровых раундов: ${s.stages.map(stage=>modeTitles[stage.type]).join(' → ')}.`;show('waiting',!isHost());show('editor',isHost()&&s.phase==='lobby');
+  if(s.host_practice)$('pack-count').textContent+=' Три бота уже в комнате. Запусти игру, дождись их ответов и оцени их сам. В сетке выбирай за бота, если ход достался ему.';
   if(s.phase==='lobby'){const selected=$('q-stage').value;$('q-stage').innerHTML=s.stages.map(stage=>`<option value="${esc(stage.id)}">${esc(stage.title)} · ${modeTitles[stage.type]}</option>`).join('');if(s.stages.some(stage=>stage.id===selected))$('q-stage').value=selected;renderQuestionEditor();}
   show('question-list-panel',isHost()&&s.phase==='lobby'&&!!s.question_count);
   $('question-list').innerHTML=(s.question_list||[]).map((q,i)=>`<p><span class="question-list-number">${String(i+1).padStart(2,'0')}</span><span class="question-list-text">${esc(q.type==='event'?'✳ '+q.title:q.text)}${q.media?' · '+({image:'Изображение',video:'Видео',audio:'Аудио'}[q.media.kind]):''}</span></p>`).join('');
@@ -204,7 +207,7 @@ function connect(code){
 }
 async function join(code,display=entryRole==='display'){const s=await api('/rooms/'+encodeURIComponent(code.trim().toUpperCase())+(display?'/watch':'/join'),{});apply(s);connect(s.code);}
 async function create(){const s=await api('/rooms',{pack:$('pack').value});await join(s.code,false);}
-async function practice(){const s=await api('/practice',{pack:$('pack').value});apply(s);connect(s.code);}
+async function practice(role='host',pack=$('pack').value){const s=await api('/practice',{pack,role});apply(s);connect(s.code);}
 async function command(action,extra={}){apply(await api('/rooms/'+room.code+'/action',{action,...extra}));}
 async function refreshPacks(){
   const data=await api('/packs'),selected=$('pack').value;libraryPacks=data.packs;
@@ -227,7 +230,7 @@ $('skip-intro').onclick=guard(()=>command('next'));
 $('enable-sound').onclick=async()=>{if(await unlockSound())fanfare();};
 async function entered(){setRole('player');sessionStorage.setItem('auth',JSON.stringify(auth));$('identity').textContent=auth.user.name;show('login',false);show('home',true);const p=new URLSearchParams(location.search),code=tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam')||p.get('room')||sessionStorage.getItem('room');if(code&&/^[A-Z2-9]{6}$/i.test(code)){try{await join(code,!(p.get('room')||tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam'))&&sessionStorage.getItem('roomRole')==='display');}catch(e){notice(e.message);sessionStorage.removeItem('room');}}}
 $('login-form').onsubmit=guard(async()=>{auth=await api('/login',{name:$('name').value});await entered();});
-$('join-form').onsubmit=guard(()=>join($('code').value));$('create').onclick=guard(create);$('practice').onclick=guard(practice);$('another').onclick=guard(()=>room?.practice?practice():isHost()?create():$('leave').click());
+$('join-form').onsubmit=guard(()=>join($('code').value));$('create').onclick=guard(create);$('practice').onclick=guard(()=>practice('host'));$('player-practice').onclick=guard(()=>practice('player'));$('another').onclick=guard(()=>room?.practice?practice(room.host_practice?'host':'player',room.pack_id):isHost()?create():$('leave').click());
 for(const a of ['start','close','next'])$(a).onclick=guard(()=>command(a));$('resume').onclick=guard(()=>command('next'));
 $('answer-form').onsubmit=guard(()=>command('answer',{text:$('answer-text').value}));
 $('binary-options').onclick=guard(async event=>{const b=event.target.closest('[data-choice]');if(b&&!b.disabled)await command('answer',{choice:Number(b.dataset.choice)});});
