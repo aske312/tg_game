@@ -280,6 +280,12 @@ class Catalog:
                 atomic_write(path, data)
             return dict(file=name, type=kind, size=len(data), mime=mime)
 
+    def validate(self, game_id, doc):
+        from app.pack_validation import publication_issues
+        with self.lock:
+            self.ensure_active(game_id)
+            return dict(issues=publication_issues(doc, self.folder(self.drafts, game_id)))
+
     def publish(self, game_id, expected):
         with self.lock:
             self.ensure_active(game_id)

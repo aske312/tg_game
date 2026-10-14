@@ -25,14 +25,14 @@ function loginScreen() {show('login-panel',true);show('studio',false);show('acco
 async function api(path, method='GET', data) {
   const response=await fetch('/api'+path, {method,headers:{'X-Builder-Request':'1',...(data!==undefined?{'Content-Type':'application/json'}:{})},...(data!==undefined?{body:JSON.stringify(data)}:{})});
   const result=await response.json();
-  if(!response.ok) {if(response.status===401)loginScreen();throw new Error(typeof result.detail==='string'?result.detail:'Проверь заполненные поля.');}
+  if(!response.ok) {if(response.status===401)loginScreen();const error=new Error(typeof result.detail==='string'?result.detail:result.detail?.message||'Проверь заполненные поля.');error.issues=result.detail?.issues;throw error;}
   return result;
 }
 function guarded(fn) {
   return async event => {
     event?.preventDefault(); if(state.busy)return;
     state.busy=true;notice();updateActions();
-    try {await fn(event);} catch(error) {notice(error.message||'Не удалось связаться с сервером.','error');}
+    try {await fn(event);} catch(error) {if(error.issues)setPublicationIssues(error.issues,true);notice(error.message||'Не удалось связаться с сервером.','error');}
     finally {state.busy=false;updateActions();}
   };
 }
@@ -60,6 +60,7 @@ function updateActions() {
   renderEditorNavigation();
   const message=state.dirty?'Есть несохранённые изменения':state.snapshot?.dirty?'Черновик сохранён':'Опубликована';
   $('save-status').textContent=message;$('save-status').dataset.dirty=state.dirty;
+  renderPublicationValidation();
 }
 function markDirty() {
   state.dirty=true;
@@ -67,6 +68,7 @@ function markDirty() {
     editorNav.search='';$('question-search').value='';
   }
   updateActions();renderStages();renderRounds();renderCategoryOverview();
+  schedulePublicationValidation();
 }
 function canLeave() {return !state.dirty||confirm('В игре есть несохранённые изменения. Продолжить без сохранения?');}
 function round() {return state.doc?.rounds[state.index];}
@@ -80,6 +82,7 @@ function renderLibrary() {
 }
 async function refresh() {state.games=await api('/games');renderLibrary();}
 function accept(snapshot, selected=0, selectedStage=null) {
+  resetPublicationValidation();
   if(state.snapshot?.id!==snapshot.id)resetEditorNavigation();
   state.snapshot=snapshot;state.doc=structuredClone(snapshot.document);state.dirty=false;
   if(!Array.isArray(state.doc.rounds))state.doc.rounds=[];
@@ -184,7 +187,7 @@ function bind(field, getter, setter) {
   $(field).addEventListener('input',()=>{if(!round())return;setter(round(),getter($(field).value));markDirty();renderPreview();});
 }
 for(const [field,key] of [['question-text','text'],['answer','answer'],['event-title','title'],['event-text','text']])bind(field,v=>v,(q,v)=>q[key]=v);
-for(const [field,key] of [['points','points'],['time-limit','time_limit']])bind(field,Number,(q,v)=>q[key]=v);
+for(const [field,key] of [['points','points'],['time-limit','time_limit']])bind(field,v=>v.trim()===''?'':Number(v),(q,v)=>q[key]=v);
 for(const [field,index] of [['choice-a',0],['choice-b',1]])bind(field,v=>v,(q,v)=>{binaryDefaults(q);q.choices[index]=v;q.answer=q.choices[q.correct_choice];});
 bind('correct-choice',Number,(q,v)=>{binaryDefaults(q);q.correct_choice=v;q.answer=q.choices[v];});
 bind('accepted-answers',v=>v.split('\n').map(s=>s.trim()).filter(Boolean),(q,v)=>q.accepted_answers=v);
@@ -221,10 +224,11 @@ async function save() {
   accept(snapshot,state.index,stage()?.id);await refresh();
 }
 $('save').onclick=guarded(async()=>{await save();notice('Черновик сохранён. Опубликованная игра пока без изменений.');});
-$('publish').onclick=guarded(async()=>{validateGridCategories();validateMediaClips();await save();const snapshot=await api('/games/'+id()+'/publish','POST',{revision:state.snapshot.revision});accept(snapshot,state.index,stage()?.id);await refresh();notice('Игра опубликована. В Mini App нажми «Обновить список игр».');});
+$('publish').onclick=guarded(async()=>{if(!await validatePublication(true))return;await save();const snapshot=await api('/games/'+id()+'/publish','POST',{revision:state.snapshot.revision});accept(snapshot,state.index,stage()?.id);await refresh();notice('Игра опубликована. В Mini App нажми «Обновить список игр».');});
+$('publication-error-list').onclick=event=>{const button=event.target.closest('[data-publication-issue]');if(button&&!state.busy)openPublicationIssue(publicationValidation.issues[Number(button.dataset.publicationIssue)]);};
 $('reload-published').onclick=guarded(async()=>{if(!confirm('Загрузить опубликованную версию? Текущий черновик будет заменён, его резервная копия сохранится.'))return;accept(await api('/games/'+id()+'/reload','POST'));await refresh();notice('Загружена опубликованная версия.');});
-$('export').onclick=guarded(async()=>{validateMediaClips();await save();const response=await fetch('/api/games/'+id()+'/export');if(!response.ok){const result=await response.json();throw new Error(result.detail||'Не удалось скачать пакет.');}const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');link.href=url;link.download=state.snapshot.id+'.zip';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);});
-$('import-json').onchange=guarded(async()=>{const file=$('import-json').files[0];if(!file)return;try{if(file.size>1024*1024)throw new Error('Документ должен быть не больше 1 МБ.');const doc=JSON.parse(await file.text());if(!doc||typeof doc!=='object'||Array.isArray(doc)||!Array.isArray(doc.rounds)||doc.rounds.length>100||(doc.stages!==undefined&&(!Array.isArray(doc.stages)||!doc.stages.length||doc.stages.length>30||doc.stages.some(s=>!s||typeof s.id!=='string'||!modeTitles[s.type])))||doc.rounds.some(q=>!q||typeof q!=='object'||!['question','event'].includes(q.type)))throw new Error('Нужен game.json со списком вопросов и событий.');if(!confirm('Заменить содержание игры из файла? Опубликованная версия не изменится до публикации.'))return;normalizeStages(doc);state.doc=doc;state.stageIndex=0;resetStageNavigation();editorNav.gameTab='rounds';state.index=stageQuestions()[0]?.i??-1;$('game-title').value=doc.title||'';$('game-description').value=doc.description||'';$('editor-title').textContent=doc.title||'Без названия';markDirty();renderStageSettings();renderRound();notice('Вопросы импортированы. При необходимости загрузи материалы к ним.');}finally{$('import-json').value='';}});
+$('export').onclick=guarded(async()=>{if(!await validatePublication(true))return;await save();const response=await fetch('/api/games/'+id()+'/export');if(!response.ok){const result=await response.json();const error=new Error(typeof result.detail==='string'?result.detail:result.detail?.message||'Не удалось скачать пакет.');error.issues=result.detail?.issues;throw error;}const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');link.href=url;link.download=state.snapshot.id+'.zip';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);});
+$('import-json').onchange=guarded(async()=>{const file=$('import-json').files[0];if(!file)return;try{if(file.size>1024*1024)throw new Error('Документ должен быть не больше 1 МБ.');const doc=JSON.parse(await file.text());if(!doc||typeof doc!=='object'||Array.isArray(doc)||!Array.isArray(doc.rounds)||doc.rounds.length>100||(doc.stages!==undefined&&(!Array.isArray(doc.stages)||!doc.stages.length||doc.stages.length>30||doc.stages.some(s=>!s||typeof s.id!=='string'||!modeTitles[s.type])))||doc.rounds.some(q=>!q||typeof q!=='object'||!['question','event'].includes(q.type)))throw new Error('Нужен game.json со списком вопросов и событий.');if(!confirm('Заменить содержание игры из файла? Опубликованная версия не изменится до публикации.'))return;resetPublicationValidation();normalizeStages(doc);state.doc=doc;state.stageIndex=0;resetStageNavigation();editorNav.gameTab='rounds';state.index=stageQuestions()[0]?.i??-1;$('game-title').value=doc.title||'';$('game-description').value=doc.description||'';$('editor-title').textContent=doc.title||'Без названия';markDirty();renderStageSettings();renderRound();notice('Вопросы импортированы. При необходимости загрузи материалы к ним.');}finally{$('import-json').value='';}});
 
 function newGameDialog() {if(!state.busy&&canLeave()){$('new-title').value='';$('create-dialog').showModal();$('new-title').focus();}}
 $('new-game').onclick=newGameDialog;$('empty-create').onclick=newGameDialog;

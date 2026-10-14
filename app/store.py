@@ -9,7 +9,8 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from app.questions import QUESTIONS
-from app.events import apply_event, snapshot_modifiers, consume_modifiers, score_delta
+from app.events import apply_event, snapshot_modifiers, consume_modifiers, score_delta, normalize_effect, describe_effect
+from app.limits import MAX_SAFE_INTEGER
 from app.modes import LEGACY_STAGE, binary_fields, grid_category
 
 
@@ -307,7 +308,7 @@ class Store:
             s['ui_version'] += 1
             db.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(s), code))
 
-    def change(self, code, user, action, question=None, text='', player='', choice=None):
+    def change(self, code, user, action, question=None, text='', player='', choice=None, delta=None, effect=None):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT state FROM rooms WHERE code=?', (code,)).fetchone()
@@ -333,9 +334,52 @@ class Store:
                 practice_owner = s['practice'] and uid == s['owner']
                 if action not in ('answer', 'message', 'pick', 'reaction') and uid != s['host'] and not (practice_owner and action in ('close', 'next', 'finish', 'pause', 'unpause', 'show_scores', 'hide_scores')):
                     raise ValueError('Это действие доступно только ведущему')
-                if s['paused'] and action not in ('reaction', 'unpause', 'show_scores', 'hide_scores'):
+                if s['paused'] and action not in ('reaction', 'unpause', 'show_scores', 'hide_scores', 'adjust_score', 'set_effect', 'clear_effect', 'skip_stage'):
                     raise ValueError('Игра на паузе')
-                if action == 'start':
+                if action in ('adjust_score', 'set_effect', 'clear_effect'):
+                    target = next((p for p in s['players'] if p['id'] == player and p['id'] != s['host']), None)
+                    if not target or s['phase'] == 'finished':
+                        raise ValueError('Выберите игрока в незавершённой игре')
+                    if action == 'adjust_score':
+                        if type(delta) is not int or abs(delta) > MAX_SAFE_INTEGER or abs(target['score'] + delta) > MAX_SAFE_INTEGER:
+                            raise ValueError('Укажите допустимое целое изменение счёта')
+                        target['score'] += delta
+                        message(s, 'Ведущий', f"Корректировка: {target['name']} {delta:+d} · счёт {target['score']}", 'system')
+                    else:
+                        # Closed questions retain their scoring snapshot; changes apply to future questions.
+                        if action == 'clear_effect':
+                            s['modifiers'].pop(player, None)
+                            if s['phase'] == 'question':
+                                s['round_modifiers'].pop(player, None)
+                            description = 'эффект снят'
+                        else:
+                            normalized = normalize_effect(dict(effect or {}, target='all_players'))
+                            details = describe_effect(normalized)
+                            modifier = dict(kind=normalized['type'], remaining=normalized['questions'], title=details['title'],
+                                            **{k: normalized[k] for k in ('factor', 'amount') if k in normalized})
+                            s['modifiers'][player] = modifier
+                            if s['phase'] == 'question':
+                                s['round_modifiers'][player] = copy.deepcopy(modifier)
+                            description = f"{details['title']} · на {normalized['questions']} вопр."
+                        timing = ' со следующего вопроса' if s['phase'] in ('review', 'reveal') else ''
+                        message(s, 'Ведущий', f"{target['name']}: {description}{timing}", 'system')
+                elif action == 'skip_stage':
+                    if s['phase'] in ('lobby', 'finished'):
+                        raise ValueError('Пропуск раунда доступен во время игры')
+                    skipped = [q['id'] for q in s['pack'] if q.get('stage', 'legacy') == current_stage(s)['id'] and q['id'] not in s['used']]
+                    s.setdefault('skipped', []).extend(skipped)
+                    s['used'].extend(skipped)
+                    message(s, 'Ведущий', f"Раунд «{current_stage(s)['title']}» пропущен. Неоценённые ответы не начисляют очки.", 'system')
+                    s.update(active=None, answers={}, deadline=None, advance_at=None, auto_at=None, bot_due={}, event=None,
+                             round_modifiers={}, scores_visible=False, chooser=s['host'])
+                    was_paused = s['paused']
+                    start_question(s)
+                    if was_paused:
+                        s['paused_at'] = time.time()
+                    if s['phase'] == 'finished':
+                        s['paused'] = False
+                        s.pop('paused_at', None)
+                elif action == 'start':
                     if s['phase'] != 'lobby' or len(s['players']) < 2 or not s['pack']:
                         raise ValueError('Для старта нужны вопросы и хотя бы один игрок')
                     start_question(s)

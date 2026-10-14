@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.media import MAX_MEDIA_BYTES
+from app.pack_validation import PublicationError
 from builder.auth import check_password
 from builder.store import Catalog, Conflict
 
@@ -74,6 +75,8 @@ def create_app(catalog, password_hash):
             return method(*args)
         except Conflict as error:
             raise HTTPException(409, str(error)) from None
+        except PublicationError as error:
+            raise HTTPException(400, dict(message='Публикация остановлена. Исправьте отмеченные поля.', issues=error.issues)) from None
         except (ValueError, OSError) as error:
             raise HTTPException(400, str(error)) from None
 
@@ -141,6 +144,10 @@ def create_app(catalog, password_hash):
     @app.post('/api/games/{game_id}/publish', dependencies=[Depends(author)])
     def publish(game_id: str, body: Version):
         return invoke(catalog.publish, game_id, body.revision)
+
+    @app.post('/api/games/{game_id}/validate', dependencies=[Depends(author)])
+    def validate(game_id: str, body: SaveGame):
+        return invoke(catalog.validate, game_id, body.document)
 
     @app.post('/api/games/{game_id}/reload', dependencies=[Depends(author)])
     def reload(game_id: str):

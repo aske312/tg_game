@@ -19,7 +19,7 @@ async def main():
     url=cfg['APP_URL'].rstrip('/')
     db=Store(cfg['DATABASE_PATH'])
     users=[dict(id='smoke-presentation-'+secrets.token_hex(8),name=name)
-           for name in ('Deploy check: host','Deploy check: player','Deploy check: display')]
+           for name in ('Deploy check: host','Deploy check: player')]
     tokens=[db.session(user) for user in users]
     headers=[{'Authorization':'Bearer '+token} for token in tokens]
     code=None
@@ -38,12 +38,17 @@ async def main():
             print('Public HTTPS health:',response.json(),flush=True)
             page=await client.get('/');page.raise_for_status()
             assert 'id="grid-intro"' in page.text and 'id="pause-game"' in page.text and 'id="award-spotlight"' in page.text
-            for asset in ('/static/experience.js?v=1','/static/experience.css?v=1','/static/app.js?v=15'):
+            screen_page=await client.get('/display');screen_page.raise_for_status()
+            assert 'id="display-form"' in screen_page.text and 'telegram.org/js/telegram-web-app.js' not in screen_page.text
+            for asset in ('/static/experience.js?v=1','/static/experience.css?v=1','/static/app.js?v=17'):
                 response=await client.get(asset);response.raise_for_status()
                 assert len(response.content)>100
             (await client.post(path+'/join',headers=headers[1])).raise_for_status()
-            response=await client.post(path+'/watch',headers=headers[2]);response.raise_for_status()
-            assert response.json()['display'] and len(response.json()['players'])==2
+            response=await client.post('/api/display',json={'code':code});response.raise_for_status()
+            guest=response.json()
+            tokens.append(guest['token']);headers.append({'Authorization':'Bearer '+guest['token']})
+            assert guest['state']['display'] and len(guest['state']['players'])==2
+            assert (await client.post(path+'/action',headers=headers[2],json={'action':'start'})).status_code==401
             ws_url=url.replace('https://','wss://',1).replace('http://','ws://',1)+'/ws/'+code
             async with websockets.connect(ws_url) as display,websockets.connect(ws_url) as player:
                 for ws,token,is_display in ((display,tokens[2],True),(player,tokens[1],False)):

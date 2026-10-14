@@ -6,20 +6,25 @@ const vm=require('node:vm');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 
-function harness() {
+function harness(options={}) {
   let clock=1000000;
   class Clock extends Date {static now(){return clock;}}
   function element(){
     let html='';
+    const listeners={};
     return {hidden:false,dataset:{},style:{setProperty(){}},value:'',options:[],children:[],writes:0,textContent:'',previousElementSibling:{},
+      paused:true,currentTime:0,duration:200,attributes:{},
+      pause(){this.paused=true;this.emit('pause');},async play(){this.paused=false;this.emit('play');},
+      emit(event){for(const fn of listeners[event]||[])fn();},
       get innerHTML(){return html;},set innerHTML(value){html=value;this.writes++;},
-      querySelectorAll(){return [];},querySelector(){return null;},setAttribute(){},addEventListener(){},
+      querySelectorAll(){return [];},querySelector(){return null;},setAttribute(key,value){this.attributes[key]=value;},addEventListener(event,fn){(listeners[event]??=[]).push(fn);},
       replaceChildren(){this.children=[];},append(node){this.children.push(node);},remove(){},
     };
   }
   const nodes=new Map([...fs.readFileSync(path.join(root,'static/index.html'),'utf8').matchAll(/id="([^"]+)"/g)].map(m=>[m[1],element()]));
+  const storage=new Map(Object.entries(options.storage||{}));
   const ctx={document:{getElementById(id){assert(nodes.has(id),'Missing DOM ID: '+id);return nodes.get(id);},querySelectorAll(){return [];},createElement:element,addEventListener(){},body:{dataset:{}}},
-    window:{addEventListener(){},matchMedia(){return {matches:false};}},sessionStorage:{getItem(){return null;},setItem(){},removeItem(){}},location:{search:''},URLSearchParams,
+    window:{addEventListener(){},matchMedia(){return {matches:false};}},sessionStorage:{getItem(key){return storage.get(key)??null;},setItem(key,value){storage.set(key,value);},removeItem(key){storage.delete(key);}},location:{search:'',pathname:options.pathname||'/',origin:'http://localhost'},history:{replaceState(){}},URLSearchParams,
     fetch:()=>new Promise(()=>{}),setInterval(){},setTimeout(){},clearTimeout(){},Date:Clock,console};
   vm.createContext(ctx);
   for(const file of ['experience.js','app.js'])vm.runInContext(fs.readFileSync(path.join(root,'static',file),'utf8'),ctx);
@@ -28,7 +33,7 @@ function harness() {
   const base={code:'ABC234',host:'h',players:[{id:'h',name:'Host',score:0},{id:'p',name:'Player',score:0}],phase:'question',stage:{id:'g',title:'Grid',type:'grid',categories:['Space']},stages:[{id:'g',type:'grid'}],stage_count:1,stage_number:1,question_count:2,question_number:1,round_count:2,used:[],answered_ids:[],answers:{},question:{id:'q1',category:'Space',text:'Question',value:100,seconds:45},active:'q1',deadline:1045,chooser:'h',board:[{id:'q2',category:'Space',value:200,used:false}],can_pick:false};
   const apply=patch=>{ctx.snapshot={...base,version:++version,ui_version:version,server_time:clock/1000,...patch};vm.runInContext('apply(snapshot)',ctx);return ctx.snapshot;};
   const node=id=>nodes.get(id);
-  return {ctx,apply,node,run:code=>vm.runInContext(code,ctx),advance:ms=>{clock+=ms;vm.runInContext('tick()',ctx);}};
+  return {ctx,apply,node,storage,run:code=>vm.runInContext(code,ctx),advance:ms=>{clock+=ms;vm.runInContext('tick()',ctx);}};
 }
 
 test('reaction snapshots preserve answer input and binary/board DOM',()=>{
@@ -92,4 +97,83 @@ test('equal scores share places in the ceremony',()=>{
   const plan=h.run("ceremonyPlan(players,'h')");
   assert.deepEqual(Array.from(plan.ranked,p=>p.rank),[1,1,3]);
   assert.deepEqual(Array.from(plan.podium),[3,1]);
+});
+
+test('player sees trap description, remaining questions and future effects',()=>{
+  const h=harness();
+  const trap={kind:'half_reward',remaining:2,title:'Половина награды'};
+  h.apply({round_modifiers:{p:trap},modifiers:{p:trap}});
+  assert(!h.node('my-effects').hidden);
+  assert.match(h.node('my-effect-list').innerHTML,/🪤.*Половина награды.*2 вопроса.*включая текущий/s);
+  assert(h.node('host-management').hidden);assert(h.node('skip-stage').hidden);
+  h.apply({phase:'review',round_modifiers:{p:trap},modifiers:{p:{kind:'shield',remaining:1}}});
+  assert.match(h.node('my-effect-list').innerHTML,/В этом вопросе.*Защита от штрафа.*Далее/s);
+  h.apply({phase:'board',question:null,round_modifiers:{p:trap},modifiers:{}});
+  assert(h.node('my-effects').hidden);
+});
+
+test('host can manage players on pause and skip to final results',()=>{
+  const h=harness();h.run("auth.user.id='h'");
+  h.node('manage-player').value='p';
+  h.apply({paused:true,paused_at:1000,modifiers:{p:{kind:'double_penalty',remaining:3}}});
+  assert(!h.node('host-management').hidden);assert(!h.node('skip-stage').hidden);
+  assert.equal(h.node('adjust-score').disabled,false);
+  assert.equal(h.node('managed-score').textContent,'Счёт: 0');
+  assert.match(h.node('managed-effect').innerHTML,/Двойной штраф/);
+  h.apply({phase:'finished',question:null,active:null,finished_at:1000});
+  assert(h.node('host-management').hidden);assert(h.node('skip-stage').hidden);
+});
+
+test('audio timeline is relative to clip, seeks inside it and restarts at its beginning',async()=>{
+  const h=harness();
+  h.apply({question:{id:'music',text:'?',media:{kind:'audio',url:'/song.mp3',start:60,end:90}}});
+  const wrapper=h.node('media-content').children[0];
+  const [audio,controls,seek,time]=wrapper.children;
+  audio.emit('loadedmetadata');
+  assert.equal(audio.controls,false);assert.equal(audio.hidden,true);
+  assert.equal(audio.currentTime,60);assert.equal(seek.max,30);
+  assert.equal(time.textContent,'0:00 / 0:30');
+  seek.value=12;seek.oninput();assert.equal(audio.currentTime,72);
+  assert.equal(time.textContent,'0:12 / 0:30');
+  audio.currentTime=88;controls.children[2].onclick();assert.equal(audio.currentTime,90);
+  await controls.children[0].onclick();assert.equal(audio.currentTime,60);assert.equal(audio.paused,false);
+  audio.currentTime=91;audio.emit('timeupdate');assert.equal(audio.currentTime,90);assert.equal(audio.paused,true);
+  audio.currentTime=50;audio.emit('seeking');assert.equal(audio.currentTime,60);
+  controls.children[1].onclick();assert.equal(audio.currentTime,60);
+});
+
+test('audio clips clamp to actual file length and reject missing intervals',()=>{
+  const h=harness();
+  h.apply({question:{id:'music',media:{kind:'audio',url:'/song.mp3',start:150,end:300}}});
+  let [audio,,seek,time]=h.node('media-content').children[0].children;
+  audio.emit('loadedmetadata');assert.equal(seek.max,50);assert.equal(time.textContent,'0:00 / 0:50');
+  h.apply({question:{id:'bad',media:{kind:'audio',url:'/song.mp3',start:250}}});
+  [audio,,seek]=h.node('media-content').children[0].children;
+  audio.emit('loadedmetadata');assert(seek.disabled);
+  assert.match(h.node('notice').textContent,/за пределами/);
+});
+
+test('web display enters without login and keeps host login and room storage separate',()=>{
+  const h=harness({pathname:'/display',storage:{auth:'host-login',room:'HOST12'}});
+  assert(!h.node('display-entry').hidden);
+  assert.equal(h.node('identity').textContent,'Общий экран');
+  h.apply({display:true});
+  assert(h.node('display-entry').hidden);assert(!h.node('display-fullscreen').hidden);
+  for(const id of ['host-management','display-invite','host-toolbar','answer-form','reactions'])assert(h.node(id).hidden,id);
+  assert.equal(h.storage.get('auth'),'host-login');assert.equal(h.storage.get('room'),'HOST12');
+  assert.equal(h.storage.get('displayRoom'),'ABC234');
+  h.node('leave').onclick();
+  assert(!h.node('display-entry').hidden);assert(h.node('home').hidden);
+  assert.equal(h.storage.has('displayRoom'),false);assert.equal(h.storage.get('auth'),'host-login');
+});
+
+test('Telegram role selection only offers player and host; host has a web screen link',()=>{
+  const h=harness();h.run("setRole('display')");
+  assert.equal(h.run('entryRole'),'player');
+  assert.equal(h.node('join-submit').textContent,'Присоединиться →');
+  h.run("auth.user.id='h'");h.apply({});
+  assert(!h.node('display-invite').hidden);
+  assert.equal(h.node('display-url').href,'http://localhost/display?room=ABC234');
+  assert(h.node('display-fullscreen').hidden);
+  assert(!fs.readFileSync(path.join(root,'static/index.html'),'utf8').includes('data-role="display"'));
 });

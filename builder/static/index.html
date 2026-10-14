@@ -6,12 +6,13 @@
   <meta name="theme-color" content="#101e18">
   <title>Конструктор · Крысиные бега</title>
   <link rel="stylesheet" href="/static/builder.css?v=6">
-  <link rel="stylesheet" href="/static/editor.css?v=6">
+  <link rel="stylesheet" href="/static/editor.css?v=7">
   <script src="/static/navigation.js?v=6" defer></script>
   <script src="/static/categories.js?v=6" defer></script>
   <script src="/static/events.js?v=6" defer></script>
   <script src="/static/media-editor.js?v=6" defer></script>
-  <script src="/static/builder.js?v=6" defer></script>
+  <script src="/static/validation.js?v=1" defer></script>
+  <script src="/static/builder.js?v=7" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -37,6 +38,7 @@
       <section id="empty" class="empty panel"><span class="empty-symbol" aria-hidden="true">✳</span><span class="eyebrow">ТВОЯ СЛЕДУЮЩАЯ ИГРА</span><h1>Есть о чём<br>спросить?</h1><p>Выбери игру в библиотеке или создай новую.<br>Вопросы, медиа и события — всё в одном месте.</p><button id="empty-create" class="primary">Создать игру ↗</button><button id="empty-browse" class="secondary">Выбрать игру</button></section>
       <section id="editor" hidden>
         <header class="editor-header"><div class="editor-identity"><span class="eyebrow">ИГРА <span id="editor-location"></span></span><h1 id="editor-title"></h1><span id="save-status" class="save-status" role="status"></span></div><div class="editor-actions"><button id="save" class="secondary">Сохранить</button><button id="publish" class="primary">Опубликовать ↗</button></div></header>
+        <section id="publication-errors" class="publication-errors panel" role="region" aria-labelledby="publication-error-count" hidden><h2 id="publication-error-count"></h2><p>Игра пока не опубликована. Нажмите на замечание, чтобы открыть нужное поле. Список обновляется при исправлении.</p><ul id="publication-error-list"></ul></section>
         <nav id="game-tabs" class="editor-tabs game-tabs" role="tablist" aria-label="Разделы игры"><button id="game-tab-rounds" data-game-tab="rounds" role="tab" aria-controls="game-rounds-pane">Раунды</button><button id="game-tab-info" data-game-tab="info" role="tab" aria-controls="game-info-pane">Об игре</button><button id="game-tab-files" data-game-tab="files" role="tab" aria-controls="game-files-pane">Файлы и публикация</button></nav>
         <section id="game-info-pane" class="panel game-settings" role="tabpanel" aria-labelledby="game-tab-info" hidden><div class="section-title"><h2>Об игре</h2><span id="round-count" class="hint"></span></div><label for="game-title">Название</label><input id="game-title" maxlength="100" placeholder="Как назовём забег?"><label for="game-description">Описание <span class="optional">необязательно</span></label><textarea id="game-description" maxlength="500" rows="2" placeholder="Тема, настроение или пара слов для игроков"></textarea><div class="game-danger-zone"><div><h3>Удаление игры</h3><p class="hint">Удалить игру вместе с черновиком и медиа.</p></div><button id="delete-current-game" class="secondary danger-text">Удалить игру</button></div></section>
         <section id="game-files-pane" class="panel files-panel" role="tabpanel" aria-labelledby="game-tab-files" hidden><h2>Файлы и публикация</h2><p>Сохраняй работу в черновик. «Опубликовать» проверит раунды и обновит игру в Mini App.</p><div class="file-actions"><button id="export" class="secondary">Скачать ZIP с медиа</button><label class="secondary import-label" for="import-json">Импортировать game.json<input id="import-json" type="file" accept=".json,application/json" hidden></label></div><p class="hint">ZIP содержит вопросы и медиа. При импорте JSON недостающие материалы можно загрузить в карточках вопросов.</p><div class="publication-note"><span>↗</span><p>Начатые комнаты сохраняют свою версию игры.</p></div><button id="reload-published" class="quiet" hidden>Загрузить опубликованную версию</button></section>

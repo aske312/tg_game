@@ -8,9 +8,9 @@ from typing import Literal, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect, Request, Response, Cookie
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 from app.auth import validate_telegram
 from app.store import Store
@@ -52,10 +52,16 @@ class Command(BaseModel):
     text: str = Field(default='', max_length=500)
     player: str = Field(default='', max_length=100)
     choice: Optional[int] = Field(default=None, ge=0, le=1)
+    delta: Optional[StrictInt] = Field(default=None, ge=-MAX_SAFE_INTEGER, le=MAX_SAFE_INTEGER)
+    effect: Optional[dict] = None
 
 
 class CreateRoom(BaseModel):
     pack: str = Field(default='demo', max_length=80)
+
+
+class DisplayRoom(BaseModel):
+    code: str = Field(min_length=6, max_length=6, pattern=r'^[A-Za-z2-9]{6}$')
 
 
 class PracticeRoom(CreateRoom):
@@ -86,6 +92,8 @@ def current_user(authorization):
         if not authorization or not authorization.startswith('Bearer '):
             raise ValueError('Нужен вход в приложение')
         user = store.user(authorization[7:])
+        if user.get('role') == 'display':
+            raise ValueError('Сессия общего экрана доступна только для просмотра')
         if not DEV_MODE and user['id'].startswith('dev-'):
             raise ValueError('Войдите через Telegram')
         return user
@@ -96,6 +104,43 @@ def current_user(authorization):
 @app.get('/')
 def index():
     return FileResponse(ROOT / 'static/index.html', headers={'Cache-Control': 'no-cache'})
+
+
+@app.get('/display', response_class=HTMLResponse)
+def display_page():
+    # Share the game renderer while keeping Telegram authentication out of the web screen.
+    html = (ROOT / 'static/index.html').read_text(encoding='utf-8')
+    html = html.replace('<title>Клан крыс · Крысиные бега</title>', '<title>Общий экран · Крысиные бега</title>')
+    html = html.replace('<script src="https://telegram.org/js/telegram-web-app.js"></script>', '')
+    return HTMLResponse(html, headers={'Cache-Control': 'no-cache'})
+
+
+@app.post('/api/display')
+def display_session(body: DisplayRoom, request: Request, response: Response):
+    code = body.code.upper()
+    try:
+        cookie_name = 'ratrace_display_'+code
+        user, token = None, request.cookies.get(cookie_name, '')
+        if token:
+            try:
+                candidate = store.user(token)
+                if candidate.get('role') == 'display' and candidate.get('room') == code:
+                    user = candidate
+            except ValueError:
+                pass
+        if user is None:
+            # Verify the invitation before creating any session or room observer.
+            store.read(code)
+            user = dict(id='screen-'+secrets.token_hex(16), name='Общий экран', role='display', room=code)
+            store.change(code, user, 'watch')
+            token = store.session(user)
+        snapshot = store.public(code, user['id'], display=True)
+        response.set_cookie(cookie_name, token, max_age=86400, httponly=True,
+                            secure=request.url.scheme == 'https', samesite='lax')
+        response.headers['Cache-Control'] = 'no-store'
+        return dict(token=token, user=user, state=snapshot)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.get('/api/health')
@@ -246,13 +291,33 @@ async def upload_media(code: str, request: Request, kind: Literal['image', 'audi
 
 
 @app.get('/api/media/{asset}')
-def media(asset: str, ratrace_session: str = Cookie(default='')):
-    user = current_user('Bearer '+ratrace_session)
+def media(asset: str, request: Request, ratrace_session: str = Cookie(default='')):
     try:
         info = store.media_info(asset)
-        store.public(info['room'], user['id'], display=True)
     except ValueError as e:
         raise HTTPException(404, str(e))
+    permitted = False
+    authenticated = False
+    for token in (request.cookies.get('ratrace_display_'+info['room'], ''), ratrace_session):
+        if not token:
+            continue
+        try:
+            user = store.user(token)
+            if user.get('role') == 'display':
+                if user.get('room') != info['room']:
+                    continue
+            elif not DEV_MODE and user['id'].startswith('dev-'):
+                continue
+            authenticated = True
+            store.public(info['room'], user['id'], display=True)
+            permitted = True
+            break
+        except ValueError:
+            pass
+    if not permitted:
+        if authenticated:
+            raise HTTPException(404, 'Материал недоступен в этой комнате')
+        raise HTTPException(401, 'Подключитесь к комнате, чтобы открыть материал')
     path = Path(store.path).parent / 'media' / info['filename']
     if not path.is_file():
         raise HTTPException(404, 'Файл не найден')
@@ -294,7 +359,7 @@ async def watch(code: str, authorization: str = Header(default='')):
 async def action(code: str, body: Command, authorization: str = Header(default='')):
     user = current_user(authorization)
     try:
-        changed = store.change(code.upper(), user, body.action, body.question, body.text, body.player, body.choice)
+        changed = store.change(code.upper(), user, body.action, body.question, body.text, body.player, body.choice, body.delta, body.effect)
         if changed:
             await publish(code.upper())
         return store.public(code.upper(), user['id'])
@@ -312,7 +377,10 @@ async def socket(ws: WebSocket, code: str):
         user = store.user(message.get('token', ''))
         if not DEV_MODE and user['id'].startswith('dev-'):
             raise ValueError('Войдите через Telegram')
-        display = message.get('display') is True
+        guest_display = user.get('role') == 'display'
+        if guest_display and user.get('room') != code:
+            raise ValueError('Сессия общего экрана принадлежит другой комнате')
+        display = guest_display or message.get('display') is True
         snapshot = store.public(code, user['id'], display)
         connections.setdefault(code, {})[ws] = (user['id'], display)
         await ws.send_json(snapshot)

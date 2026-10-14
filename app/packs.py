@@ -9,6 +9,7 @@ from app.media import MAX_MEDIA_BYTES, detect_media
 from app.modes import stages_from_doc, binary_fields, grid_category
 from app.events import normalize_effect
 from app.limits import integer, finite_number
+from app.pack_validation import publication_issues, PublicationError
 
 MAX_PACK_BYTES = 1024 * 1024
 
@@ -27,6 +28,9 @@ def load_pack(directory):
         raise ValueError('Не удалось прочитать JSON') from e
     if not isinstance(doc, dict) or doc.get('schema_version', 1) != 1:
         raise ValueError('Ожидается объект с schema_version: 1')
+    issues = publication_issues(doc, directory)
+    if issues:
+        raise PublicationError(issues)
     title = doc.get('title')
     if not isinstance(title, str) or not title.strip() or len(title) > 100:
         raise ValueError('Укажите title до 100 символов')
@@ -47,18 +51,21 @@ def load_pack(directory):
         if not isinstance(stage_id, str) or stage_id not in stage_map:
             raise ValueError(f'Вопрос {i}: неизвестный игровой раунд stage')
         mode = stage_map[stage_id]['type']
+        location = f'Раунд {stages.index(stage_map[stage_id]) + 1} «{stage_map[stage_id]["title"]}» → {"Событие" if item.get("type") == "event" else "Вопрос"} {sum(q["stage"] == stage_id for q in questions) + 1}'
         if item.get('type') == 'event':
             if mode == 'grid':
-                raise ValueError(f'Раунд {i}: события добавляйте в блиц или выбор из двух')
+                raise ValueError(f'{location}: события добавляйте в блиц или выбор из двух')
             effect = item.get('effect')
             try:
                 effect = normalize_effect(effect)
             except ValueError as error:
-                raise ValueError(f'Раунд {i}: {error}') from None
+                raise ValueError(f'{location}: {error}') from None
             event_title = item.get('title', 'Событие')
             text = item.get('text', '')
-            if not isinstance(event_title, str) or not event_title.strip() or len(event_title) > 100 or not isinstance(text, str) or len(text) > 2000:
-                raise ValueError(f'Раунд {i}: недопустимые title/text события')
+            if not isinstance(event_title, str) or not event_title.strip() or len(event_title) > 100:
+                raise ValueError(f'{location}: заполните поле «Название события» (до 100 символов)')
+            if not isinstance(text, str) or len(text) > 2000:
+                raise ValueError(f'{location}: поле «Описание события» — до 2000 символов')
             category = item.get('category', '')
             if not isinstance(category, str) or len(category.strip()) > 100:
                 raise ValueError(f'Раунд {i}: категория события до 100 символов')
