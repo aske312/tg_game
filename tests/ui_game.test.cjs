@@ -114,6 +114,19 @@ test('pause keeps countdown frozen and round scores replace the question',()=>{
   assert.match(h.node('round-results').innerHTML,/Player/);
 });
 
+test('round scores offer only the host a next-round action',()=>{
+  for(const role of ['host','player','display']){
+    const h=harness();if(role==='host')h.run("auth.user.id='h'");
+    h.apply({display:role==='display',phase:'reveal',stage_complete:true,scores_visible:true,stage_count:2});
+    assert(!h.node('round-scores').hidden);assert(h.node('question').hidden);assert(h.node('question-board').hidden);
+    assert.equal(h.node('scores-next').hidden,role!=='host');
+    assert.equal(h.node('scores-waiting').hidden,role==='host');
+    assert.equal(h.node('scores-next').textContent,'Следующий раунд →');
+    h.apply({display:role==='display',phase:'reveal',stage_complete:true,scores_visible:true,stage_count:1});
+    assert.equal(h.node('scores-next').textContent,'К награждению →');
+  }
+});
+
 test('intro survives reaction updates without restarting crawl',()=>{
   const h=harness(),state=h.apply({phase:'intro',question:null,active:null,intro_started_at:1000,intro_until:1014});
   assert(!h.node('grid-intro').hidden);assert(h.node('question-board').hidden);assert(h.node('question').hidden);
@@ -189,7 +202,8 @@ test('host focuses on the question or grid and keeps only pending answers in rev
   h.ctx.calls=[];h.run('command=async(action)=>calls.push(action)');
   await h.node('next').onclick();assert.equal(h.ctx.calls[0],'display_board');
   h.apply({phase:'reveal',stage_complete:true});
-  await h.node('next').onclick();assert.equal(h.ctx.calls[1],'next');
+  await h.node('next').onclick();assert.equal(h.ctx.calls[1],'show_scores');
+  await h.node('scores-next').onclick();assert.equal(h.ctx.calls[2],'next');
 });
 
 test('audio timeline is relative to clip, seeks inside it and restarts at its beginning',async()=>{

@@ -92,13 +92,24 @@ def finish_reveal(s):
     s['display_scene'] = 'answer'
     correct = [(a['time'], uid) for uid, a in s['answers'].items() if a['verdict'] == 'correct']
     s['chooser'] = min(correct)[1] if correct and current_stage(s)['chooser'] == 'winner' else s['host']
-    s['advance_at'] = time.time()+3 if current_stage(s)['type'] != 'grid' and current_stage(s)['auto_advance'] and (remaining_stage(s) or player_practice(s)) else None
+    s['advance_at'] = time.time()+3 if current_stage(s)['type'] != 'grid' and current_stage(s)['auto_advance'] and remaining_stage(s) else None
     q = current_question(s)
     if q and q.get('media', {}).get('kind') in ('audio', 'video'):
         previous = s.get('media_playback') or {}
         s['media_playback'] = dict(question=q['id'], mode='full', playing=True, position=0,
                                    updated_at=time.time(), revision=previous.get('revision', 0)+1)
         s['advance_at'] = None  # The host decides when the full recording ends.
+    elif not remaining_stage(s):
+        show_round_scores(s)
+
+
+def show_round_scores(s):
+    s.update(scores_visible=True, advance_at=None)
+    if s.get('media_playback'):
+        now = time.time()
+        playback = s['media_playback']
+        playback.update(position=media_position(s, now), playing=False, updated_at=now,
+                        revision=playback['revision']+1)
 
 
 def single_answer(s):
@@ -160,8 +171,10 @@ def start_question(s, selected=None):
     if q.get('type') == 'event':
         s.update(phase='event', active=q['id'], answers={}, deadline=None, event=apply_event(s, q))
         s['used'].append(q['id'])
-        if current_stage(s)['auto_advance'] and (remaining_stage(s) or player_practice(s)):
+        if current_stage(s)['auto_advance'] and remaining_stage(s):
             s['advance_at'] = time.time()+3
+        if not remaining_stage(s):
+            show_round_scores(s)
         message(s, 'Ведущий', s['event']['title']+' · '+s['event']['description']+' Участники: '+', '.join(s['event']['targets']), 'system')
         return
     now = time.time()
@@ -406,6 +419,9 @@ class Store:
                             position = 0
                     s['media_playback'] = dict(question=q['id'], playing=action == 'media_play' if action != 'media_seek' else playback['playing'],
                                                position=position, updated_at=now, revision=playback['revision']+1, duration=duration, mode=playback.get('mode', 'excerpt'))
+                    if (action == 'media_pause' and playback.get('mode') == 'full' and s['phase'] == 'reveal'
+                            and not remaining_stage(s) and duration is not None and position >= duration-.05):
+                        show_round_scores(s)
                 elif action in ('display_question', 'display_answer', 'display_board'):
                     scene = action.removeprefix('display_')
                     if s['phase'] in ('lobby', 'intro', 'finished'):
@@ -538,12 +554,10 @@ class Store:
                 elif action in ('show_scores', 'hide_scores'):
                     if s['phase'] not in ('reveal', 'event') or remaining_stage(s):
                         raise ValueError('Счёт можно показать после завершения раунда')
-                    s['scores_visible'] = action == 'show_scores'
-                    s['advance_at'] = None
-                    if action == 'show_scores' and s.get('media_playback'):
-                        now = time.time()
-                        playback = s['media_playback']
-                        playback.update(position=media_position(s, now), playing=False, updated_at=now, revision=playback['revision']+1)
+                    if action == 'show_scores':
+                        show_round_scores(s)
+                    else:
+                        s.update(scores_visible=False, advance_at=None)
                 elif action == 'message':
                     text = text.strip()
                     if s['phase'] == 'question':
@@ -670,7 +684,10 @@ class Store:
                         grade(s, uid, matches_question(a['text'], current_question(s)))
                 changed = True
             elif s['phase'] in ('reveal', 'event') and s.get('advance_at') is not None and now >= s['advance_at']:
-                start_question(s)
+                if remaining_stage(s):
+                    start_question(s)
+                else:
+                    show_round_scores(s)
                 changed = True
             if changed:
                 s['version'] += 1

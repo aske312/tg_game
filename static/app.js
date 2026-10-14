@@ -255,7 +255,7 @@ function apply(s){
     $('my-answer').textContent=ownAnswer()?'Твой ответ: '+ownAnswer().text+' · отправлен':'';
     show('solution',!!q.answer);$('solution').textContent=q.answer?'Правильный ответ: '+q.answer:'';
     show('close',hasControls()&&s.phase==='question');show('next',hasControls()&&s.phase==='reveal');
-    $('next').textContent=s.round_number===s.round_count?'Показать итоги →':s.stage_complete?'Следующий раунд →':s.stage?.type==='grid'?'Вернуться к сетке →':'Следующий вопрос →';
+    $('next').textContent=s.stage_complete?'Показать счёт раунда →':s.stage?.type==='grid'?'Вернуться к сетке →':'Следующий вопрос →';
     if(oldQuestion!==s.code+':'+s.active){$('answer-text').value='';}
     if(s.phase!=='finished')renderMedia(q);renderReview();
   }
@@ -351,7 +351,7 @@ $('display-fullscreen').onclick=guard(async()=>{
 $('login-form').onsubmit=guard(async()=>{auth=await api('/login',{name:$('name').value});await entered();});
 $('join-form').onsubmit=guard(()=>join($('code').value));$('create').onclick=guard(create);$('practice').onclick=guard(()=>practice('host'));$('player-practice').onclick=guard(()=>practice('player'));$('another').onclick=guard(()=>room?.practice?practice(room.host_practice?'host':'player',room.pack_id):isHost()?create():$('leave').click());
 for(const a of ['start','close'])$(a).onclick=guard(()=>command(a));
-$('next').onclick=guard(()=>command(room.stage?.type==='grid'&&!room.stage_complete?'display_board':'next'));$('resume').onclick=guard(()=>command('next'));
+$('next').onclick=guard(()=>command(room.stage_complete&&!room.scores_visible?'show_scores':room.stage?.type==='grid'&&!room.stage_complete?'display_board':'next'));$('resume').onclick=guard(()=>command('next'));
 $('answer-form').onsubmit=guard(()=>command('answer',{question:room.question.id,text:$('answer-text').value}));
 $('binary-options').onclick=guard(async event=>{const b=event.target.closest('[data-choice]');if(b&&!b.disabled)await command('answer',{question:room.question.id,choice:Number(b.dataset.choice)});});
 $('board-cells').onclick=guard(async event=>{const b=event.target.closest('[data-pick]');if(b&&!b.disabled)await command('pick',{question:b.dataset.pick});});

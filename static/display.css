@@ -1,4 +1,5 @@
 /* The public display shows one scene at a time, without the host's roster. */
+#game[data-role=display] #round-scores h2{font-size:clamp(28px,2.6vw,40px)}#game[data-role=display] #round-results .final-result{padding:22px 0;font-size:clamp(20px,2vw,30px);line-height:1.3}#game[data-role=display] #round-results .result-name{font-size:inherit}
 .presentation-controls h3{margin-bottom:8px}.presentation-controls .inline{flex-wrap:wrap;gap:8px}.presentation-controls button[aria-pressed=true]{background:var(--accent);color:var(--bg);border-color:var(--accent)}
 #game[data-role=display] #presentation-scores h2{font-size:clamp(28px,2.6vw,40px)}
 #game[data-role=display] #presentation-results .final-result{padding:22px 0;font-size:clamp(20px,2vw,30px);line-height:1.3}

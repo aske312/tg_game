@@ -22,6 +22,8 @@ function renderExperience() {
   show('grid-intro',intro&&!paused&&!scores);
   show('skip-intro',hasControls());show('scores-next',hasControls()&&!paused);
   $('scores-next').textContent=room.stage_number===room.stage_count?'К награждению →':'Следующий раунд →';
+  show('scores-waiting',scores&&!hasControls());
+  $('scores-waiting').textContent=room.stage_number===room.stage_count?'Ведущий запустит награждение.':'Следующий раунд начнётся по команде ведущего.';
   show('board-waiting',isPlayer()&&room.stage?.type==='grid'&&['board','reveal'].includes(room.phase)&&!room.stage_complete&&!room.can_pick&&!paused&&!scores);
   const chooser=room.players.find(p=>p.id===room.chooser);
   $('chooser-waiting').textContent=`${chooser?.name||'Ведущий'} выбирает тему и стоимость.`;
