@@ -5,13 +5,13 @@ function renderDisplaySound() {
 }
 async function sendMediaAction(action,position,duration) {
   if(!room?.question)return;
-  const body={action,question:room.question.id};
+  const body={action,question:room.question.id,media_mode:mediaTransport().mode||'excerpt'};
   if(position!==undefined)body.position=position;
   if(duration!==undefined)body.duration=duration;
   apply(await api(isDisplay()?'/display/media':'/rooms/'+room.code+'/action',body));
 }
 function mediaTransport() {
-  return room?.media_playback?.question===room?.question?.id?room.media_playback:
+  return room?.media_playback&&room.media_playback.question===room?.question?.id?room.media_playback:
     {question:room?.question?.id,playing:room?.phase==='question',position:0,updated_at:0,revision:0};
 }
 function syncMediaPlayback() {
@@ -21,10 +21,11 @@ function syncMediaPlayback() {
 function renderQuestionMedia(q) {
   const m=q?.media,av=['audio','video'].includes(m?.kind),host=isHost()&&av&&room.phase!=='finished';
   show('host-media-controls',host);
-  for(const id of ['display-media-play','display-media-pause'])$(id).disabled=!!room.paused||!!room.scores_visible;
+  for(const id of ['display-media-play','display-media-pause'])$(id).disabled=!!room.paused||!!room.scores_visible||['board','scores'].includes(room.display_scene);
   const visible=!!m&&(!av||isDisplay());
   show('media-content',visible);
-  const key=room.code+':'+q?.id+':'+(isDisplay()?'display':isHost()?'host':'player')+':'+JSON.stringify(m);
+  const full=mediaTransport().mode==='full';
+  const key=room.code+':'+q?.id+':'+(isDisplay()?'display':isHost()?'host':'player')+':'+full+':'+JSON.stringify(m);
   if(key===mediaKey)return;
   mediaKey=key;
   const previous=activeClip;activeClip=null;previous?.node.pause();
@@ -35,7 +36,7 @@ function renderQuestionMedia(q) {
   if(m.kind==='image'){node.alt='Материал к вопросу';node.src=m.url;$('media-content').append(node);return;}
   node.preload='auto';node.controls=false;
   if(m.kind==='video')node.setAttribute('playsinline','');
-  $('media-content').append(clipPlayer(node,m,q.id));
+  $('media-content').append(clipPlayer(node,full?{...m,start:0,end:null,full:true}:m,q.id));
   node.src=m.url;
 }
 function clipPlayer(node,m,questionId) {
@@ -59,7 +60,7 @@ function clipPlayer(node,m,questionId) {
     try{
       await node.play();
       if(!current()){node.pause();return;}
-      if(room.paused||room.scores_visible||(!userInitiated&&!mediaTransport().playing))node.pause();
+      if(room.paused||room.scores_visible||['board','scores'].includes(room.display_scene)||(!userInitiated&&!mediaTransport().playing))node.pause();
       else {displaySoundEnabled=true;renderDisplaySound();}
     }catch(error){
       if(!current()||room.paused||!mediaTransport().playing||error.name==='AbortError')return;
@@ -68,7 +69,7 @@ function clipPlayer(node,m,questionId) {
     }finally{update();}
   };
   const localPlay=async()=>{
-    if(!current()||!controller.ready||room.paused||room.scores_visible)return;
+    if(!current()||!controller.ready||room.paused||room.scores_visible||['board','scores'].includes(room.display_scene))return;
     if(node.currentTime<start||node.currentTime>=end-.05)node.currentTime=start;
     endReported=false;
     // play() starts inside the click handler, before awaiting the network command.
@@ -81,7 +82,7 @@ function clipPlayer(node,m,questionId) {
     const state=mediaTransport(),key=JSON.stringify([state,room.paused,room.scores_visible]);
     if(lastSync===key)return;
     lastSync=key;
-    const playing=state.playing&&!room.paused&&!room.scores_visible&&['question','review','reveal'].includes(room.phase);
+    const playing=state.playing&&!room.paused&&!room.scores_visible&&!['board','scores'].includes(room.display_scene)&&['question','review','reveal'].includes(room.phase);
     const elapsed=playing&&state.updated_at?Math.max(0,(Date.now()+offset)/1000-state.updated_at):0;
     const target=Math.max(0,Math.min(end-start,(state.position||0)+elapsed));
     if(Math.abs(node.currentTime-start-target)>.25)node.currentTime=start+target;
@@ -104,7 +105,7 @@ function clipPlayer(node,m,questionId) {
     controller.ready=end>start;toggle.disabled=seek.disabled=!controller.ready;
     if(!controller.ready){notice('Отрывок за пределами записи.','error');return;}
     seek.max=end-start;node.currentTime=start;update();
-    $('media-caption').textContent=(m.kind==='audio'?'Аудиоотрывок':'Видеоотрывок')+' · '+mediaTime(end-start);
+    $('media-caption').textContent=(m.full?'Полная запись':m.kind==='audio'?'Аудиоотрывок':'Видеоотрывок')+' · '+mediaTime(end-start);
     syncMediaPlayback();
   };
   node.addEventListener('loadedmetadata',metadata);node.addEventListener('durationchange',metadata);

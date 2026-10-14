@@ -27,6 +27,10 @@ def stages_from_doc(doc):
             raise ValueError(f'Раунд {index}: недопустимые настройки порядка, выбора или перехода')
         parsed = dict(id=sid, type=stage['type'], title=title.strip(), order=order, chooser=chooser, auto_advance=auto)
         if stage['type'] == 'grid':
+            answer_mode = stage.get('answer_mode', 'all')
+            if answer_mode not in ('all', 'single'):
+                raise ValueError(f'Раунд {index}: выберите «Отвечают все» или «Отвечает один»')
+            parsed['answer_mode'] = answer_mode
             categories = stage.get('categories')
             if 'categories' not in stage:
                 # Existing grids already contain category names on their questions.

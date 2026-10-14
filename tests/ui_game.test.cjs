@@ -6,6 +6,33 @@ const vm=require('node:vm');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 
+test('single answer shows the buzzer then input only for its winner',()=>{
+  const h=harness();
+  const stage={id:'g',type:'grid',title:'Grid',answer_mode:'single'};
+  h.apply({stage,can_buzz:true,can_answer:false,display_scene:'question'});
+  assert(!h.node('buzz-answer').hidden);assert(h.node('answer-form').hidden);
+  h.apply({stage,can_buzz:false,can_answer:true,responder:'p',display_scene:'question'});
+  assert(h.node('buzz-answer').hidden);assert(!h.node('answer-form').hidden);
+  h.apply({stage,can_buzz:false,can_answer:false,responder:'other',display_scene:'question'});
+  assert(h.node('buzz-answer').hidden);assert(h.node('answer-form').hidden);
+});
+
+test('host scenes preserve answers and full media uses the whole file timeline',()=>{
+  const h=harness();
+  const question={id:'q1',text:'Song?',category:'Music',value:100,answer:'Artist',media:{kind:'audio',url:'/song.wav',start:20,end:30}};
+  h.apply({display:true,phase:'reveal',question,display_scene:'answer',media_playback:{question:'q1',mode:'full',playing:true,position:0,updated_at:1000,revision:1}});
+  const clip=h.node('media-content').children[0];clip.children[0].emit('loadedmetadata');
+  assert.equal(clip.children[2].max,200);assert.equal(clip.children[0].currentTime,0);
+  assert(!h.node('solution').hidden);assert(!h.node('question').hidden);assert(h.node('question-board').hidden);
+  h.apply({display:true,phase:'reveal',question,display_scene:'board'});
+  assert(h.node('question').hidden);assert(!h.node('question-board').hidden);
+  h.apply({display:true,phase:'reveal',question,display_scene:'scores'});
+  assert(h.node('question').hidden);assert(h.node('question-board').hidden);assert(!h.node('presentation-scores').hidden);
+  assert.match(h.node('presentation-results').innerHTML,/Player/);
+  h.apply({display:true,phase:'reveal',question,display_scene:'question'});
+  assert(!h.node('question').hidden);assert(h.node('solution').hidden);
+});
+
 function harness(options={}) {
   let clock=1000000;
   class Clock extends Date {static now(){return clock;}}

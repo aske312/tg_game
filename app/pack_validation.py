@@ -54,6 +54,8 @@ def publication_issues(doc, directory=None):
         if not any(isinstance(q, dict) and q.get('stage', stages[0].get('id')) == s.get('id') and q.get('type') == 'question' for q in items):
             add('questions', 'Добавьте хотя бы один вопрос в раунд.', si)
         if s.get('type') == 'grid':
+            if s.get('answer_mode', 'all') not in ('all', 'single'):
+                add('answer_mode', 'Выберите, кто отвечает: все игроки или один.', si)
             categories = s.get('categories', list(dict.fromkeys(q['category'].strip() for q in items if isinstance(q, dict) and q.get('stage', stages[0].get('id')) == s.get('id') and isinstance(q.get('category'), str) and q['category'].strip())))
             if not isinstance(categories, list) or not categories or any(not isinstance(c, str) or not c.strip() or len(c.strip()) > 100 for c in categories) or len(categories) > 100:
                 add('categories', 'Добавьте категории сетки: от 1 до 100 непустых названий длиной до 100 символов.', si)

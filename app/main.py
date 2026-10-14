@@ -47,6 +47,7 @@ class Login(BaseModel):
 
 
 class Command(BaseModel):
+    media_mode: Optional[Literal['excerpt', 'full']] = None
     action: str = Field(max_length=20)
     question: str = Field(default='', max_length=64)
     text: str = Field(default='', max_length=500)
@@ -59,6 +60,7 @@ class Command(BaseModel):
 
 
 class MediaCommand(BaseModel):
+    media_mode: Optional[Literal['excerpt', 'full']] = None
     action: Literal['media_play', 'media_pause', 'media_seek']
     question: str = Field(min_length=1, max_length=64)
     position: Optional[float] = Field(default=None, ge=0, le=MAX_SAFE_INTEGER, allow_inf_nan=False)
@@ -368,7 +370,7 @@ async def watch(code: str, authorization: str = Header(default='')):
 async def action(code: str, body: Command, authorization: str = Header(default='')):
     user = current_user(authorization)
     try:
-        changed = store.change(code.upper(), user, body.action, body.question, body.text, body.player, body.choice, body.delta, body.effect, body.position, body.duration)
+        changed = store.change(code.upper(), user, body.action, body.question, body.text, body.player, body.choice, body.delta, body.effect, body.position, body.duration, body.media_mode)
         if changed:
             await publish(code.upper())
         return store.public(code.upper(), user['id'])
@@ -386,7 +388,7 @@ async def display_media(body: MediaCommand, authorization: str = Header(default=
         raise HTTPException(401, 'Подключите демонстрационный экран')
     try:
         code = user['room']
-        store.change(code, user, body.action, question=body.question, position=body.position, duration=body.duration)
+        store.change(code, user, body.action, question=body.question, position=body.position, duration=body.duration, media_mode=body.media_mode)
         await publish(code)
         return store.public(code, user['id'], display=True)
     except ValueError as e:

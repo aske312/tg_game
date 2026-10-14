@@ -89,9 +89,24 @@ def can_pick(s, uid):
 
 def finish_reveal(s):
     s['phase'] = 'reveal'
+    s['display_scene'] = 'answer'
     correct = [(a['time'], uid) for uid, a in s['answers'].items() if a['verdict'] == 'correct']
     s['chooser'] = min(correct)[1] if correct and current_stage(s)['chooser'] == 'winner' else s['host']
     s['advance_at'] = time.time()+3 if current_stage(s)['type'] != 'grid' and current_stage(s)['auto_advance'] and (remaining_stage(s) or player_practice(s)) else None
+    q = current_question(s)
+    if q and q.get('media', {}).get('kind') in ('audio', 'video'):
+        previous = s.get('media_playback') or {}
+        s['media_playback'] = dict(question=q['id'], mode='full', playing=True, position=0,
+                                   updated_at=time.time(), revision=previous.get('revision', 0)+1)
+        s['advance_at'] = None  # The host decides when the full recording ends.
+
+
+def single_answer(s):
+    return current_stage(s)['type'] == 'grid' and current_stage(s).get('answer_mode', 'all') == 'single'
+
+
+def all_answered(s):
+    return bool(s['answers']) if single_answer(s) else len(s['answers']) == len(s['players'])-1
 
 
 def finish_game(s):
@@ -106,7 +121,7 @@ def media_position(s, now):
     if playback['playing'] and not s.get('paused'):
         position += max(0, now-playback['updated_at'])
     media = (current_question(s) or {}).get('media', {})
-    if media.get('end') is not None:
+    if playback.get('mode') != 'full' and media.get('end') is not None:
         position = min(position, max(0, media['end']-media.get('start', 0)))
     if playback.get('duration') is not None:
         position = min(position, playback['duration'])
@@ -115,6 +130,8 @@ def media_position(s, now):
 
 def start_question(s, selected=None):
     s['media_playback'] = None
+    s['display_scene'] = 'question'
+    s['responder'] = None
     available = remaining_stage(s)
     while not available:
         if s['stage_index']+1 == len(s['stages']):
@@ -135,6 +152,7 @@ def start_question(s, selected=None):
                      intro_started_at=now, intro_until=now+min(40, 12+len(categories)*2))
             return
         s.update(phase='board', active=None, answers={}, deadline=None, event=None)
+        s['display_scene'] = 'board'
         return
     q = next((q for q in available if q['id'] == selected), None) if selected else available[0]
     if not q:
@@ -149,7 +167,7 @@ def start_question(s, selected=None):
     now = time.time()
     s.update(phase='question', active=q['id'], answers={}, deadline=now+q.get('seconds', 45), auto_at=None, event=None)
     if q.get('media', {}).get('kind') in ('audio', 'video'):
-        s['media_playback'] = dict(question=q['id'], playing=True, position=0, updated_at=now, revision=0)
+        s['media_playback'] = dict(question=q['id'], mode='excerpt', playing=True, position=0, updated_at=now, revision=0)
     snapshot_modifiers(s)
     s['bot_due'] = {p['id']: now+5+i*3 for i, p in enumerate([p for p in s['players'] if p.get('synthetic') and p['id'] != s['host']])}
     message(s, 'Ведущий', f"Вопрос {len(s['used'])+1}: {q['text']}", 'system')
@@ -326,7 +344,7 @@ class Store:
             s['ui_version'] += 1
             db.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(s), code))
 
-    def change(self, code, user, action, question=None, text='', player='', choice=None, delta=None, effect=None, position=None, duration=None):
+    def change(self, code, user, action, question=None, text='', player='', choice=None, delta=None, effect=None, position=None, duration=None, media_mode=None):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT state FROM rooms WHERE code=?', (code,)).fetchone()
@@ -352,16 +370,22 @@ class Store:
                 if not member and not screen_media:
                     raise ValueError('Вы не участник комнаты')
                 practice_owner = s['practice'] and uid == s['owner']
-                if action not in ('answer', 'message', 'pick', 'reaction') and uid != s['host'] and not screen_media and not (practice_owner and action in ('close', 'next', 'finish', 'pause', 'unpause', 'show_scores', 'hide_scores')):
+                if action not in ('answer', 'buzz', 'message', 'pick', 'reaction') and uid != s['host'] and not screen_media and not (practice_owner and action in ('close', 'next', 'finish', 'pause', 'unpause', 'show_scores', 'hide_scores', 'display_board', 'display_question', 'display_answer', 'display_scores')):
                     raise ValueError('Это действие доступно только ведущему')
                 if s['paused'] and action not in ('reaction', 'unpause', 'show_scores', 'hide_scores', 'adjust_score', 'set_effect', 'clear_effect', 'skip_stage'):
                     raise ValueError('Игра на паузе')
+                if action in ('buzz', 'answer') and question and question != s['active']:
+                    raise ValueError('Этот вопрос уже завершён. Дождитесь обновления экрана')
                 if action in ('media_play', 'media_pause', 'media_seek'):
                     q = current_question(s)
                     if s['phase'] not in ('question', 'review', 'reveal') or not q or q['id'] != question or q.get('media', {}).get('kind') not in ('audio', 'video'):
                         raise ValueError('Медиаматериал этого вопроса уже недоступен')
                     now = time.time()
                     playback = s.get('media_playback') or dict(question=q['id'], playing=True, position=0, updated_at=now, revision=0)
+                    if media_mode is not None and media_mode != playback.get('mode', 'excerpt'):
+                        return False  # Ignore delayed commands from the previous excerpt player.
+                    if s.get('display_scene', 'question') not in ('question', 'answer'):
+                        raise ValueError('Сначала покажите вопрос или ответ на демонстрации')
                     if action == 'media_seek' and position is None:
                         raise ValueError('Укажите позицию в отрывке')
                     if position is not None:
@@ -371,7 +395,7 @@ class Store:
                     if duration is not None:
                         finite_number(duration, 'Длительность отрывка', minimum=.001)
                     duration = duration or playback.get('duration')
-                    if media.get('end') is not None:
+                    if playback.get('mode') != 'full' and media.get('end') is not None:
                         configured = media['end']-media.get('start', 0)
                         duration = min(configured, duration) if duration is not None else configured
                     if duration is not None:
@@ -379,7 +403,23 @@ class Store:
                         if action == 'media_play' and position >= duration-.05:
                             position = 0
                     s['media_playback'] = dict(question=q['id'], playing=action == 'media_play' if action != 'media_seek' else playback['playing'],
-                                               position=position, updated_at=now, revision=playback['revision']+1, duration=duration)
+                                               position=position, updated_at=now, revision=playback['revision']+1, duration=duration, mode=playback.get('mode', 'excerpt'))
+                elif action in ('display_question', 'display_answer', 'display_board', 'display_scores'):
+                    scene = action.removeprefix('display_')
+                    if s['phase'] in ('lobby', 'intro', 'finished'):
+                        raise ValueError('Переключение экрана доступно после начала вопросов')
+                    if scene in ('question', 'answer') and not current_question(s):
+                        raise ValueError('Сначала выберите вопрос')
+                    if scene == 'answer' and s['phase'] != 'reveal':
+                        raise ValueError('Сначала проверьте все ответы')
+                    if scene == 'board' and (current_stage(s)['type'] != 'grid' or s['phase'] not in ('board', 'reveal') or not remaining_stage(s)):
+                        raise ValueError('Сетка доступна после проверки ответов, пока в ней есть вопросы')
+                    if scene in ('board', 'scores') and s.get('media_playback'):
+                        now = time.time()
+                        playback = s['media_playback']
+                        playback.update(position=media_position(s, now), playing=False, updated_at=now, revision=playback['revision']+1)
+                    s['display_scene'] = scene
+                    s['advance_at'] = None
                 elif action in ('adjust_score', 'set_effect', 'clear_effect'):
                     target = next((p for p in s['players'] if p['id'] == player and p['id'] != s['host']), None)
                     if not target or s['phase'] == 'finished':
@@ -433,11 +473,21 @@ class Store:
                     if not question:
                         raise ValueError('Выберите вопрос в сетке')
                     start_question(s, selected=question)
+                elif action == 'buzz':
+                    if uid == s['host'] or not single_answer(s) or s['phase'] != 'question' or time.time() >= s['deadline']:
+                        raise ValueError('Кнопка ответа сейчас недоступна')
+                    if s.get('responder'):
+                        if s['responder'] == uid:
+                            return False
+                        raise ValueError('Другой игрок нажал раньше. Дождитесь следующего вопроса')
+                    s['responder'] = uid
                 elif action == 'answer':
                     if uid == s['host'] or s['phase'] != 'question' or uid in s['answers']:
                         raise ValueError('Ответ уже отправлен или приём ответов закрыт')
                     if time.time() >= s['deadline']:
                         raise ValueError('Время ответа вышло')
+                    if single_answer(s) and s.get('responder') != uid:
+                        raise ValueError('Сначала получите право ответа кнопкой «Ответить»')
                     q = current_question(s)
                     if q.get('choices'):
                         if type(choice) is not int or choice not in (0, 1):
@@ -451,7 +501,7 @@ class Store:
                     s['answers'][uid] = dict(text=text, time=time.time(), verdict=None)
                     if q.get('choices'):
                         s['answers'][uid]['choice'] = choice
-                    if len(s['answers']) == len(s['players'])-1:
+                    if all_answered(s):
                         close_question(s)
                 elif action == 'reaction':
                     if text not in ('🐀', '🔥', '👏', '😂', '❤️', '🤯'):
@@ -534,14 +584,20 @@ class Store:
         s['board'] = [dict(id=q['id'], category=q['category'], value=q['value'], used=q['id'] in s['used'])
                       for q in s['pack'] if q.get('stage', 'legacy') == stage['id'] and q.get('type') != 'event'] if stage['type'] == 'grid' else []
         s['stage_complete'] = not remaining_stage(s)
+        available = s['phase'] == 'question' and not s['paused'] and uid != s['host'] and not display and time.time() < s['deadline']
+        s['can_buzz'] = available and single_answer(s) and not s.get('responder')
+        s['can_answer'] = available and uid not in s['answers'] and (not single_answer(s) or s.get('responder') == uid)
         s['question'] = None
         if q and q.get('type') != 'event':
             s['question'] = {k: v for k, v in q.items() if k not in ('answer', 'accepted_answers', 'correct_choice')}
-            if (uid == s['host'] and not display) or s['phase'] in ('reveal', 'finished') or (s['phase'] == 'review' and not display):
+            if (uid == s['host'] and not display) or s['phase'] in ('reveal', 'finished'):
                 s['question']['answer'] = q['answer']
                 if q.get('choices'):
                     s['question']['correct_choice'] = q['correct_choice']
         s['answered_ids'] = list(s['answers'])
+        if uid != s['host'] and not display:
+            s['answers'] = {k: v for k, v in s['answers'].items() if k == uid}
+            s['messages'] = [m for m in s['messages'] if m['kind'] != 'answer' or m.get('user_id') == uid]
         if s['phase'] == 'question' and (uid != s['host'] or display):
             s['answers'] = {k: v for k, v in s['answers'].items() if k == uid}
             s['messages'] = [m for m in s['messages'] if m['kind'] != 'answer']
@@ -552,6 +608,8 @@ class Store:
         if uid == s['host'] and not display and s['phase'] == 'lobby':
             s['question_list'] = s['pack']
         if display:
+            s['display_answers'] = [dict(player=p['name'], **s['answers'][p['id']]) for p in s['players']
+                                    if p['id'] in s['answers']] if s['phase'] == 'reveal' else []
             s['answers'] = {}
             s['messages'] = []
         s['display'] = display
@@ -589,6 +647,10 @@ class Store:
                 elif s['practice']:
                     for i, p in enumerate(s['players']):
                         if p.get('synthetic') and p['id'] != s['host'] and p['id'] not in s['answers'] and now >= s['bot_due'].get(p['id'], float('inf')):
+                            if single_answer(s):
+                                if s.get('responder') and s['responder'] != p['id']:
+                                    continue
+                                s['responder'] = p['id']
                             correct = (i+len(s['used'])) % 2 == 0
                             q = current_question(s)
                             if q.get('choices'):
@@ -597,7 +659,7 @@ class Store:
                             else:
                                 s['answers'][p['id']] = dict(text=q['answer'] if correct else 'Не знаю', time=now, verdict=None)
                             changed = True
-                    if len(s['answers']) == len(s['players'])-1:
+                    if all_answered(s):
                         close_question(s)
             elif s['phase'] == 'review' and player_practice(s) and now >= (s.get('auto_at') or 0):
                 for uid, a in s['answers'].items():
