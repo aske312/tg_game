@@ -99,15 +99,15 @@ function renderHostAnswers() {
 
 function renderPackPreview() {
   const id=$('pack').value;
-  const pack=id==='demo'?libraryPacks.find(p=>p.id==='library-demo-quiz'):id==='custom'?{title:'Твой собственный квиз',description:'Начни с пустой комнаты. Добавь вопросы и материалы перед стартом игры.',questions:0,count:0}:libraryPacks.find(p=>p.id===id);
+  const pack=libraryPacks.find(p=>p.id===(id==='demo'?'library-demo-quiz':id));
   if(!pack)return;
   $('pack-title').textContent=pack.title;
   $('pack-description').textContent=pack.description||'Готовая игра для тебя и твоей компании.';
-  const tags=id==='custom'?['Вопросы в лобби']:[countLabel(pack.questions,['вопрос','вопроса','вопросов']),countLabel(pack.stages?.length||1,['раунд','раунда','раундов']),...[...new Set((pack.stages||[]).map(s=>modeTitles[s.type]))]];
+  const tags=[countLabel(pack.questions,['вопрос','вопроса','вопросов']),countLabel(pack.stages?.length||1,['раунд','раунда','раундов']),...[...new Set((pack.stages||[]).map(s=>modeTitles[s.type]))]];
   $('pack-tags').innerHTML=tags.map(t=>`<span>${esc(t)}</span>`).join('');
   $('practice').disabled=false;
-  $('player-practice').disabled=id==='custom';
-  $('practice-caption').textContent=id==='custom'?'Создай комнату с ботами и добавь свои вопросы в лобби.':'Ты ведущий. Боты отвечают, ты проверяешь и управляешь игрой.';
+  $('player-practice').disabled=false;
+  $('practice-caption').textContent='Ты ведущий. Боты отвечают, ты проверяешь и управляешь игрой.';
 }
 
 function setRole(role) {

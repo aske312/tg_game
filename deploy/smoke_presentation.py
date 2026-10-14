@@ -38,7 +38,7 @@ async def main():
             print('Public HTTPS health:',response.json(),flush=True)
             page=await client.get('/');page.raise_for_status()
             assert 'id="grid-intro"' in page.text and 'id="pause-game"' in page.text and 'id="award-spotlight"' in page.text
-            for asset in ('/static/experience.js?v=1','/static/experience.css?v=1','/static/app.js?v=14'):
+            for asset in ('/static/experience.js?v=1','/static/experience.css?v=1','/static/app.js?v=15'):
                 response=await client.get(asset);response.raise_for_status()
                 assert len(response.content)>100
             (await client.post(path+'/join',headers=headers[1])).raise_for_status()
