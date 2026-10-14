@@ -46,6 +46,7 @@ def migrate(s):
     s.setdefault('advance_at', None)
     s.setdefault('ui_version', s['version'])
     s.setdefault('paused', False)
+    s.setdefault('pause_view', 'break')
     s.setdefault('scores_visible', False)
     for stage in s['stages']:
         if stage['type'] == 'grid' and 'categories' not in stage:
@@ -365,8 +366,6 @@ class Store:
                 raise ValueError('Комната не найдена')
             s = migrate(json.loads(row[0]))
             uid = user['id']
-            if action == 'display_scores':
-                action = 'pause'  # Showing the roster pauses gameplay and preserves the current scene.
             member = next((p for p in s['players'] if p['id'] == uid), None)
             if action == 'watch':
                 observers = s.setdefault('observers', [])
@@ -387,7 +386,7 @@ class Store:
                 practice_owner = s['practice'] and uid == s['owner']
                 if action not in ('answer', 'buzz', 'message', 'pick', 'reaction') and uid != s['host'] and not screen_media and not (practice_owner and action in ('close', 'next', 'finish', 'pause', 'unpause', 'show_scores', 'hide_scores', 'display_board', 'display_question', 'display_answer', 'display_scores')):
                     raise ValueError('Это действие доступно только ведущему')
-                if s['paused'] and action not in ('reaction', 'pause', 'unpause', 'show_scores', 'hide_scores', 'adjust_score', 'set_effect', 'clear_effect', 'skip_stage'):
+                if s['paused'] and action not in ('reaction', 'pause', 'display_scores', 'unpause', 'show_scores', 'hide_scores', 'adjust_score', 'set_effect', 'clear_effect', 'skip_stage'):
                     raise ValueError('Игра на паузе')
                 if action in ('buzz', 'answer') and question and question != s['active']:
                     raise ValueError('Этот вопрос уже завершён. Дождитесь обновления экрана')
@@ -531,15 +530,19 @@ class Store:
                     s['reaction_seq'] = s.get('reaction_seq', 0)+1
                     reactions.append(dict(id=s['reaction_seq'], user_id=uid, emoji=text, time=now))
                     s['reactions'] = reactions[-30:]
-                elif action == 'pause':
+                elif action in ('pause', 'display_scores'):
                     if s['phase'] in ('lobby', 'finished'):
                         raise ValueError('Пауза доступна во время игры')
+                    view = 'scores' if action == 'display_scores' else 'break'
                     if s['paused']:
-                        return False
-                    now = time.time()
-                    if s.get('media_playback'):
-                        s['media_playback'].update(position=media_position(s, now), updated_at=now)
-                    s.update(paused=True, paused_at=now)
+                        if s['pause_view'] == view:
+                            return False
+                        s['pause_view'] = view
+                    else:
+                        now = time.time()
+                        if s.get('media_playback'):
+                            s['media_playback'].update(position=media_position(s, now), updated_at=now)
+                        s.update(paused=True, paused_at=now, pause_view=view)
                 elif action == 'unpause':
                     if not s['paused']:
                         return False
@@ -548,7 +551,7 @@ class Store:
                         if s.get(key) is not None:
                             s[key] += elapsed
                     s['bot_due'] = {uid: due+elapsed for uid, due in s['bot_due'].items()}
-                    s['paused'] = False
+                    s.update(paused=False, pause_view='break')
                     if s.get('media_playback'):
                         s['media_playback']['updated_at'] = time.time()
                 elif action in ('show_scores', 'hide_scores'):

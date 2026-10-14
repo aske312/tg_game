@@ -15,10 +15,11 @@ function ceremonyPlan(players,host) {
 function renderExperience() {
   const paused=!!room.paused,scores=!!room.scores_visible,intro=room.phase==='intro',finished=room.phase==='finished';
   show('host-toolbar',hasControls()&&!['lobby','finished'].includes(room.phase));
-  show('pause-game',!paused);show('continue-game',paused);
+  show('pause-game',!paused||room.pause_view==='scores');show('continue-game',paused);
+  show('display-game-scores',!paused||room.pause_view!=='scores');
   const roundEnd=room.stage_complete&&['reveal','event'].includes(room.phase);
   show('show-scores',roundEnd&&!scores);show('hide-scores',scores);
-  show('pause-panel',paused&&!scores);show('round-scores',scores);
+  show('pause-panel',paused);show('round-scores',scores&&!paused);
   show('grid-intro',intro&&!paused&&!scores);
   show('skip-intro',hasControls());show('scores-next',hasControls()&&!paused);
   $('scores-next').textContent=room.stage_number===room.stage_count?'К награждению →':'Следующий раунд →';

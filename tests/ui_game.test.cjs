@@ -26,7 +26,7 @@ test('host scenes preserve answers and full media uses the whole file timeline',
   assert(!h.node('solution').hidden);assert(!h.node('question').hidden);assert(h.node('question-board').hidden);
   h.apply({display:true,phase:'reveal',question,display_scene:'board'});
   assert(h.node('question').hidden);assert(!h.node('question-board').hidden);
-  h.apply({display:true,phase:'reveal',question,display_scene:'answer',paused:true,paused_at:1000});
+  h.apply({display:true,phase:'reveal',question,display_scene:'answer',paused:true,paused_at:1000,pause_view:'scores'});
   assert(h.node('question').hidden);assert(h.node('question-board').hidden);assert(!h.node('presentation-scores').hidden);
   assert(h.node('pause-panel').hidden);assert(h.node('round-scores').hidden);
   assert.match(h.node('presentation-results').innerHTML,/Player/);
@@ -34,10 +34,10 @@ test('host scenes preserve answers and full media uses the whole file timeline',
   assert(!h.node('question').hidden);assert(h.node('solution').hidden);
 });
 
-test('display pause replaces the whole scene with scores, players keep the pause notice',()=>{
+test('score pause replaces the whole scene with scores, players keep the pause notice',()=>{
   const h=harness();
   for(const phase of ['question','review','reveal','board','intro']){
-    h.apply({display:true,phase,paused:true,paused_at:1000,display_scene:phase==='board'?'board':'question'});
+    h.apply({display:true,phase,paused:true,paused_at:1000,pause_view:'scores',display_scene:phase==='board'?'board':'question'});
     assert(!h.node('presentation-scores').hidden,phase);
     for(const id of ['question','question-board','event','grid-intro','pause-panel','round-scores'])assert(h.node(id).hidden,id);
     assert.match(h.node('presentation-results').innerHTML,/Player/);
@@ -48,6 +48,19 @@ test('display pause replaces the whole scene with scores, players keep the pause
   h.apply({display:false,paused:true,paused_at:1000});
   assert(h.node('presentation-scores').hidden);assert(!h.node('pause-panel').hidden);
   assert(h.node('question').hidden);
+});
+
+test('game pause shows a break and can switch to scores without resuming',()=>{
+  const h=harness();
+  h.apply({display:true,paused:true,paused_at:1000,pause_view:'break',scores_visible:true});
+  assert(!h.node('pause-panel').hidden);assert(h.node('round-scores').hidden);assert(h.node('presentation-scores').hidden);assert(h.node('question').hidden);
+  h.apply({display:true,paused:true,paused_at:1000,pause_view:'scores'});
+  assert(h.node('pause-panel').hidden);assert(!h.node('presentation-scores').hidden);
+  h.run("auth.user.id='h'");
+  h.apply({paused:true,paused_at:1000,pause_view:'break'});
+  assert(h.node('pause-game').hidden);assert(!h.node('display-game-scores').hidden);assert(!h.node('continue-game').hidden);
+  h.apply({paused:true,paused_at:1000,pause_view:'scores'});
+  assert(!h.node('pause-game').hidden);assert(h.node('display-game-scores').hidden);assert(!h.node('continue-game').hidden);
 });
 
 function harness(options={}) {
@@ -307,11 +320,15 @@ test('player never loads audio or video; host gets remote controls and images re
     assert(player.node('media-content').hidden);assert.equal(player.node('media-content').children.length,0);
     assert(player.node('host-media-controls').hidden);
     const host=harness();host.run("auth.user.id='h'");host.ctx.calls=[];
-    host.run('sendMediaAction=async action=>calls.push(action)');
+    host.run("sendMediaAction=async action=>{calls.push(action);room.media_playback={...mediaTransport(),playing:action==='media_play'};}");
     host.apply({question:{id:'m',media:{kind,url:'/private-media'}}});
     assert(!host.node('host-media-controls').hidden);assert.equal(host.node('media-content').children.length,0);
-    await host.node('display-media-play').onclick();await host.node('display-media-pause').onclick();
-    assert.deepEqual(Array.from(host.ctx.calls),['media_play','media_pause']);
+    assert.equal(host.node('display-media-toggle').textContent,'Ⅱ Пауза');
+    await host.node('display-media-toggle').onclick();
+    assert.equal(host.node('display-media-toggle').textContent,'▶ Воспроизвести');
+    await host.node('display-media-toggle').onclick();
+    assert.equal(host.node('display-media-toggle').textContent,'Ⅱ Пауза');
+    assert.deepEqual(Array.from(host.ctx.calls),['media_pause','media_play']);
   }
   const image=harness();image.apply({question:{id:'image',media:{kind:'image',url:'/picture.png'}}});
   assert.equal(image.node('media-content').children[0].src,'/picture.png');assert(!image.node('media-content').hidden);

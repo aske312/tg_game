@@ -105,7 +105,7 @@ def test_score_screen_pauses_and_resumes_question_without_losing_time(tmp_path, 
     with pytest.raises(ValueError): db.change(code, a, 'display_scores')
     db.change(code, host, 'display_scores')
     paused = db.read(code)
-    assert paused['paused'] and paused['display_scene'] == 'question'
+    assert paused['paused'] and paused['display_scene'] == 'question' and paused['pause_view'] == 'scores'
     assert media_position(paused, now[0]) == 5
     remaining = paused['deadline']-now[0]
     now[0] += 100
@@ -118,6 +118,33 @@ def test_score_screen_pauses_and_resumes_question_without_losing_time(tmp_path, 
     assert resumed['deadline']-now[0] == remaining
     assert resumed['display_scene'] == 'question' and not resumed['paused']
     assert resumed['media_playback']['playing'] and media_position(resumed, now[0]) == 5
+
+
+def test_pause_and_score_views_switch_without_changing_saved_time(tmp_path, monkeypatch):
+    now = [1000.]
+    monkeypatch.setattr('app.store.time.time', lambda: now[0])
+    db, code, host, a, b = game(tmp_path)
+    now[0] += 7
+    db.change(code, host, 'pause')
+    paused = db.read(code)
+    assert paused['pause_view'] == 'break'
+    remaining = paused['deadline']-now[0]
+    now[0] += 100
+    db.change(code, host, 'display_scores')
+    assert db.read(code)['pause_view'] == 'scores'
+    assert db.read(code)['paused_at'] == paused['paused_at']
+    assert media_position(db.read(code), now[0]) == 7
+    with pytest.raises(ValueError): db.change(code, a, 'display_scores')
+    db.change(code, host, 'pause')
+    assert db.read(code)['pause_view'] == 'break'
+    assert not db.change(code, host, 'pause')
+    now[0] += 100
+    db = Store(db.path)
+    assert not db.tick(code)
+    db.change(code, host, 'unpause')
+    resumed = db.read(code)
+    assert resumed['deadline']-now[0] == remaining
+    assert media_position(resumed, now[0]) == 7 and resumed['pause_view'] == 'break'
 
 
 @pytest.mark.parametrize('kind', ['audio', 'video'])

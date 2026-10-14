@@ -59,11 +59,11 @@ function hasControls() {return !isDisplay() && (isHost() || (room?.practice && r
 function canAnswer() {return room?.phase==='question' && !room.paused && isPlayer() && !ownAnswer() && room.can_answer!==false;}
 
 function renderPresentation() {
-  const scene=room.paused?'scores':room.display_scene||(room.phase==='board'?'board':room.phase==='reveal'?'answer':'question');
+  const scene=room.paused?(room.pause_view==='scores'?'scores':'pause'):room.display_scene||(room.phase==='board'?'board':room.phase==='reveal'?'answer':'question');
   $('game').dataset.scene=scene;
   const active=!['lobby','intro','finished'].includes(room.phase);
   show('presentation-controls',hasControls()&&active);
-  $('presentation-status').textContent='На экране: '+({question:'вопрос',answer:'ответ',board:'сетка',scores:'счёт'}[scene]||'вопрос');
+  $('presentation-status').textContent='На экране: '+({question:'вопрос',answer:'ответ',board:'сетка',scores:'счёт',pause:'перерыв'}[scene]||'вопрос');
   for(const name of ['question','answer','board']){
     const button=$('scene-'+name);
     button.setAttribute('aria-pressed',scene===name?'true':'false');
@@ -84,7 +84,7 @@ function renderPresentation() {
     if(waiting)show('question',false);
     else if(room.question&&!room.paused&&!room.scores_visible&&active)show('question',true);
   }
-  const scoresOnDisplay=isDisplay()&&room.phase!=='lobby'&&room.phase!=='finished'&&!!room.paused;
+  const scoresOnDisplay=isDisplay()&&room.phase!=='lobby'&&room.phase!=='finished'&&!!room.paused&&room.pause_view==='scores';
   show('presentation-scores',scoresOnDisplay);
   if(scoresOnDisplay){
     for(const id of ['question','question-board','event','ready','stage-banner','board-waiting','pause-panel','round-scores','grid-intro'])show(id,false);
@@ -315,6 +315,7 @@ async function refreshPacks(){
 $('pack').onchange=renderPackPreview;
 $('reload-packs').onclick=guard(refreshPacks);$('event-next').onclick=guard(()=>command('next'));
 $('pause-game').onclick=guard(()=>command('pause'));
+$('display-game-scores').onclick=guard(()=>command('display_scores'));
 $('continue-game').onclick=guard(()=>command('unpause'));
 $('show-scores').onclick=guard(()=>command('show_scores'));
 $('hide-scores').onclick=guard(()=>command('hide_scores'));
@@ -332,8 +333,11 @@ async function entered(){setRole('player');sessionStorage.setItem('auth',JSON.st
 $('display-form').onsubmit=guard(()=>connectDisplay($('display-code').value));
 for(const name of ['question','answer','board'])$('scene-'+name).onclick=guard(()=>command('display_'+name));
 $('buzz-answer').onclick=guard(()=>command('buzz',{question:room.question.id}));
-$('display-media-play').onclick=guard(()=>sendMediaAction('media_play'));
-$('display-media-pause').onclick=guard(()=>sendMediaAction('media_pause'));
+$('display-media-toggle').onclick=guard(async()=>{
+  $('display-media-toggle').disabled=true;
+  try {await sendMediaAction(mediaTransport().playing?'media_pause':'media_play');}
+  finally {renderHostMediaToggle();}
+});
 $('enable-display-media').onclick=guard(async()=>{
   displaySoundEnabled=true;void unlockSound();renderDisplaySound();
   if(activeClip?.ready)await activeClip.localPlay();

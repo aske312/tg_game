@@ -18,10 +18,16 @@ function syncMediaPlayback() {
   if(!activeClip?.ready||!isDisplay())return;
   activeClip.sync();
 }
+function renderHostMediaToggle() {
+  const button=$('display-media-toggle'),playing=mediaTransport().playing;
+  button.disabled=!!room?.paused||!!room?.scores_visible||['board','scores'].includes(room?.display_scene);
+  button.textContent=playing?'Ⅱ Пауза':'▶ Воспроизвести';
+  button.setAttribute('aria-label',playing?'Поставить запись на паузу на демонстрации':'Воспроизвести запись на демонстрации');
+}
 function renderQuestionMedia(q) {
   const m=q?.media,av=['audio','video'].includes(m?.kind),host=isHost()&&av&&room.phase!=='finished';
   show('host-media-controls',host);
-  for(const id of ['display-media-play','display-media-pause'])$(id).disabled=!!room.paused||!!room.scores_visible||['board','scores'].includes(room.display_scene);
+  renderHostMediaToggle();
   const visible=!!m&&(!av||isDisplay());
   show('media-content',visible);
   const full=mediaTransport().mode==='full';
