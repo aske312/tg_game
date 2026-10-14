@@ -289,7 +289,11 @@ class Store:
             s = migrate(json.loads(row[0]))
             uid = user['id']
             member = next((p for p in s['players'] if p['id'] == uid), None)
-            if action == 'join':
+            if action == 'watch':
+                observers = s.setdefault('observers', [])
+                if uid not in observers:
+                    observers.append(uid)
+            elif action == 'join':
                 if not member:
                     if s['phase'] != 'lobby':
                         raise ValueError('Игра уже началась')
@@ -300,7 +304,7 @@ class Store:
                 if not member:
                     raise ValueError('Вы не участник комнаты')
                 practice_owner = s['practice'] and uid == s['owner']
-                if action not in ('answer', 'message', 'pick') and uid != s['host'] and not (practice_owner and action in ('close', 'next', 'finish')):
+                if action not in ('answer', 'message', 'pick', 'reaction') and uid != s['host'] and not (practice_owner and action in ('close', 'next', 'finish')):
                     raise ValueError('Это действие доступно только ведущему')
                 if action == 'start':
                     if s['phase'] != 'lobby' or len(s['players']) < 2 or not s['pack']:
@@ -332,6 +336,16 @@ class Store:
                         s['answers'][uid]['choice'] = choice
                     if len(s['answers']) == len(s['players'])-1:
                         close_question(s)
+                elif action == 'reaction':
+                    if text not in ('🐀', '🔥', '👏', '😂', '❤️', '🤯'):
+                        raise ValueError('Выберите реакцию из списка')
+                    reactions = s.setdefault('reactions', [])
+                    now = time.time()
+                    if any(r['user_id'] == uid and now-r['time'] < 2 for r in reactions):
+                        raise ValueError('Следующую реакцию можно отправить через пару секунд')
+                    s['reaction_seq'] = s.get('reaction_seq', 0)+1
+                    reactions.append(dict(id=s['reaction_seq'], user_id=uid, emoji=text, time=now))
+                    s['reactions'] = reactions[-30:]
                 elif action == 'message':
                     text = text.strip()
                     if s['phase'] == 'question':
@@ -360,36 +374,41 @@ class Store:
             s['version'] += 1
             db.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(s), code))
 
-    def public(self, code, uid):
+    def public(self, code, uid, display=False):
         s = self.read(code)
-        if not any(p['id'] == uid for p in s['players']):
+        if not any(p['id'] == uid for p in s['players']) and not (display and uid in s.get('observers', [])):
             raise ValueError('Вы не участник комнаты')
         q = current_question(s)
         stage = current_stage(s)
         s['stage'] = stage
         s['stage_number'] = s['stage_index']+1
         s['stage_count'] = len(s['stages'])
-        s['can_pick'] = can_pick(s, uid)
+        s['can_pick'] = not display and can_pick(s, uid)
         s['board'] = [dict(id=q['id'], category=q['category'], value=q['value'], used=q['id'] in s['used'])
                       for q in s['pack'] if q.get('stage', 'legacy') == stage['id'] and q.get('type') != 'event'] if stage['type'] == 'grid' else []
         s['stage_complete'] = not remaining_stage(s)
         s['question'] = None
         if q and q.get('type') != 'event':
             s['question'] = {k: v for k, v in q.items() if k not in ('answer', 'accepted_answers', 'correct_choice')}
-            if uid == s['host'] or s['phase'] in ('review', 'reveal', 'finished'):
+            if (uid == s['host'] and not display) or s['phase'] in ('reveal', 'finished') or (s['phase'] == 'review' and not display):
                 s['question']['answer'] = q['answer']
                 if q.get('choices'):
                     s['question']['correct_choice'] = q['correct_choice']
         s['answered_ids'] = list(s['answers'])
-        if s['phase'] == 'question' and uid != s['host']:
+        if s['phase'] == 'question' and (uid != s['host'] or display):
             s['answers'] = {k: v for k, v in s['answers'].items() if k == uid}
             s['messages'] = [m for m in s['messages'] if m['kind'] != 'answer']
         s['question_count'] = sum(q.get('type') != 'event' for q in s['pack'])
         s['round_count'] = len(s['pack'])
         s['round_number'] = min(len(s['used'])+(s['phase'] == 'question'), len(s['pack']))
         s['question_number'] = sum(q['id'] in s['used'] and q.get('type') != 'event' for q in s['pack'])+(s['phase'] == 'question')
-        if uid == s['host'] and s['phase'] == 'lobby':
+        if uid == s['host'] and not display and s['phase'] == 'lobby':
             s['question_list'] = s['pack']
+        if display:
+            s['answers'] = {}
+            s['messages'] = []
+        s['display'] = display
+        s.pop('observers', None)
         s.pop('pack')
         s.pop('bot_due', None)
         s.pop('auto_at', None)

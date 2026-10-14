@@ -5,11 +5,14 @@ const show = (id, visible) => $(id).hidden = !visible;
 const notice = (text, type='info') => { $('notice').textContent = text || ''; $('notice').dataset.type = type; };
 const esc = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let auth, config, room, socket, retry, offset = 0, mediaKey = '', uploading = false, libraryPacks = [];
+let entryRole = 'player', reactionRoom = '', lastReaction = 0;
+const isDisplay = () => room?.display === true;
+const isPlayer = () => !isHost() && !isDisplay();
 const modeTitles={blitz:'Блиц',grid:'Сетка вопросов',binary:'Выбор из двух'};
 
 function renderModes() {
   const stage=room.stage;
-  show('stage-banner',!!stage&&!['lobby','finished'].includes(room.phase));
+  show('stage-banner',!isPlayer()&&!!stage&&!['lobby','finished'].includes(room.phase));
   if(stage){$('stage-mode').textContent=`Раунд ${room.stage_number} / ${room.stage_count} · ${modeTitles[stage.type]}`;$('stage-name').textContent=stage.title;$('stage-hint').textContent=stage.type==='grid'?'Выбираем тему и стоимость, затем все отвечают.':stage.type==='binary'?'Два варианта. Одна попытка. Проверка автоматически.':stage.order==='random'?'Вопросы в случайном порядке.':'Вопросы идут один за другим.';}
   show('question-board',stage?.type==='grid'&&['board','reveal'].includes(room.phase)&&!room.stage_complete);
   const chooser=room.players.find(p=>p.id===room.chooser);
@@ -30,9 +33,9 @@ async function api(path, body) {
 }
 function guard(fn) { let pending=false; return async event => {event?.preventDefault();if(pending)return;pending=true;notice('');try {await fn(event);} catch(e) {notice(e.message||'Нет связи с сервером','error');} finally {pending=false;}}; }
 function ownAnswer() {return room?.answers?.[auth.user.id];}
-function isHost() {return room?.host===auth.user.id;}
-function hasControls() {return isHost() || (room?.practice && room.owner===auth.user.id);}
-function canAnswer() {return room?.phase==='question' && !isHost() && !ownAnswer();}
+function isHost() {return !isDisplay() && room?.host===auth.user.id;}
+function hasControls() {return !isDisplay() && (isHost() || (room?.practice && room.owner===auth.user.id));}
+function canAnswer() {return room?.phase==='question' && isPlayer() && !ownAnswer();}
 function effectBadge(s, uid) {
   const active=(['question','review','reveal'].includes(s.phase)?s.round_modifiers:s.modifiers)?.[uid];
   if(!active)return '';
@@ -66,7 +69,7 @@ function renderMedia(q) {
 }
 
 function renderReview() {
-  const visible=['review','reveal','finished'].includes(room.phase);
+  const visible=isHost()&&['review','reveal','finished'].includes(room.phase);
   $('review-list').innerHTML=visible?'<h3 class="review-heading">Ответы игроков</h3>'+room.players.filter(p=>p.id!==room.host).map(p=>{
     const a=room.answers[p.id];
     const status=!a?'Не ответил · 0 очков':a.verdict==='correct'?`Верно · ${a.points>=0?'+':''}${a.points}`:a.verdict==='wrong'?`Неверно · ${a.points}`:'Ожидает оценки';
@@ -104,19 +107,27 @@ function renderPackPreview() {
   $('practice-caption').textContent=id==='custom'?'Для тренировки выбери готовую игру.':'Тренировка на выбранной игре.';
 }
 
-function renderChat(){
-  const messages=room.messages||[],key=room.code+':'+(messages[messages.length-1]?.id||0)+':'+room.phase;
-  const box=$('messages');
-  if(box.dataset.key!==key){
-    const bottom=box.scrollHeight-box.scrollTop-box.clientHeight<70;
-    const first=!box.dataset.key?.startsWith(room.code+':');
-    box.innerHTML=messages.length?messages.map(m=>`<div class="chat-message ${m.kind==='system'?'system':''} ${m.user_id===auth.user.id?'mine':''}"><strong>${esc(m.name)}${m.kind==='answer'?' · ответ':''}</strong><p>${esc(m.text)}</p></div>`).join(''):'<div class="chat-empty">Здесь будет обсуждение.<br>Начни с приветствия.</div>';
-    box.dataset.key=key;if(bottom||first)box.scrollTop=box.scrollHeight;
+function setRole(role) {
+  entryRole=role;
+  for(const button of document.querySelectorAll('[data-role]'))button.setAttribute('aria-pressed',String(button.dataset.role===role));
+  show('host-entry',role==='host');show('join-panel',role!=='host');
+  $('entry-eyebrow').textContent=role==='display'?'ОБЩИЙ ЭКРАН':'ВХОД В ИГРУ';
+  $('entry-title').textContent=role==='display'?'Игра на большом экране':'Тебя уже ждут';
+  $('entry-hint').textContent=role==='display'?'Введи ID комнаты. Здесь будут поле, вопросы и счёт.':'Введи ID комнаты от ведущего.';
+  $('join-submit').textContent=role==='display'?'Подключить экран →':'Присоединиться →';
+  if(role==='host'&&!libraryPacks.length)guard(refreshPacks)();
+}
+for(const button of document.querySelectorAll('[data-role]'))button.onclick=()=>setRole(button.dataset.role);
+function renderReactions() {
+  const list=room.reactions||[];
+  if(reactionRoom!==room.code){reactionRoom=room.code;lastReaction=0;$('reaction-stream').replaceChildren();}
+  for(const reaction of list){
+    if(reaction.id<=lastReaction)continue;
+    lastReaction=reaction.id;
+    if(Date.now()+offset-reaction.time*1000>5000)continue;
+    const item=document.createElement('span');item.textContent=reaction.emoji;
+    $('reaction-stream').append(item);setTimeout(()=>item.remove(),4000);
   }
-  const blocked=room.phase==='question';
-  $('chat-hint').textContent=blocked?'Пока тихо: чат откроется после вопроса. Отправь ответ через поле в карточке вопроса.':'Обсуждай вопросы, радуйся очкам. Только без подсказок!';
-  $('chat').dataset.blocked=blocked;
-  $('chat-text').disabled=blocked;$('chat-send').disabled=blocked;
 }
 
 function apply(s){
@@ -124,14 +135,20 @@ function apply(s){
   const oldQuestion=room?.code+':'+room?.active;
   room=s;offset=s.server_time*1000-Date.now();sessionStorage.setItem('room',s.code);
   $('game').dataset.phase=s.phase;
+  $('game').dataset.role=isDisplay()?'display':isHost()?'host':'player';
+  document.body.dataset.role=$('game').dataset.role;
+  sessionStorage.setItem('roomRole',isDisplay()?'display':'player');
+  $('room-footer').textContent='Комната '+s.code;
+  show('scoreboard',!isPlayer());show('reactions',!isDisplay());
+  $('lobby-title').textContent=isHost()?'Все на месте?':isDisplay()?'Клан собирается':'Ты в игре';
   show('home',false);show('game',true);
   $('room-code').textContent=s.code;
   $('phase').textContent=(s.practice?'Тренировка · ':'')+({board:'Выбираем вопрос',event:'Событие',lobby:'Ожидание игроков',question:s.question?.choices?'Выбираем вариант':'Все пишут ответы',review:'Ведущий проверяет ответы',reveal:'Результаты вопроса',ready:'Готовы продолжить',finished:'Квиз завершён'}[s.phase]||'');
-  renderPlayers(s);
+  if(!isPlayer())renderPlayers(s);else $('players').replaceChildren();
   show('round-status',s.phase!=='lobby');
   $('round-label').textContent=`Раунд ${s.stage_number} / ${s.stage_count} · Вопрос ${s.question_number} / ${s.question_count}`;
   $('round-progress').max=Math.max(1,s.round_count);$('round-progress').value=s.used.length;
-  show('invite',!s.practice);show('lobby',s.phase==='lobby');show('start',isHost());$('start').disabled=uploading||s.players.length<2||!s.question_count;
+  show('invite',isHost()&&!s.practice);show('lobby',s.phase==='lobby');show('start',isHost());$('start').disabled=uploading||s.players.length<2||!s.question_count;
   $('pack-count').textContent=`В игре ${s.question_count} вопросов, ${s.stage_count} игровых раундов: ${s.stages.map(stage=>modeTitles[stage.type]).join(' → ')}.`;show('waiting',!isHost());show('editor',isHost()&&s.phase==='lobby');
   if(s.phase==='lobby'){const selected=$('q-stage').value;$('q-stage').innerHTML=s.stages.map(stage=>`<option value="${esc(stage.id)}">${esc(stage.title)} · ${modeTitles[stage.type]}</option>`).join('');if(s.stages.some(stage=>stage.id===selected))$('q-stage').value=selected;renderQuestionEditor();}
   show('question-list-panel',isHost()&&s.phase==='lobby'&&!!s.question_count);
@@ -143,7 +160,7 @@ function apply(s){
   if(q){
     $('category').textContent=`Вопрос ${s.question_number}/${s.question_count} · ${q.category}`;$('value').textContent=q.value+' очков';$('question-text').textContent=q.text;
     $('answer-count').textContent=`Ответили ${s.answered_ids.length} из ${s.players.length-1}`;
-    show('answer-form',canAnswer()&&!q.choices);show('my-answer',!isHost()&&!!ownAnswer()&&s.phase==='question');
+    show('answer-form',canAnswer()&&!q.choices);show('my-answer',isPlayer()&&!!ownAnswer()&&s.phase==='question');
     $('my-answer').textContent=ownAnswer()?'Твой ответ: '+ownAnswer().text+' · отправлен':'';
     show('solution',!!q.answer);$('solution').textContent=q.answer?'Правильный ответ: '+q.answer:'';
     show('close',hasControls()&&s.phase==='question');show('next',hasControls()&&s.phase==='reveal');
@@ -153,13 +170,15 @@ function apply(s){
   }
   renderHostAnswers();renderModes();
   show('ready',s.phase==='ready'&&hasControls());show('finished',s.phase==='finished');show('finish',hasControls()&&['reveal','event','board'].includes(s.phase));
-  $('another').textContent=s.practice?'Ещё одна тренировка':'Новая комната';
+  show('another',!isDisplay());
+  $('another').textContent=isPlayer()&&!s.practice?'На главный экран':s.practice?'Ещё одна тренировка':'Новая комната';
   if(s.phase==='finished'){
     const players=s.players.filter(p=>p.id!==s.host).sort((a,b)=>b.score-a.score),top=Math.max(...players.map(p=>p.score));
     $('winner').textContent=players.filter(p=>p.score===top).map(p=>p.name).join(', ')+' — '+top+' очков';
-    $('final-results').innerHTML=players.map(p=>`<div class="final-result"><span>${players.findIndex(other=>other.score===p.score)+1}</span><span class="result-name">${esc(p.name)}${p.id===auth.user.id?' · ты':''}</span><strong>${p.score} очков</strong></div>`).join('');
+    $('final-results').innerHTML=isPlayer()?'':players.map(p=>`<div class="final-result"><span>${players.findIndex(other=>other.score===p.score)+1}</span><span class="result-name">${esc(p.name)}</span><strong>${p.score} очков</strong></div>`).join('');
   }
-  renderChat();tick();
+  show('final-results',!isPlayer());show('winner',!isPlayer());
+  renderReactions();tick();
 }
 function tick(){
   if(!room)return;
@@ -177,13 +196,13 @@ setInterval(tick,250);
 function connect(code){
   clearTimeout(retry);if(socket){socket.onclose=null;socket.close();}
   const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws/${code}`);socket=ws;
-  ws.onopen=()=>{ws.send(JSON.stringify({token:auth.token}));$('connection').textContent='● На связи';$('connection').dataset.status='online';};
+  ws.onopen=()=>{ws.send(JSON.stringify({token:auth.token,display:isDisplay()}));$('connection').textContent='● На связи';$('connection').dataset.status='online';};
   ws.onmessage=e=>{if(socket!==ws)return;try{apply(JSON.parse(e.data));}catch{notice('Не удалось обновить игру','error');}};
   ws.onerror=()=>{$('connection').textContent='Нет связи';$('connection').dataset.status='offline';};
   ws.onclose=e=>{if(socket!==ws)return;$('connection').textContent='Переподключение…';$('connection').dataset.status='offline';if(e.code===1008){notice('Сессия истекла. Перезагрузите приложение.','error');return;}retry=setTimeout(()=>connect(code),1500);};
 }
-async function join(code){const s=await api('/rooms/'+encodeURIComponent(code.trim().toUpperCase())+'/join',{});apply(s);connect(s.code);}
-async function create(){const s=await api('/rooms',{pack:$('pack').value});await join(s.code);}
+async function join(code,display=entryRole==='display'){const s=await api('/rooms/'+encodeURIComponent(code.trim().toUpperCase())+(display?'/watch':'/join'),{});apply(s);connect(s.code);}
+async function create(){const s=await api('/rooms',{pack:$('pack').value});await join(s.code,false);}
 async function practice(){const s=await api('/practice',{pack:$('pack').value});apply(s);connect(s.code);}
 async function command(action,extra={}){apply(await api('/rooms/'+room.code+'/action',{action,...extra}));}
 async function refreshPacks(){
@@ -198,9 +217,9 @@ async function refreshPacks(){
 }
 $('pack').onchange=renderPackPreview;
 $('reload-packs').onclick=guard(refreshPacks);$('event-next').onclick=guard(()=>command('next'));
-async function entered(){await refreshPacks();sessionStorage.setItem('auth',JSON.stringify(auth));$('identity').textContent=auth.user.name;show('login',false);show('home',true);const p=new URLSearchParams(location.search),code=tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam')||p.get('room')||sessionStorage.getItem('room');if(code&&/^[A-Z2-9]{6}$/i.test(code)){try{await join(code);}catch(e){notice(e.message);sessionStorage.removeItem('room');}}}
+async function entered(){setRole('player');sessionStorage.setItem('auth',JSON.stringify(auth));$('identity').textContent=auth.user.name;show('login',false);show('home',true);const p=new URLSearchParams(location.search),code=tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam')||p.get('room')||sessionStorage.getItem('room');if(code&&/^[A-Z2-9]{6}$/i.test(code)){try{await join(code,!(p.get('room')||tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam'))&&sessionStorage.getItem('roomRole')==='display');}catch(e){notice(e.message);sessionStorage.removeItem('room');}}}
 $('login-form').onsubmit=guard(async()=>{auth=await api('/login',{name:$('name').value});await entered();});
-$('join-form').onsubmit=guard(()=>join($('code').value));$('create').onclick=guard(create);$('practice').onclick=guard(practice);$('another').onclick=guard(()=>room?.practice?practice():create());
+$('join-form').onsubmit=guard(()=>join($('code').value));$('create').onclick=guard(create);$('practice').onclick=guard(practice);$('another').onclick=guard(()=>room?.practice?practice():isHost()?create():$('leave').click());
 for(const a of ['start','close','next'])$(a).onclick=guard(()=>command(a));$('resume').onclick=guard(()=>command('next'));
 $('answer-form').onsubmit=guard(()=>command('answer',{text:$('answer-text').value}));
 $('binary-options').onclick=guard(async event=>{const b=event.target.closest('[data-choice]');if(b&&!b.disabled)await command('answer',{choice:Number(b.dataset.choice)});});
@@ -213,9 +232,9 @@ $('review-list').onclick=async e=>{
   try{await command(b.dataset.verdict,{player});}catch(error){notice(error.message||'Нет связи с сервером','error');}
   finally{pendingGrades.delete(player);renderReview();}
 };
-$('chat-form').onsubmit=guard(async()=>{const text=$('chat-text').value;await command('message',{text});if($('chat-text').value===text)$('chat-text').value='';});
+$('reaction-buttons').onclick=guard(async event=>{const button=event.target.closest('[data-reaction]');if(button)await command('reaction',{text:button.dataset.reaction});});
 $('finish').onclick=guard(async()=>{if(confirm('Завершить квиз и показать итоговый счёт?'))await command('finish');});
-$('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem('room');room=null;$('media-content').replaceChildren();mediaKey='';show('game',false);show('home',true);notice('');history.replaceState(null,'',location.pathname);};
+$('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem('room');sessionStorage.removeItem('roomRole');delete document.body.dataset.role;room=null;$('media-content').replaceChildren();mediaKey='';show('game',false);show('home',true);setRole('player');notice('');history.replaceState(null,'',location.pathname);};
 $('q-kind').onchange=()=>{const kind=$('q-kind').value;show('file-fields',!!kind);show('clip-fields',kind==='audio'||kind==='video');$('q-file').accept=kind==='image'?'.png,.jpg,.jpeg,.gif,.webp':kind==='audio'?'.mp3,.wav,.ogg,.m4a':'.mp4,.webm';$('q-file').required=!!kind;};
 function renderQuestionEditor() {
   const selected=room?.stages.find(s=>s.id===$('q-stage').value),binary=selected?.type==='binary',grid=selected?.type==='grid';

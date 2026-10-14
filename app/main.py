@@ -171,9 +171,9 @@ def practice(body: CreateRoom = CreateRoom(), authorization: str = Header(defaul
 
 
 async def publish(code):
-    for ws, uid in list(connections.get(code, {}).items()):
+    for ws, (uid, display) in list(connections.get(code, {}).items()):
         try:
-            await asyncio.wait_for(ws.send_json(store.public(code, uid)), timeout=3)
+            await asyncio.wait_for(ws.send_json(store.public(code, uid, display)), timeout=3)
         except (RuntimeError, WebSocketDisconnect, asyncio.TimeoutError, OSError):
             connections.get(code, {}).pop(ws, None)
 
@@ -243,7 +243,7 @@ def media(asset: str, ratrace_session: str = Cookie(default='')):
     user = current_user('Bearer '+ratrace_session)
     try:
         info = store.media_info(asset)
-        store.public(info['room'], user['id'])
+        store.public(info['room'], user['id'], display=True)
     except ValueError as e:
         raise HTTPException(404, str(e))
     path = Path(store.path).parent / 'media' / info['filename']
@@ -272,6 +272,17 @@ def state(code: str, authorization: str = Header(default='')):
         raise HTTPException(400, str(e))
 
 
+@app.post('/api/rooms/{code}/watch')
+async def watch(code: str, authorization: str = Header(default='')):
+    user = current_user(authorization)
+    try:
+        store.change(code.upper(), user, 'watch')
+        await publish(code.upper())
+        return store.public(code.upper(), user['id'], display=True)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.post('/api/rooms/{code}/action')
 async def action(code: str, body: Command, authorization: str = Header(default='')):
     user = current_user(authorization)
@@ -293,8 +304,9 @@ async def socket(ws: WebSocket, code: str):
         user = store.user(message.get('token', ''))
         if not DEV_MODE and user['id'].startswith('dev-'):
             raise ValueError('Войдите через Telegram')
-        snapshot = store.public(code, user['id'])
-        connections.setdefault(code, {})[ws] = user['id']
+        display = message.get('display') is True
+        snapshot = store.public(code, user['id'], display)
+        connections.setdefault(code, {})[ws] = (user['id'], display)
         await ws.send_json(snapshot)
         while True:
             await ws.receive_text()
