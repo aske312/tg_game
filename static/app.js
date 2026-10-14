@@ -64,7 +64,7 @@ function renderPresentation() {
   const active=!['lobby','intro','finished'].includes(room.phase);
   show('presentation-controls',hasControls()&&active);
   $('presentation-status').textContent='На экране: '+({question:'вопрос',answer:'ответ',board:'сетка',scores:'счёт'}[scene]||'вопрос');
-  for(const name of ['question','answer','board','scores']){
+  for(const name of ['question','answer','board']){
     const button=$('scene-'+name);
     button.setAttribute('aria-pressed',scene===name?'true':'false');
     button.disabled=!!room.paused||!!room.scores_visible||(name==='answer'&&room.phase!=='reveal')||
@@ -139,29 +139,39 @@ function mediaTime(seconds) {
 function renderMedia(q) { renderQuestionMedia(q); }
 
 function renderReview() {
-  const visible=isHost()&&['review','reveal','finished'].includes(room.phase);
-  $('review-list').innerHTML=visible?'<h3 class="review-heading">Ответы игроков</h3>'+room.players.filter(p=>p.id!==room.host).map(p=>{
+  const answers=Object.values(room.answers),checked=answers.filter(a=>a.verdict).length;
+  show('host-review-status',isHost()&&['review','reveal'].includes(room.phase)&&answers.length>0);
+  $('host-review-status').textContent=`Проверено ${checked} из ${answers.length} ответов`;
+  const visible=isHost()&&room.phase==='review';
+  $('review-list').innerHTML=visible?'<h3 class="review-heading">Проверить ответы</h3>'+room.players.filter(p=>room.answers[p.id]&&!room.answers[p.id].verdict).map(p=>{
     const a=room.answers[p.id];
-    const status=!a?'Не ответил · 0 очков':a.verdict==='correct'?`Верно · ${a.points>=0?'+':''}${a.points}`:a.verdict==='wrong'?`Неверно · ${a.points}`:'Ожидает оценки';
-    const buttons=isHost()&&room.phase==='review'&&a&&!a.verdict?`<div class="inline"><button data-player="${esc(p.id)}" data-verdict="correct">✓ Верно</button><button class="danger" data-player="${esc(p.id)}" data-verdict="wrong">✕ Неверно</button></div>`:'';
-    return `<div class="review-answer" data-verdict="${a?.verdict||'pending'}"><strong>${esc(p.name)}</strong><p>${a?esc(a.text):'—'}</p><small>${status}</small>${buttons}</div>`;
+    return `<div class="review-answer" data-verdict="pending"><strong>${esc(p.name)}</strong><p>${esc(a.text)}</p><div class="inline"><button data-player="${esc(p.id)}" data-verdict="correct">✓ Верно</button><button class="danger" data-player="${esc(p.id)}" data-verdict="wrong">✕ Неверно</button></div></div>`;
   }).join(''):'';
 }
 
-function renderPlayers(s) {
-  const sorted=[...s.players].sort((a,b)=>(a.id===s.host)-(b.id===s.host)||b.score-a.score);
-  $('player-count').textContent=(s.players.length-1)+' / 8';
-  $('players').innerHTML=sorted.map((p,i)=>{
-    const host=p.id===s.host;
-    const state=host?'Ведущий':s.phase==='question'&&s.answered_ids.includes(p.id)?'Ответ отправлен ✓':p.id===auth.user.id?'Это ты':p.synthetic?'Соперник':'В забеге';
-    const color=[...p.id].reduce((n,c)=>n+c.charCodeAt(0),0)%4;
-    return `<div class="player ${p.id===auth.user.id?'me':''} ${host?'host':''}" data-color="${color}"><span class="player-rank">${host?'—':String(i+1).padStart(2,'0')}</span><span class="player-avatar" aria-hidden="true">${esc([...p.name.trim()][0]?.toUpperCase()||'?')}</span><div class="player-info"><span class="player-name" title="${esc(p.name)}">${esc(p.name)}</span><em>${state}</em>${host?'':effectBadge(s,p.id)}</div><strong class="player-score">${host?'↗':p.score}</strong></div>`;
-  }).join('');
+function renderHostLayout() {
+  const controls=hasControls(),active=!['lobby','finished'].includes(room.phase);
+  show('host-console',controls&&active);
+  show('host-options',controls&&room.phase!=='finished');
+  show('host-player-count',isHost()&&room.phase==='lobby');
+  $('host-player-count').textContent=`Игроков: ${room.players.length-1} / 8`;
+  if(!isHost())return;
+  show('stage-banner',false);
+  $('round-label').textContent=`${room.stage?.title||'Раунд'} · ${room.stage_number}/${room.stage_count} · Вопрос ${room.question_number}/${room.question_count}`;
+  const board=room.stage?.type==='grid'&&!room.stage_complete&&
+    (room.phase==='board'||(room.phase==='reveal'&&room.display_scene==='board'))&&!room.paused&&!room.scores_visible;
+  show('question-board',board);
+  if(board)show('question',false);
+  show('presentation-controls',active&&!room.paused&&!room.scores_visible);
+  show('scene-question',!!room.question&&room.phase==='reveal');
+  show('scene-answer',room.phase==='reveal');
+  show('scene-board',room.stage?.type==='grid'&&!room.stage_complete&&['board','reveal'].includes(room.phase));
 }
 
 function renderHostAnswers() {
   const visible=isHost()&&room.phase==='question';
-  show('host-hint',visible);show('host-answers',visible);
+  show('host-hint',visible);show('host-answers',visible&&Object.keys(room.answers).length>0);
+  $('host-hint').textContent=Object.keys(room.answers).length?'Ответы поступили · проверка после закрытия приёма':'Ждём ответы игроков…';
   $('host-answers').innerHTML=visible?room.players.filter(p=>room.answers[p.id]).map(p=>`<div class="host-answer"><strong>${esc(p.name)}</strong><span>${esc(room.answers[p.id].text)}</span></div>`).join(''):'';
 }
 
@@ -219,13 +229,12 @@ function apply(s){
     $('display-address').textContent=(location.origin||'')+'/display';$('display-room-code').textContent=s.code;
   }
   $('room-footer').textContent='Комната '+s.code;
-  show('scoreboard',isHost());show('reactions',!isDisplay());
+  show('reactions',isPlayer());
   $('lobby-title').textContent=isHost()?'Все на месте?':isDisplay()?'Клан собирается':'Ты в игре';
   if(s.host_practice)$('lobby-title').textContent='Ты — ведущий';
   show('home',false);show('game',true);
   $('room-code').textContent=s.code;
   $('phase').textContent=(s.practice?'Тренировка · ':'')+({board:'Выбираем вопрос',event:'Событие',lobby:'Ожидание игроков',question:s.question?.choices?'Выбираем вариант':'Все пишут ответы',review:'Ведущий проверяет ответы',reveal:'Результаты вопроса',ready:'Готовы продолжить',finished:'Квиз завершён'}[s.phase]||'');
-  if(isHost())renderPlayers(s);else $('players').replaceChildren();
   show('round-status',s.phase!=='lobby');
   $('round-label').textContent=`Раунд ${s.stage_number} / ${s.stage_count} · Вопрос ${s.question_number} / ${s.question_count}`;
   $('round-progress').max=Math.max(1,s.round_count);$('round-progress').value=s.used.length;
@@ -256,6 +265,7 @@ function apply(s){
   $('another').textContent=isPlayer()&&!s.practice?'На главный экран':s.practice?'Ещё одна тренировка':'Новая комната';
   renderExperience();
   renderPresentation();
+  renderHostLayout();
   renderDisplaySound();syncMediaPlayback();renderReactions();tick();
 }
 function tick(){
@@ -320,7 +330,7 @@ $('skip-stage').onclick=guard(async()=>{
 $('enable-sound').onclick=async()=>{if(await unlockSound())fanfare();};
 async function entered(){setRole('player');sessionStorage.setItem('auth',JSON.stringify(auth));$('identity').textContent=auth.user.name;show('login',false);show('home',true);const p=new URLSearchParams(location.search),code=tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam')||p.get('room')||sessionStorage.getItem('room');if(code&&/^[A-Z2-9]{6}$/i.test(code)){try{await join(code);}catch(e){notice(e.message);sessionStorage.removeItem('room');}}}
 $('display-form').onsubmit=guard(()=>connectDisplay($('display-code').value));
-for(const name of ['question','answer','board','scores'])$('scene-'+name).onclick=guard(()=>command('display_'+name));
+for(const name of ['question','answer','board'])$('scene-'+name).onclick=guard(()=>command('display_'+name));
 $('buzz-answer').onclick=guard(()=>command('buzz',{question:room.question.id}));
 $('display-media-play').onclick=guard(()=>sendMediaAction('media_play'));
 $('display-media-pause').onclick=guard(()=>sendMediaAction('media_pause'));
@@ -340,7 +350,8 @@ $('display-fullscreen').onclick=guard(async()=>{
 });
 $('login-form').onsubmit=guard(async()=>{auth=await api('/login',{name:$('name').value});await entered();});
 $('join-form').onsubmit=guard(()=>join($('code').value));$('create').onclick=guard(create);$('practice').onclick=guard(()=>practice('host'));$('player-practice').onclick=guard(()=>practice('player'));$('another').onclick=guard(()=>room?.practice?practice(room.host_practice?'host':'player',room.pack_id):isHost()?create():$('leave').click());
-for(const a of ['start','close','next'])$(a).onclick=guard(()=>command(a));$('resume').onclick=guard(()=>command('next'));
+for(const a of ['start','close'])$(a).onclick=guard(()=>command(a));
+$('next').onclick=guard(()=>command(room.stage?.type==='grid'&&!room.stage_complete?'display_board':'next'));$('resume').onclick=guard(()=>command('next'));
 $('answer-form').onsubmit=guard(()=>command('answer',{question:room.question.id,text:$('answer-text').value}));
 $('binary-options').onclick=guard(async event=>{const b=event.target.closest('[data-choice]');if(b&&!b.disabled)await command('answer',{question:room.question.id,choice:Number(b.dataset.choice)});});
 $('board-cells').onclick=guard(async event=>{const b=event.target.closest('[data-pick]');if(b&&!b.disabled)await command('pick',{question:b.dataset.pick});});

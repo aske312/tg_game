@@ -31,7 +31,6 @@ function renderExperience() {
     const media=$('media-content').querySelector('audio,video');media?.pause();
   }
   if(paused||scores||intro||finished)show('round-status',false);
-  if(((intro||paused||scores)&&!isHost())||finished)show('scoreboard',false);
   if(paused||scores||intro||finished)show('finish',false);
   if(paused)$('phase').textContent='Игра на паузе';
   else if(scores)$('phase').textContent='Счёт после раунда';

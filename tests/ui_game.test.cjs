@@ -128,7 +128,7 @@ test('ceremony reveals lower places then third, second and first on all player s
   h.apply({phase:'finished',question:null,active:null,finished_at:1000,players});
   assert.match(h.node('final-results').innerHTML,/Last.*Fourth/s);
   assert.doesNotMatch(h.node('final-results').innerHTML,/First|Second|Third/);
-  assert(h.node('scoreboard').hidden);assert(h.node('another').hidden);
+  assert.equal(h.node('scoreboard'),undefined);assert(h.node('another').hidden);
   h.advance(3200);assert.match(h.node('award-spotlight').innerHTML,/Third/);assert.doesNotMatch(h.node('final-results').innerHTML,/First|Second/);
   h.advance(4000);assert.match(h.node('award-spotlight').innerHTML,/Second/);assert.doesNotMatch(h.node('final-results').innerHTML,/First/);
   h.advance(4000);assert.match(h.node('award-spotlight').innerHTML,/First/);assert(h.node('confetti-layer').children.length>0);
@@ -166,6 +166,30 @@ test('host can manage players on pause and skip to final results',()=>{
   assert.match(h.node('managed-effect').innerHTML,/Двойной штраф/);
   h.apply({phase:'finished',question:null,active:null,finished_at:1000});
   assert(h.node('host-management').hidden);assert(h.node('skip-stage').hidden);
+});
+
+test('host focuses on the question or grid and keeps only pending answers in review',async()=>{
+  const h=harness();h.run("auth.user.id='h'");
+  h.apply({phase:'lobby',question:null});
+  assert.equal(h.node('host-player-count').textContent,'Игроков: 1 / 8');
+  assert(h.node('host-console').hidden);assert(!h.node('host-options').hidden);
+  assert.equal(h.node('scoreboard'),undefined);
+  h.apply({phase:'reveal',display_scene:'answer',can_pick:true});
+  assert(!h.node('question').hidden);assert(h.node('question-board').hidden);
+  h.apply({phase:'reveal',display_scene:'board',can_pick:true});
+  assert(h.node('question').hidden);assert(!h.node('question-board').hidden);
+  const players=[{id:'h',name:'Host'},{id:'p',name:'Pending'},{id:'g',name:'Graded'},{id:'n',name:'Absent'}];
+  const answers={p:{text:'Draft',verdict:null},g:{text:'Done',verdict:'correct',points:100}};
+  h.apply({phase:'review',players,answers});
+  assert.match(h.node('review-list').innerHTML,/Pending.*Draft/s);
+  assert.doesNotMatch(h.node('review-list').innerHTML,/Graded|Absent/);
+  assert.equal(h.node('host-review-status').textContent,'Проверено 1 из 2 ответов');
+  h.apply({phase:'reveal',players,answers:{...answers,p:{...answers.p,verdict:'wrong'}}});
+  assert.equal(h.node('review-list').innerHTML,'');
+  h.ctx.calls=[];h.run('command=async(action)=>calls.push(action)');
+  await h.node('next').onclick();assert.equal(h.ctx.calls[0],'display_board');
+  h.apply({phase:'reveal',stage_complete:true});
+  await h.node('next').onclick();assert.equal(h.ctx.calls[1],'next');
 });
 
 test('audio timeline is relative to clip, seeks inside it and restarts at its beginning',async()=>{
@@ -228,7 +252,7 @@ test('display lobby previews the game and grid without participants or question 
   const h=harness({pathname:'/display'});
   h.apply({display:true,phase:'lobby',question:null,active:null,pack_title:'Космос и музыка'});
   assert(!h.node('display-preview').hidden);assert(h.node('lobby').hidden);
-  assert(h.node('scoreboard').hidden);assert.equal(h.node('players').innerHTML,'');
+  assert.equal(h.node('scoreboard'),undefined);assert.equal(h.node('players'),undefined);
   assert.equal(h.node('display-preview-title').textContent,'Космос и музыка');
   assert.equal(h.node('display-preview-code').textContent,'ABC234');
   assert.equal(h.node('display-preview-rounds').textContent,'1 раунд');
@@ -246,21 +270,21 @@ test('display shows the grid or the question as a single scene with no roster',(
   for(const phase of ['question','review','reveal']){
     h.apply({display:true,phase});
     assert(!h.node('question').hidden,phase);assert(h.node('question-board').hidden,phase);
-    assert(h.node('scoreboard').hidden,phase);assert(h.node('display-preview').hidden,phase);
+    assert.equal(h.node('scoreboard'),undefined,phase);assert(h.node('display-preview').hidden,phase);
   }
   h.apply({display:true,phase:'board',question:null,active:null});
-  assert(!h.node('question-board').hidden);assert(h.node('scoreboard').hidden);
+  assert(!h.node('question-board').hidden);assert.equal(h.node('scoreboard'),undefined);
 });
 
-test('display retains dedicated round scores and awards; host keeps their roster',()=>{
+test('display retains dedicated round scores and awards; host has no roster',()=>{
   const h=harness({pathname:'/display'});
   h.apply({display:true,phase:'reveal',stage_complete:true,scores_visible:true});
-  assert(!h.node('round-scores').hidden);assert(h.node('question').hidden);assert(h.node('scoreboard').hidden);
+  assert(!h.node('round-scores').hidden);assert(h.node('question').hidden);assert.equal(h.node('scoreboard'),undefined);
   assert.match(h.node('round-results').innerHTML,/Player/);
   h.apply({display:true,phase:'finished',question:null,finished_at:1000});
-  assert(!h.node('finished').hidden);assert(h.node('display-preview').hidden);assert(h.node('scoreboard').hidden);
+  assert(!h.node('finished').hidden);assert(h.node('display-preview').hidden);assert.equal(h.node('scoreboard'),undefined);
   const host=harness();host.run("auth.user.id='h'");host.apply({phase:'lobby',question:null});
-  assert(!host.node('scoreboard').hidden);assert(!host.node('lobby').hidden);assert(host.node('display-preview').hidden);
+  assert.equal(host.node('scoreboard'),undefined);assert(!host.node('lobby').hidden);assert(host.node('display-preview').hidden);
 });
 
 test('player never loads audio or video; host gets remote controls and images remain visible',async()=>{
