@@ -22,6 +22,7 @@ test('host can grade an oral buzzer answer before any text is submitted',()=>{
   const stage={id:'g',type:'grid',title:'Grid',answer_mode:'single'};
   const state={stage,phase:'question',responder:'p',deadline:null,buzz_remaining:38,single_closed:false,answers:{}};
   h.apply(state);
+  assert.equal(h.node('phase').textContent,'Игрок отвечает');
   assert.match(h.node('review-list').innerHTML,/Player.*голосом.*data-player="p".*Верно.*Неверно/s);
   assert(h.node('host-answers').hidden);assert.match(h.node('timer').textContent,/38 сек/);
   h.advance(120000);assert.match(h.node('timer').textContent,/38 сек/);

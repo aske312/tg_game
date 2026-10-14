@@ -78,6 +78,9 @@ function renderExperience() {
   else if(scores)$('phase').textContent='Счёт после раунда';
   else if(intro)$('phase').textContent='Перед началом раунда';
   else if(endScreen)$('phase').textContent='Раунд завершён';
+  else if(room.stage?.type==='grid'&&room.stage.answer_mode==='single'&&['question','review'].includes(room.phase)){
+    $('phase').textContent=room.phase==='review'?'Ведущий проверяет ответ':room.responder?'Игрок отвечает':'Ждём нажатия «Ответить»';
+  }
   if(scores){
     $('scores-title').textContent='Счёт по раундам';
     $('round-results').innerHTML=roundScoreTable();
