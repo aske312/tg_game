@@ -14,7 +14,7 @@ function harness(options={}) {
     const listeners={};
     return {hidden:false,dataset:{},style:{setProperty(){}},value:'',options:[],children:[],writes:0,textContent:'',previousElementSibling:{},
       paused:true,currentTime:0,duration:200,attributes:{},
-      pause(){this.paused=true;this.emit('pause');},async play(){this.paused=false;this.emit('play');},
+      playCalls:0,pause(){this.paused=true;this.emit('pause');},async play(){this.playCalls++;this.paused=false;this.emit('play');},
       emit(event){for(const fn of listeners[event]||[])fn();},
       get innerHTML(){return html;},set innerHTML(value){html=value;this.writes++;},
       querySelectorAll(){return [];},querySelector(){return null;},setAttribute(key,value){this.attributes[key]=value;},addEventListener(event,fn){(listeners[event]??=[]).push(fn);},
@@ -27,7 +27,7 @@ function harness(options={}) {
     window:{addEventListener(){},matchMedia(){return {matches:false};}},sessionStorage:{getItem(key){return storage.get(key)??null;},setItem(key,value){storage.set(key,value);},removeItem(key){storage.delete(key);}},location:{search:'',pathname:options.pathname||'/',origin:'http://localhost'},history:{replaceState(){}},URLSearchParams,
     fetch:()=>new Promise(()=>{}),setInterval(){},setTimeout(){},clearTimeout(){},Date:Clock,console};
   vm.createContext(ctx);
-  for(const file of ['experience.js','app.js'])vm.runInContext(fs.readFileSync(path.join(root,'static',file),'utf8'),ctx);
+  for(const file of ['experience.js','playback.js','app.js'])vm.runInContext(fs.readFileSync(path.join(root,'static',file),'utf8'),ctx);
   vm.runInContext("auth={user:{id:'p',name:'Player'}}",ctx);
   let version=0;
   const base={code:'ABC234',host:'h',players:[{id:'h',name:'Host',score:0},{id:'p',name:'Player',score:0}],phase:'question',stage:{id:'g',title:'Grid',type:'grid',categories:['Space']},stages:[{id:'g',type:'grid'}],stage_count:1,stage_number:1,question_count:2,question_number:1,round_count:2,used:[],answered_ids:[],answers:{},question:{id:'q1',category:'Space',text:'Question',value:100,seconds:45},active:'q1',deadline:1045,chooser:'h',board:[{id:'q2',category:'Space',value:200,used:false}],can_pick:false};
@@ -125,29 +125,31 @@ test('host can manage players on pause and skip to final results',()=>{
 });
 
 test('audio timeline is relative to clip, seeks inside it and restarts at its beginning',async()=>{
-  const h=harness();
-  h.apply({question:{id:'music',text:'?',media:{kind:'audio',url:'/song.mp3',start:60,end:90}}});
+  const h=harness({pathname:'/display'});
+  h.run("sendMediaAction=async(action,position,duration)=>{room.media_playback={question:room.question.id,playing:action==='media_play',position,duration,updated_at:0,revision:1};}");
+  h.apply({display:true,question:{id:'music',text:'?',media:{kind:'audio',url:'/song.mp3',start:60,end:90}}});
   const wrapper=h.node('media-content').children[0];
   const [audio,controls,seek,time]=wrapper.children;
   audio.emit('loadedmetadata');
   assert.equal(audio.controls,false);assert.equal(audio.hidden,true);
   assert.equal(audio.currentTime,60);assert.equal(seek.max,30);
   assert.equal(time.textContent,'0:00 / 0:30');
+  assert.equal(controls.children.length,1);assert.equal(audio.paused,false);
+  await controls.children[0].onclick();assert.equal(audio.paused,true);assert.equal(controls.children[0].textContent,'▶ Воспроизвести');
   seek.value=12;seek.oninput();assert.equal(audio.currentTime,72);
   assert.equal(time.textContent,'0:12 / 0:30');
-  audio.currentTime=88;controls.children[2].onclick();assert.equal(audio.currentTime,90);
+  audio.currentTime=90;
   await controls.children[0].onclick();assert.equal(audio.currentTime,60);assert.equal(audio.paused,false);
   audio.currentTime=91;audio.emit('timeupdate');assert.equal(audio.currentTime,90);assert.equal(audio.paused,true);
   audio.currentTime=50;audio.emit('seeking');assert.equal(audio.currentTime,60);
-  controls.children[1].onclick();assert.equal(audio.currentTime,60);
 });
 
 test('audio clips clamp to actual file length and reject missing intervals',()=>{
-  const h=harness();
-  h.apply({question:{id:'music',media:{kind:'audio',url:'/song.mp3',start:150,end:300}}});
+  const h=harness({pathname:'/display'});
+  h.apply({display:true,question:{id:'music',media:{kind:'audio',url:'/song.mp3',start:150,end:300}}});
   let [audio,,seek,time]=h.node('media-content').children[0].children;
   audio.emit('loadedmetadata');assert.equal(seek.max,50);assert.equal(time.textContent,'0:00 / 0:50');
-  h.apply({question:{id:'bad',media:{kind:'audio',url:'/song.mp3',start:250}}});
+  h.apply({display:true,question:{id:'bad',media:{kind:'audio',url:'/song.mp3',start:250}}});
   [audio,,seek]=h.node('media-content').children[0].children;
   audio.emit('loadedmetadata');assert(seek.disabled);
   assert.match(h.node('notice').textContent,/за пределами/);
@@ -215,4 +217,50 @@ test('display retains dedicated round scores and awards; host keeps their roster
   assert(!h.node('finished').hidden);assert(h.node('display-preview').hidden);assert(h.node('scoreboard').hidden);
   const host=harness();host.run("auth.user.id='h'");host.apply({phase:'lobby',question:null});
   assert(!host.node('scoreboard').hidden);assert(!host.node('lobby').hidden);assert(host.node('display-preview').hidden);
+});
+
+test('player never loads audio or video; host gets remote controls and images remain visible',async()=>{
+  for(const kind of ['audio','video']){
+    const player=harness();player.apply({question:{id:'m',media:{kind,url:'/private-media'}}});
+    assert(player.node('media-content').hidden);assert.equal(player.node('media-content').children.length,0);
+    assert(player.node('host-media-controls').hidden);
+    const host=harness();host.run("auth.user.id='h'");host.ctx.calls=[];
+    host.run('sendMediaAction=async action=>calls.push(action)');
+    host.apply({question:{id:'m',media:{kind,url:'/private-media'}}});
+    assert(!host.node('host-media-controls').hidden);assert.equal(host.node('media-content').children.length,0);
+    await host.node('display-media-play').onclick();await host.node('display-media-pause').onclick();
+    assert.deepEqual(Array.from(host.ctx.calls),['media_play','media_pause']);
+  }
+  const image=harness();image.apply({question:{id:'image',media:{kind:'image',url:'/picture.png'}}});
+  assert.equal(image.node('media-content').children[0].src,'/picture.png');assert(!image.node('media-content').hidden);
+});
+
+test('display media follows host pause/resume once and reaction updates do not restart it',()=>{
+  const h=harness({pathname:'/display'}),q={id:'m',media:{kind:'video',url:'/video.mp4',start:20,end:50}};
+  const playing={question:'m',playing:true,position:2,updated_at:1000,revision:0};
+  const state=h.apply({display:true,question:q,media_playback:playing});
+  const [video,controls]=h.node('media-content').children[0].children;video.emit('loadedmetadata');
+  assert.equal(video.hidden,false);assert.equal(video.controls,false);assert.equal(video.currentTime,22);assert.equal(video.paused,false);
+  assert.equal(controls.children[0].textContent,'Ⅱ Пауза');
+  const plays=video.playCalls;
+  h.apply({...state,version:state.version+1,reactions:[]});assert.equal(video.playCalls,plays);
+  h.apply({display:true,question:q,media_playback:{...playing,playing:false,position:7,revision:1}});
+  assert.equal(video.currentTime,27);assert.equal(video.paused,true);assert.equal(controls.children[0].textContent,'▶ Воспроизвести');
+  h.apply({display:true,question:q,media_playback:{...playing,position:7,revision:2}});
+  assert.equal(video.currentTime,27);assert.equal(video.paused,false);
+});
+
+test('blocked autoplay exposes one-click sound activation and keeps the real play/pause label',async()=>{
+  const h=harness({pathname:'/display'});
+  h.run("sendMediaAction=async()=>{}");
+  h.apply({display:true,question:{id:'m',media:{kind:'audio',url:'/audio.wav',start:0,end:30}}});
+  const [audio,controls]=h.node('media-content').children[0].children;
+  audio.play=async()=>{const error=new Error('Blocked');error.name='NotAllowedError';throw error;};
+  audio.emit('loadedmetadata');await Promise.resolve();await Promise.resolve();
+  assert(!h.node('display-media-unlock').hidden);assert.equal(audio.paused,true);
+  assert.equal(controls.children[0].textContent,'▶ Воспроизвести');
+  audio.play=async()=>{audio.paused=false;audio.emit('play');};
+  await h.node('enable-display-media').onclick();
+  assert(h.node('display-media-unlock').hidden);assert.equal(audio.paused,false);
+  assert.equal(controls.children[0].textContent,'Ⅱ Пауза');
 });

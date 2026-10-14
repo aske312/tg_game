@@ -54,6 +54,15 @@ class Command(BaseModel):
     choice: Optional[int] = Field(default=None, ge=0, le=1)
     delta: Optional[StrictInt] = Field(default=None, ge=-MAX_SAFE_INTEGER, le=MAX_SAFE_INTEGER)
     effect: Optional[dict] = None
+    position: Optional[float] = Field(default=None, ge=0, le=MAX_SAFE_INTEGER, allow_inf_nan=False)
+    duration: Optional[float] = Field(default=None, gt=0, le=MAX_SAFE_INTEGER, allow_inf_nan=False)
+
+
+class MediaCommand(BaseModel):
+    action: Literal['media_play', 'media_pause', 'media_seek']
+    question: str = Field(min_length=1, max_length=64)
+    position: Optional[float] = Field(default=None, ge=0, le=MAX_SAFE_INTEGER, allow_inf_nan=False)
+    duration: Optional[float] = Field(default=None, gt=0, le=MAX_SAFE_INTEGER, allow_inf_nan=False)
 
 
 class CreateRoom(BaseModel):
@@ -359,10 +368,27 @@ async def watch(code: str, authorization: str = Header(default='')):
 async def action(code: str, body: Command, authorization: str = Header(default='')):
     user = current_user(authorization)
     try:
-        changed = store.change(code.upper(), user, body.action, body.question, body.text, body.player, body.choice, body.delta, body.effect)
+        changed = store.change(code.upper(), user, body.action, body.question, body.text, body.player, body.choice, body.delta, body.effect, body.position, body.duration)
         if changed:
             await publish(code.upper())
         return store.public(code.upper(), user['id'])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post('/api/display/media')
+async def display_media(body: MediaCommand, authorization: str = Header(default='')):
+    try:
+        user = store.user(authorization[7:]) if authorization.startswith('Bearer ') else None
+    except ValueError:
+        user = None
+    if not user or user.get('role') != 'display':
+        raise HTTPException(401, 'Подключите демонстрационный экран')
+    try:
+        code = user['room']
+        store.change(code, user, body.action, question=body.question, position=body.position, duration=body.duration)
+        await publish(code)
+        return store.public(code, user['id'], display=True)
     except ValueError as e:
         raise HTTPException(400, str(e))
 

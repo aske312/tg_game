@@ -96,78 +96,7 @@ function mediaTime(seconds) {
   return `${Math.floor(total/60)}:${String(total%60).padStart(2,'0')}`;
 }
 
-function clipAudio(node,m) {
-  const wrapper=document.createElement('div');wrapper.className='clip-player';
-  const controls=document.createElement('div');controls.className='clip-buttons';
-  const button=(label,action)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.className='secondary small';b.onclick=action;controls.append(b);return b;};
-  const start=Number(m.start)||0;
-  let end=start,ready=false;
-  const seek=document.createElement('input');seek.type='range';seek.min=0;seek.max=0;seek.step=.1;seek.value=0;seek.disabled=true;seek.setAttribute('aria-label','Позиция в отрывке');
-  const time=document.createElement('span');time.className='clip-time';
-  const toggle=button('▶ Воспроизвести',async()=>{
-    if(!ready)return;
-    if(!node.paused){node.pause();return;}
-    if(node.currentTime<start||node.currentTime>=end-.05)node.currentTime=start;
-    try{await node.play();}catch{notice('Не удалось воспроизвести аудио. Нажмите ещё раз.','error');}
-  });toggle.disabled=true;
-  const jump=delta=>{if(ready){node.currentTime=Math.min(end,Math.max(start,node.currentTime+delta));update();}};
-  const back=button('−5 сек.',()=>jump(-5)),forward=button('+5 сек.',()=>jump(5));back.disabled=true;forward.disabled=true;
-  const update=()=>{
-    const position=Math.min(Math.max(0,node.currentTime-start),end-start);
-    seek.value=position;time.textContent=`${mediaTime(position)} / ${mediaTime(end-start)}`;
-    seek.setAttribute('aria-valuetext',time.textContent);
-    toggle.textContent=node.paused?'▶ Воспроизвести':'Ⅱ Пауза';
-  };
-  const metadata=()=>{
-    if(!Number.isFinite(node.duration))return;
-    end=Math.min(m.end==null?node.duration:Number(m.end),node.duration);
-    ready=end>start;
-    seek.disabled=toggle.disabled=back.disabled=forward.disabled=!ready;
-    if(!ready){notice('Отрывок за пределами записи.','error');return;}
-    seek.max=end-start;node.currentTime=start;update();
-    $('media-caption').textContent='Аудиоотрывок · '+mediaTime(end-start);
-  };
-  seek.oninput=()=>{if(ready){node.currentTime=start+Number(seek.value);update();}};
-  node.addEventListener('loadedmetadata',metadata);
-  node.addEventListener('durationchange',()=>{if(!ready)metadata();});
-  node.addEventListener('timeupdate',()=>{if(ready&&node.currentTime>=end){node.pause();if(node.currentTime>end)node.currentTime=end;}update();});
-  node.addEventListener('seeking',()=>{if(ready&&(node.currentTime<start||node.currentTime>end))node.currentTime=Math.min(end,Math.max(start,node.currentTime));});
-  node.addEventListener('play',()=>{if(!ready){node.pause();return;}if(node.currentTime<start||node.currentTime>=end)node.currentTime=start;update();});
-  for(const event of ['pause','ended'])node.addEventListener(event,update);
-  const volume=document.createElement('input');volume.type='range';volume.min=0;volume.max=1;volume.step=.05;volume.value=1;volume.setAttribute('aria-label','Громкость');volume.oninput=()=>{node.volume=Number(volume.value);};
-  const volumeLabel=document.createElement('label');volumeLabel.className='clip-volume';volumeLabel.textContent='Громкость';volumeLabel.append(volume);
-  node.hidden=true;node.controls=false;time.textContent='Загрузка аудио…';
-  wrapper.append(node);wrapper.append(controls);wrapper.append(seek);wrapper.append(time);wrapper.append(volumeLabel);
-  return wrapper;
-}
-
-function renderMedia(q) {
-  const m=q?.media;
-  const key=room.code+':'+q?.id+':'+JSON.stringify(m);
-  if(key===mediaKey)return;
-  mediaKey=key;
-  $('media-content').querySelector('audio,video')?.pause();
-  $('media-content').replaceChildren();$('media-caption').textContent='';
-  if(!m)return;
-  const node=document.createElement(m.kind==='image'?'img':m.kind);
-  node.src=m.url;
-  node.onerror=()=>notice('Не удалось открыть материал. Проверьте формат файла или обновите игру.','error');
-  if(m.kind==='image')node.alt='Материал к вопросу';
-  else {
-    node.controls=true;node.preload='metadata';
-    if(m.kind==='audio'){$('media-content').append(clipAudio(node,m));return;}
-    if(m.kind==='video')node.setAttribute('playsinline','');
-    const start=m.start||0,end=m.end;
-    if(start||end!=null){
-      $('media-caption').textContent=`Отрывок: ${start}–${end??'конец'} сек.`;
-      node.addEventListener('loadedmetadata',()=>{if(start>=node.duration){notice('Начало отрывка за пределами записи.','error');return;}node.currentTime=start;});
-      node.addEventListener('play',()=>{if(node.currentTime<start || (end!=null&&node.currentTime>=end-.05))node.currentTime=start;});
-      node.addEventListener('timeupdate',()=>{if(end!=null&&node.currentTime>=end){node.pause();if(node.currentTime>end)node.currentTime=end;}});
-      node.addEventListener('seeking',()=>{if(node.currentTime<start)node.currentTime=start;else if(end!=null&&node.currentTime>end)node.currentTime=end;});
-    }
-  }
-  $('media-content').append(node);
-}
+function renderMedia(q) { renderQuestionMedia(q); }
 
 function renderReview() {
   const visible=isHost()&&['review','reveal','finished'].includes(room.phase);
@@ -286,7 +215,7 @@ function apply(s){
   show('another',!isDisplay());
   $('another').textContent=isPlayer()&&!s.practice?'На главный экран':s.practice?'Ещё одна тренировка':'Новая комната';
   renderExperience();
-  renderReactions();tick();
+  renderDisplaySound();syncMediaPlayback();renderReactions();tick();
 }
 function tick(){
   if(!room)return;
@@ -349,6 +278,12 @@ $('skip-stage').onclick=guard(async()=>{
 $('enable-sound').onclick=async()=>{if(await unlockSound())fanfare();};
 async function entered(){setRole('player');sessionStorage.setItem('auth',JSON.stringify(auth));$('identity').textContent=auth.user.name;show('login',false);show('home',true);const p=new URLSearchParams(location.search),code=tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam')||p.get('room')||sessionStorage.getItem('room');if(code&&/^[A-Z2-9]{6}$/i.test(code)){try{await join(code);}catch(e){notice(e.message);sessionStorage.removeItem('room');}}}
 $('display-form').onsubmit=guard(()=>connectDisplay($('display-code').value));
+$('display-media-play').onclick=guard(()=>sendMediaAction('media_play'));
+$('display-media-pause').onclick=guard(()=>sendMediaAction('media_pause'));
+$('enable-display-media').onclick=guard(async()=>{
+  displaySoundEnabled=true;void unlockSound();renderDisplaySound();
+  if(activeClip?.ready)await activeClip.localPlay();
+});
 $('copy-display-url').onclick=guard(async()=>{
   const link=$('display-url').href;
   if(navigator.clipboard){await navigator.clipboard.writeText(link);notice('Ссылка для общего экрана скопирована.');}

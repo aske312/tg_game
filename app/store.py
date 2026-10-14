@@ -10,7 +10,7 @@ from pathlib import Path
 
 from app.questions import QUESTIONS
 from app.events import apply_event, snapshot_modifiers, consume_modifiers, score_delta, normalize_effect, describe_effect
-from app.limits import MAX_SAFE_INTEGER
+from app.limits import MAX_SAFE_INTEGER, finite_number
 from app.modes import LEGACY_STAGE, binary_fields, grid_category
 
 
@@ -95,10 +95,26 @@ def finish_reveal(s):
 
 
 def finish_game(s):
-    s.update(phase='finished', deadline=None, advance_at=None, finished_at=time.time(), scores_visible=False)
+    s.update(phase='finished', deadline=None, advance_at=None, finished_at=time.time(), scores_visible=False, media_playback=None)
+
+
+def media_position(s, now):
+    playback = s.get('media_playback')
+    if not playback:
+        return 0
+    position = playback['position']
+    if playback['playing'] and not s.get('paused'):
+        position += max(0, now-playback['updated_at'])
+    media = (current_question(s) or {}).get('media', {})
+    if media.get('end') is not None:
+        position = min(position, max(0, media['end']-media.get('start', 0)))
+    if playback.get('duration') is not None:
+        position = min(position, playback['duration'])
+    return position
 
 
 def start_question(s, selected=None):
+    s['media_playback'] = None
     available = remaining_stage(s)
     while not available:
         if s['stage_index']+1 == len(s['stages']):
@@ -132,6 +148,8 @@ def start_question(s, selected=None):
         return
     now = time.time()
     s.update(phase='question', active=q['id'], answers={}, deadline=now+q.get('seconds', 45), auto_at=None, event=None)
+    if q.get('media', {}).get('kind') in ('audio', 'video'):
+        s['media_playback'] = dict(question=q['id'], playing=True, position=0, updated_at=now, revision=0)
     snapshot_modifiers(s)
     s['bot_due'] = {p['id']: now+5+i*3 for i, p in enumerate([p for p in s['players'] if p.get('synthetic') and p['id'] != s['host']])}
     message(s, 'Ведущий', f"Вопрос {len(s['used'])+1}: {q['text']}", 'system')
@@ -308,7 +326,7 @@ class Store:
             s['ui_version'] += 1
             db.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(s), code))
 
-    def change(self, code, user, action, question=None, text='', player='', choice=None, delta=None, effect=None):
+    def change(self, code, user, action, question=None, text='', player='', choice=None, delta=None, effect=None, position=None, duration=None):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT state FROM rooms WHERE code=?', (code,)).fetchone()
@@ -329,14 +347,40 @@ class Store:
                         raise ValueError('Комната заполнена (8 игроков и ведущий)')
                     s['players'].append(dict(**user, score=0))
             else:
-                if not member:
+                screen_media = (action in ('media_play', 'media_pause', 'media_seek') and user.get('role') == 'display'
+                                and user.get('room') == code and uid in s.get('observers', []))
+                if not member and not screen_media:
                     raise ValueError('Вы не участник комнаты')
                 practice_owner = s['practice'] and uid == s['owner']
-                if action not in ('answer', 'message', 'pick', 'reaction') and uid != s['host'] and not (practice_owner and action in ('close', 'next', 'finish', 'pause', 'unpause', 'show_scores', 'hide_scores')):
+                if action not in ('answer', 'message', 'pick', 'reaction') and uid != s['host'] and not screen_media and not (practice_owner and action in ('close', 'next', 'finish', 'pause', 'unpause', 'show_scores', 'hide_scores')):
                     raise ValueError('Это действие доступно только ведущему')
                 if s['paused'] and action not in ('reaction', 'unpause', 'show_scores', 'hide_scores', 'adjust_score', 'set_effect', 'clear_effect', 'skip_stage'):
                     raise ValueError('Игра на паузе')
-                if action in ('adjust_score', 'set_effect', 'clear_effect'):
+                if action in ('media_play', 'media_pause', 'media_seek'):
+                    q = current_question(s)
+                    if s['phase'] not in ('question', 'review', 'reveal') or not q or q['id'] != question or q.get('media', {}).get('kind') not in ('audio', 'video'):
+                        raise ValueError('Медиаматериал этого вопроса уже недоступен')
+                    now = time.time()
+                    playback = s.get('media_playback') or dict(question=q['id'], playing=True, position=0, updated_at=now, revision=0)
+                    if action == 'media_seek' and position is None:
+                        raise ValueError('Укажите позицию в отрывке')
+                    if position is not None:
+                        finite_number(position, 'Позиция в отрывке')
+                    position = media_position(s, now) if position is None else position
+                    media = q['media']
+                    if duration is not None:
+                        finite_number(duration, 'Длительность отрывка', minimum=.001)
+                    duration = duration or playback.get('duration')
+                    if media.get('end') is not None:
+                        configured = media['end']-media.get('start', 0)
+                        duration = min(configured, duration) if duration is not None else configured
+                    if duration is not None:
+                        position = min(position, duration)
+                        if action == 'media_play' and position >= duration-.05:
+                            position = 0
+                    s['media_playback'] = dict(question=q['id'], playing=action == 'media_play' if action != 'media_seek' else playback['playing'],
+                                               position=position, updated_at=now, revision=playback['revision']+1, duration=duration)
+                elif action in ('adjust_score', 'set_effect', 'clear_effect'):
                     target = next((p for p in s['players'] if p['id'] == player and p['id'] != s['host']), None)
                     if not target or s['phase'] == 'finished':
                         raise ValueError('Выберите игрока в незавершённой игре')
@@ -422,7 +466,10 @@ class Store:
                 elif action == 'pause':
                     if s['phase'] in ('lobby', 'finished'):
                         raise ValueError('Пауза доступна во время игры')
-                    s.update(paused=True, paused_at=time.time())
+                    now = time.time()
+                    if s.get('media_playback'):
+                        s['media_playback'].update(position=media_position(s, now), updated_at=now)
+                    s.update(paused=True, paused_at=now)
                 elif action == 'unpause':
                     if not s['paused']:
                         return False
@@ -432,11 +479,17 @@ class Store:
                             s[key] += elapsed
                     s['bot_due'] = {uid: due+elapsed for uid, due in s['bot_due'].items()}
                     s['paused'] = False
+                    if s.get('media_playback'):
+                        s['media_playback']['updated_at'] = time.time()
                 elif action in ('show_scores', 'hide_scores'):
                     if s['phase'] not in ('reveal', 'event') or remaining_stage(s):
                         raise ValueError('Счёт можно показать после завершения раунда')
                     s['scores_visible'] = action == 'show_scores'
                     s['advance_at'] = None
+                    if action == 'show_scores' and s.get('media_playback'):
+                        now = time.time()
+                        playback = s['media_playback']
+                        playback.update(position=media_position(s, now), playing=False, updated_at=now, revision=playback['revision']+1)
                 elif action == 'message':
                     text = text.strip()
                     if s['phase'] == 'question':
