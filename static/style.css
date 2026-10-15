@@ -23,4 +23,4 @@ h1,h2,h3,p{margin:0}h1{font-size:clamp(38px,5vw,62px);line-height:1.02;font-weig
 @media(max-width:360px){main{padding-left:14px;padding-right:14px}.hero,.panel{padding:20px}.hero h1{font-size:36px}.hero .eyebrow{font-size:8px;letter-spacing:1px}.hero-bottom{font-size:7px}.join-form{gap:8px}.join-form input{font-size:12px;padding:12px;letter-spacing:2px}.join-form button{min-width:82px;padding:12px}.section-heading h2{font-size:20px}.identity{max-width:42%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
 
-.app-version{position:fixed;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:20;padding:4px 7px;border-radius:6px;background:var(--bg);color:var(--muted);font-size:10px;line-height:1.4;font-variant-numeric:tabular-nums;pointer-events:none}
+.app-version{display:block;padding:8px 16px calc(12px + env(safe-area-inset-bottom));color:var(--muted);font-size:10px;line-height:1.4;text-align:right;font-variant-numeric:tabular-nums}
