@@ -52,7 +52,7 @@ prepare_release() {
         export DATABASE_PATH="$sandbox/game.sqlite3" BUILDER_DATA_DIR="$sandbox/builder"
         export GAME_PACKS_DIR="$sandbox/games" DEV_MODE=false BOT_TOKEN=''
         "$release/.venv/bin/python" -m pytest -q || exit $?
-        node --test tests/ui_game.test.cjs || exit $?
+        node --test tests/ui_game.test.cjs tests/ui_builder.test.cjs || exit $?
     ) || result=$?
     rm -rf -- "$sandbox"
     [ "$result" = 0 ] || die 'Release checks failed; running services were not changed.'

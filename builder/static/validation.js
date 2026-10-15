@@ -13,7 +13,7 @@ function issueItem(issue) {
 }
 function issueField(issue) {
   const item=issueItem(issue),si=issueStage(issue);
-  if(si==null)return 'game-title';
+  if(si==null)return {stages:'add-stage',settings:'game-time-limit','settings.time_limit':'game-time-limit','settings.points':'game-points',description:'game-description'}[issue.field]||'game-title';
   if(item==null)return {answer_mode:'stage-answer-mode',title:'stage-title',categories:'new-category',questions:'add-question'}[issue.field];
   if(issue.field==='title')return 'event-title';
   if(issue.field==='text'&&state.doc?.rounds[item]?.type==='event')return 'event-text';
@@ -53,7 +53,7 @@ function openPublicationIssue(issue) {
   if(!issue||!state.doc)return;
   pauseClipEditor();
   const si=issueStage(issue),qi=issueItem(issue);
-  if(si==null)editorNav.gameTab='info';
+  if(si==null){editorNav.gameTab=issue.field==='stages'?'rounds':'info';if(issue.field==='stages')$('add-stage-panel').open=true;}
   else {
     if(si<0)return;
     selectStage(si);editorNav.gameTab='rounds';

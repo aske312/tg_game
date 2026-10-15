@@ -97,12 +97,15 @@ function initCategories() {
     const open=e.target.closest('[data-category-open]');if(open&&!state.busy){openCategoryQuestions(gridCategories()[Number(open.dataset.categoryOpen)]);return;}
     const button=e.target.closest('[data-category-remove]');if(!button||state.busy)return;
     const index=Number(button.dataset.categoryRemove),name=stage().categories[index];
-    const attached=stageQuestions().filter(({q})=>categoryKey(name)&&categoryKey(q.category)===categoryKey(name));
-    if(attached.length&&!confirm(`Удалить категорию «${name}»? У ${countLabel(attached.length,['вопроса','вопросов','вопросов'])} этого раунда категория будет снята.`))return;
-    for(const {q} of attached)delete q.category;
+    const attached=stageQuestions().filter(({q})=>q.type==='question'&&categoryKey(name)&&categoryKey(q.category)===categoryKey(name));
+    if(!confirm(`Удалить категорию «${name}» и все её вопросы (${attached.length}) в этом раунде? Изменения вступят в силу после публикации.`))return;
+    pauseClipEditor();
+    const selected=round(),removed=new Set(attached.map(({q})=>q));
+    state.doc.rounds=state.doc.rounds.filter(q=>!removed.has(q));
+    state.index=state.doc.rounds.indexOf(selected);
     stage().categories.splice(index,1);
     if(editorNav.filter?.kind==='category'&&editorNav.filter.name===categoryKey(name))editorNav.filter=null;
-    markDirty();renderCategoryControls();renderRound();updateActions();
+    resetPublicationValidation();markDirty();renderCategoryControls();applyQuestionFilter();
   };
   $('category-summary').onclick=e=>{const button=e.target.closest('[data-category-questions]');if(button)openCategoryQuestions(button.dataset.categoryMissing==='1'?'':button.dataset.categoryQuestions);};
   $('grid-category').onchange=()=>{if(!round()||state.busy)return;round().category=$('grid-category').value;if(editorNav.filter)editorNav.filter=categoryKey(round().category)?{kind:'category',name:categoryKey(round().category)}:{kind:'missing'};markDirty();renderCategoryControls();renderPreview();};

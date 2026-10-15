@@ -47,11 +47,12 @@ function renderEditorNavigation() {
   for(const button of $('game-tabs').querySelectorAll('[data-game-tab]')){const active=button.dataset.gameTab===editorNav.gameTab;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;button.disabled=state.busy;}
   for(const tab of ['rounds','info','files'])show('game-'+tab+'-pane',editorNav.gameTab===tab);
   for(const button of $('stage-tabs').querySelectorAll('[data-stage-tab]')){const active=button.dataset.stageTab===editorNav.stageTab;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;button.disabled=state.busy;}
-  for(const tab of ['questions','categories','settings'])show('stage-'+tab+'-pane',editorNav.stageTab===tab&&(tab!=='categories'||grid));
-  $('editor-location').textContent=editorNav.gameTab==='rounds'?' / Раунд '+(state.stageIndex+1):' / '+(editorNav.gameTab==='info'?'Об игре':'Файлы');
-  $('active-stage-title').textContent=s?.title||'Без названия';$('active-stage-mode').textContent=`Раунд ${state.stageIndex+1} · ${modeTitles[s?.type]||''}`;
+  for(const tab of ['questions','categories','settings'])show('stage-'+tab+'-pane',!!s&&editorNav.stageTab===tab&&(tab!=='categories'||grid));
+  show('no-stages',!s);show('stage-tabs',!!s);show('stage-delete',!!s);
+  $('editor-location').textContent=editorNav.gameTab==='rounds'?(s?' / Раунд '+(state.stageIndex+1):' / Раунды'):' / '+(editorNav.gameTab==='info'?'Настройки игры':'Файлы');
+  $('active-stage-title').textContent=s?.title||(s?'Без названия':'Добавь первый раунд');$('active-stage-mode').textContent=s?`Раунд ${state.stageIndex+1} · ${modeTitles[s.type]||''}`:'';
   const items=stageQuestions(),questions=items.filter(({q})=>q.type==='question').length,events=items.length-questions;
-  $('active-stage-count').textContent=countLabel(questions,['вопрос','вопроса','вопросов'])+(events?' · '+countLabel(events,['событие','события','событий']):'');
+  $('active-stage-count').textContent=s?countLabel(questions,['вопрос','вопроса','вопросов'])+(events?' · '+countLabel(events,['событие','события','событий']):''):'';
   show('add-event',!grid);
   $('visible-question-count').textContent=String(visibleStageItems().length);
   $('no-rounds').textContent=editorNav.search?'Ничего не найдено. Измени поиск.':editorNav.filter?'В этой категории пока нет вопросов. Добавь первый.':'Добавь первый вопрос этого раунда.';

@@ -10,6 +10,7 @@ from app.modes import stages_from_doc, binary_fields, grid_category
 from app.events import normalize_effect
 from app.limits import integer, finite_number
 from app.pack_validation import publication_issues, PublicationError
+from app.game_settings import question_defaults
 
 MAX_PACK_BYTES = 1024 * 1024
 
@@ -31,6 +32,7 @@ def load_pack(directory):
     issues = publication_issues(doc, directory)
     if issues:
         raise PublicationError(issues)
+    defaults = question_defaults(doc)
     title = doc.get('title')
     if not isinstance(title, str) or not title.strip() or len(title) > 100:
         raise ValueError('Укажите title до 100 символов')
@@ -82,7 +84,7 @@ def load_pack(directory):
         for field, limit in (('text', 2000),) + (() if binary else (('answer', 500),)):
             if not isinstance(item.get(field), str) or not item[field].strip() or len(item[field]) > limit:
                 raise ValueError(f'Вопрос {i}: заполните {field} (до {limit} символов)')
-        points, seconds = item.get('points', 100), item.get('time_limit', 45)
+        points, seconds = item.get('points', defaults['points']), item.get('time_limit', defaults['time_limit'])
         integer(points, f'Вопрос {i}, очки', minimum=0)
         integer(seconds, f'Вопрос {i}, время ответа')
         accepted = item.get('accepted_answers', [])

@@ -4,6 +4,7 @@ from pathlib import Path
 from app.events import normalize_effect, EVENT_TYPES, EVENT_TARGETS
 from app.limits import integer, finite_number
 from app.modes import LEGACY_STAGE, TITLES
+from app.game_settings import QUESTION_DEFAULTS
 
 
 class PublicationError(ValueError):
@@ -16,7 +17,10 @@ def publication_issues(doc, directory=None):
     issues = []
     stages = doc.get('stages', [LEGACY_STAGE])
     items = doc.get('rounds', [])
-    if not isinstance(stages, list) or not stages or any(not isinstance(s, dict) for s in stages) or not isinstance(items, list):
+    if isinstance(stages, list) and not stages:
+        return [dict(field='stages', message='Добавьте хотя бы один раунд.', location='Об игре',
+                     stage_index=None, stage_id=None, item_index=None, item_id=None)]
+    if not isinstance(stages, list) or any(not isinstance(s, dict) for s in stages) or not isinstance(items, list):
         return issues  # Structural errors are handled by the pack loader.
 
     def add(field, message, stage_index=None, item_index=None):
@@ -46,6 +50,14 @@ def publication_issues(doc, directory=None):
             add(field, f'Поле «{label}»: укажите целое число не меньше {minimum}.', si, qi)
 
     text(doc.get('title'), 'title', 'Название игры', 100)
+    settings = doc.get('settings', {})
+    if not isinstance(settings, dict):
+        add('settings', 'Проверьте настройки игры.')
+        settings = {}
+    for key, default in QUESTION_DEFAULTS.items():
+        number(settings.get(key, default), 'settings.' + key,
+               'Очки за вопрос' if key == 'points' else 'Время ответа', None, None,
+               minimum=0 if key == 'points' else 1)
     stage_map = {s.get('id'): i for i, s in enumerate(stages) if isinstance(s, dict) and isinstance(s.get('id'), str)}
     for si, s in enumerate(stages):
         if not isinstance(s, dict):
@@ -106,8 +118,10 @@ def publication_issues(doc, directory=None):
                 add('correct_choice', 'Выберите правильный вариант ответа.', si, qi)
         else:
             text(q.get('answer'), 'answer', 'Правильный ответ', 500, si, qi)
-        number(q.get('points', 100), 'points', 'Очки', si, qi, minimum=0)
-        number(q.get('time_limit', 45), 'time_limit', 'Время, сек.', si, qi)
+        if 'points' in q:
+            number(q['points'], 'points', 'Очки', si, qi, minimum=0)
+        if 'time_limit' in q:
+            number(q['time_limit'], 'time_limit', 'Время, сек.', si, qi)
         accepted = q.get('accepted_answers', [])
         if not isinstance(accepted, list) or len(accepted) > 20 or any(not isinstance(a, str) or not a.strip() or len(a) > 500 for a in accepted):
             add('accepted_answers', 'Укажите не больше 20 допустимых ответов, каждый — от 1 до 500 символов.', si, qi)

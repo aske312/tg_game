@@ -6,8 +6,8 @@ const state = {games:[], snapshot:null, doc:null, index:-1, stageIndex:0, dirty:
 let deleteTarget=null, noticeTimer=null;
 const modeTitles={blitz:'Блиц',grid:'Сетка вопросов',binary:'Выбор из двух'};
 function normalizeStages(doc) {
-  if(!Array.isArray(doc.stages)||!doc.stages.length)doc.stages=[{id:'legacy',type:'blitz',title:'Раунд 1',order:'sequential',chooser:'winner',auto_advance:false}];
-  for(const q of doc.rounds||[])q.stage??=doc.stages[0].id;
+  if(!Array.isArray(doc.stages))doc.stages=[{id:'legacy',type:'blitz',title:'Раунд 1',order:'sequential',chooser:'winner',auto_advance:false}];
+  for(const q of doc.rounds||[])if(doc.stages.length)q.stage??=doc.stages[0].id;
   normalizeStageCategories(doc);
 }
 function stage() {return state.doc?.stages[state.stageIndex];}
@@ -42,14 +42,14 @@ function guarded(fn) {
 function updateActions() {
   for(const id of ['save','publish','export','reload-published','new-game','add-question','add-event','refresh','logout','move-up','move-down','duplicate-round','remove-round','remove-media','add-stage','stage-up','stage-down','stage-delete'])$(id).disabled=state.busy;
   $('save').disabled=state.busy||!state.dirty;
-  $('add-question').disabled=$('add-event').disabled=state.busy||(state.doc?.rounds.length??0)>=100;
+  $('add-question').disabled=$('add-event').disabled=state.busy||!stage()||(state.doc?.rounds.length??0)>=100;
   $('add-event').disabled||=stage()?.type==='grid';
   const positions=stageQuestions().map(({i})=>i),position=positions.indexOf(state.index);
   $('move-up').disabled=state.busy||position<=0;
   $('move-down').disabled=state.busy||position<0||position>=positions.length-1;
   $('stage-up').disabled=state.busy||state.stageIndex<=0;
   $('stage-down').disabled=state.busy||state.stageIndex>=(state.doc?.stages.length??0)-1;
-  $('stage-delete').disabled=state.busy||(state.doc?.stages.length??0)<=1;
+  $('stage-delete').disabled=state.busy||!stage();
   $('add-stage').disabled=state.busy||(state.doc?.stages.length??0)>=30;
   for(const id of ['duplicate-round','remove-round'])$(id).disabled=state.busy||state.index<0;
   for(const id of ['delete-current-game','confirm-delete-game','cancel-delete-game'])$(id).disabled=state.busy;
@@ -60,6 +60,7 @@ function updateActions() {
   for(const input of $('editor').querySelectorAll('input:not([type=file]), textarea, select'))input.disabled=state.busy;
   updateCategoryActions();
   updateClipActions();
+  renderGameSettings();
   renderEditorNavigation();
   const message=state.dirty?'Есть несохранённые изменения':state.snapshot?.dirty?'Черновик сохранён':'Опубликована';
   $('save-status').textContent=message;$('save-status').dataset.dirty=state.dirty;
@@ -133,7 +134,15 @@ for(const [field,key] of [['stage-title','title'],['stage-order','order'],['stag
 $('stage-type').onchange=()=>{const old=stage().type;stage().type=$('stage-type').value;normalizeStageCategories(state.doc);for(const {q} of stageQuestions()){if(q.type!=='question')continue;if(stage().type==='binary')binaryDefaults(q);else if(old==='binary'){delete q.choices;delete q.correct_choice;}}markDirty();renderStageSettings();renderRound();};
 function moveStage(delta) {const target=state.stageIndex+delta;if(target<0||target>=state.doc.stages.length)return;const [s]=state.doc.stages.splice(state.stageIndex,1);state.doc.stages.splice(target,0,s);state.stageIndex=target;markDirty();renderStageSettings();}
 $('stage-up').onclick=()=>moveStage(-1);$('stage-down').onclick=()=>moveStage(1);
-$('stage-delete').onclick=()=>{if(state.doc.stages.length<=1||!confirm('Удалить этот игровой раунд вместе с его вопросами?'))return;const sid=stage().id;state.doc.rounds=state.doc.rounds.filter(q=>q.stage!==sid);state.doc.stages.splice(state.stageIndex,1);selectStage(Math.min(state.stageIndex,state.doc.stages.length-1));markDirty();};
+$('stage-delete').onclick=()=>{
+  const s=stage();if(state.busy||!s)return;
+  const items=stageQuestions(),questions=items.filter(({q})=>q.type==='question').length,events=items.length-questions;
+  const contents=countLabel(questions,['вопрос','вопроса','вопросов'])+(events?' и '+countLabel(events,['событие','события','событий']):'');
+  if(!confirm(`Удалить раунд «${s.title||'Без названия'}»? Вместе с ним будут удалены ${contents}. Изменения вступят в силу после публикации.`))return;
+  pauseClipEditor();state.doc.rounds=state.doc.rounds.filter(q=>q.stage!==s.id);
+  state.doc.stages.splice(state.stageIndex,1);resetPublicationValidation();
+  selectStage(Math.min(state.stageIndex,state.doc.stages.length-1));markDirty();
+};
 function renderRound() {
   const q=round();show('round-empty',!q);show('round-details',!!q);if(!q){renderClipEditor();return;}
   const event=q.type==='event';show('question-fields',!event);show('event-fields',event);
@@ -146,7 +155,8 @@ function renderRound() {
     const binary=isBinary(q);show('text-answer-fields',!binary);show('binary-answer-fields',binary);
     if(binary){$('choice-a').value=q.choices?.[0]??'Да';$('choice-b').value=q.choices?.[1]??'Нет';$('correct-choice').value=q.correct_choice??0;}
     $('question-text').value=q.text||'';$('answer').value=q.answer||'';
-    $('accepted-answers').value=Array.isArray(q.accepted_answers)?q.accepted_answers.join('\n'):'';$('points').value=q.points??100;$('time-limit').value=q.time_limit??45;
+    $('accepted-answers').value=Array.isArray(q.accepted_answers)?q.accepted_answers.join('\n'):'';$('points').value=q.points??'';$('time-limit').value=q.time_limit??'';
+    renderQuestionDefaults();
     $('answer-variants').open=Array.isArray(q.accepted_answers)&&q.accepted_answers.length>0;
     $('material-panel').open=!!q.media;
     $('media-type').value=q.media?.type||'';renderMediaFields();renderCategorySelect();
@@ -172,7 +182,7 @@ function renderPreview() {
     box.innerHTML=`<div class="preview-meta"><span>СОБЫТИЕ · ${eventOption(q.effect)?.positive?'ПОЛОЖИТЕЛЬНОЕ':'ОТРИЦАТЕЛЬНОЕ'}</span><span>${esc(countLabel(q.effect?.questions??1,['вопрос','вопроса','вопросов']))}</span></div><h3>${esc(q.title||'Название события')}</h3><p>${esc(q.text||'Описание события появится здесь.')}</p><div class="preview-answer">${esc(eventOption(q.effect)?.title||'Эффект')} · ${esc(targetTitles[q.effect?.target]||'получатели не заданы')}<p>${esc(eventDescription(q.effect))}</p></div>`;
     return;
   }
-  box.innerHTML=`<div class="preview-meta"><span>${esc(stage()?.type==='grid'?q.category||'Категория не выбрана':modeTitles[stage()?.type]||'ВОПРОС')}</span><span>${esc(q.points??100)} очков · ${esc(q.time_limit??45)} сек.</span></div><h3>${esc(q.text||'Текст вопроса появится здесь.')}</h3><div id="preview-media"></div><div class="preview-answer">Ответ для ведущего: <strong>${esc(q.choices?.[q.correct_choice]||q.answer||'Ещё не указан')}</strong></div>`;
+  box.innerHTML=`<div class="preview-meta"><span>${esc(stage()?.type==='grid'?q.category||'Категория не выбрана':modeTitles[stage()?.type]||'ВОПРОС')}</span><span>${esc(questionValue(q,'points'))} очков · ${esc(questionValue(q,'time_limit'))} сек.</span></div><h3>${esc(q.text||'Текст вопроса появится здесь.')}</h3><div id="preview-media"></div><div class="preview-answer">Ответ для ведущего: <strong>${esc(q.choices?.[q.correct_choice]||q.answer||'Ещё не указан')}</strong></div>`;
   if(Array.isArray(q.choices)){const choices=document.createElement('div');choices.className='choice-preview';choices.innerHTML=q.choices.map(c=>`<span>${esc(c)}</span>`).join('');box.insertBefore(choices,box.querySelector('.preview-answer'));}
   const m=q.media;if(typeof m?.file!=='string'||!m.file||!['image','audio','video'].includes(m.type))return;
   const node=document.createElement(m.type==='image'?'img':m.type==='video'&&m.audio_only?'audio':m.type);node.src=mediaURL(m.file);
@@ -191,7 +201,7 @@ function bind(field, getter, setter) {
   $(field).addEventListener('input',()=>{if(!round())return;setter(round(),getter($(field).value));markDirty();renderPreview();});
 }
 for(const [field,key] of [['question-text','text'],['answer','answer'],['event-title','title'],['event-text','text']])bind(field,v=>v,(q,v)=>q[key]=v);
-for(const [field,key] of [['points','points'],['time-limit','time_limit']])bind(field,v=>v.trim()===''?'':Number(v),(q,v)=>q[key]=v);
+for(const [field,key] of [['points','points'],['time-limit','time_limit']])bind(field,v=>v.trim()===''?null:Number(v),(q,v)=>{if(v===null)delete q[key];else q[key]=v;});
 for(const [field,index] of [['choice-a',0],['choice-b',1]])bind(field,v=>v,(q,v)=>{binaryDefaults(q);q.choices[index]=v;q.answer=q.choices[q.correct_choice];});
 bind('correct-choice',Number,(q,v)=>{binaryDefaults(q);q.correct_choice=v;q.answer=q.choices[v];});
 bind('accepted-answers',v=>v.split('\n').map(s=>s.trim()).filter(Boolean),(q,v)=>q.accepted_answers=v);
@@ -208,8 +218,8 @@ $('media-file').onchange=guarded(async()=>{
 for(const [field,key] of [['game-title','title'],['game-description','description']])$(field).oninput=()=>{state.doc[key]=$(field).value;$('editor-title').textContent=state.doc.title||'Без названия';markDirty();};
 
 function addRound(type) {
-  if(state.doc.rounds.length>=100)return;
-  const q=type==='event'?{id:roundId(),type,title:'',text:'',effect:{type:'random_buff',target:'random_player',questions:1}}:{id:roundId(),type,text:'',answer:'',points:100,time_limit:45,accepted_answers:[]};
+  if(state.busy||!stage()||state.doc.rounds.length>=100)return;
+  const q=type==='event'?{id:roundId(),type,title:'',text:'',effect:{type:'random_buff',target:'random_player',questions:1}}:{id:roundId(),type,text:'',answer:'',accepted_answers:[]};
   q.stage=stage().id;if(stage().type==='binary'&&type==='question')binaryDefaults(q);
   if(stage().type==='grid'&&editorNav.filter?.kind==='category')q.category=gridCategories().find(c=>categoryKey(c)===editorNav.filter.name);
   editorNav.search='';$('question-search').value='';editorNav.gameTab='rounds';editorNav.stageTab='questions';
@@ -233,7 +243,7 @@ $('publish').onclick=guarded(async()=>{if(!await validatePublication(true))retur
 $('publication-error-list').onclick=event=>{const button=event.target.closest('[data-publication-issue]');if(button&&!state.busy)openPublicationIssue(publicationValidation.issues[Number(button.dataset.publicationIssue)]);};
 $('reload-published').onclick=guarded(async()=>{if(!confirm('Загрузить опубликованную версию? Текущий черновик будет заменён, его резервная копия сохранится.'))return;accept(await api('/games/'+id()+'/reload','POST'));await refresh();notice('Загружена опубликованная версия.');});
 $('export').onclick=guarded(async()=>{if(!await validatePublication(true))return;await save();const response=await fetch('/api/games/'+id()+'/export');if(!response.ok){const result=await response.json();const error=new Error(typeof result.detail==='string'?result.detail:result.detail?.message||'Не удалось скачать пакет.');error.issues=result.detail?.issues;throw error;}const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');link.href=url;link.download=state.snapshot.id+'.zip';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);});
-$('import-json').onchange=guarded(async()=>{const file=$('import-json').files[0];if(!file)return;try{if(file.size>1024*1024)throw new Error('Документ должен быть не больше 1 МБ.');const doc=JSON.parse(await file.text());if(!doc||typeof doc!=='object'||Array.isArray(doc)||!Array.isArray(doc.rounds)||doc.rounds.length>100||(doc.stages!==undefined&&(!Array.isArray(doc.stages)||!doc.stages.length||doc.stages.length>30||doc.stages.some(s=>!s||typeof s.id!=='string'||!modeTitles[s.type])))||doc.rounds.some(q=>!q||typeof q!=='object'||!['question','event'].includes(q.type)))throw new Error('Нужен game.json со списком вопросов и событий.');if(!confirm('Заменить содержание игры из файла? Опубликованная версия не изменится до публикации.'))return;resetPublicationValidation();normalizeStages(doc);state.doc=doc;state.stageIndex=0;resetStageNavigation();editorNav.gameTab='rounds';state.index=stageQuestions()[0]?.i??-1;$('game-title').value=doc.title||'';$('game-description').value=doc.description||'';$('editor-title').textContent=doc.title||'Без названия';markDirty();renderStageSettings();renderRound();notice('Вопросы импортированы. При необходимости загрузи материалы к ним.');}finally{$('import-json').value='';}});
+$('import-json').onchange=guarded(async()=>{const file=$('import-json').files[0];if(!file)return;try{if(file.size>1024*1024)throw new Error('Документ должен быть не больше 1 МБ.');const doc=JSON.parse(await file.text());if(!doc||typeof doc!=='object'||Array.isArray(doc)||!Array.isArray(doc.rounds)||doc.rounds.length>100||(doc.stages!==undefined&&(!Array.isArray(doc.stages)||doc.stages.length>30||doc.stages.some(s=>!s||typeof s.id!=='string'||!modeTitles[s.type])))||doc.rounds.some(q=>!q||typeof q!=='object'||!['question','event'].includes(q.type)))throw new Error('Нужен game.json со списком вопросов и событий.');if(!confirm('Заменить содержание игры из файла? Опубликованная версия не изменится до публикации.'))return;resetPublicationValidation();normalizeStages(doc);state.doc=doc;state.stageIndex=0;resetStageNavigation();editorNav.gameTab='rounds';state.index=stageQuestions()[0]?.i??-1;$('game-title').value=doc.title||'';$('game-description').value=doc.description||'';$('editor-title').textContent=doc.title||'Без названия';markDirty();renderStageSettings();renderRound();notice('Вопросы импортированы. При необходимости загрузи материалы к ним.');}finally{$('import-json').value='';}});
 
 function newGameDialog() {if(!state.busy&&canLeave()){$('new-title').value='';$('create-dialog').showModal();$('new-title').focus();}}
 $('new-game').onclick=newGameDialog;$('empty-create').onclick=newGameDialog;
@@ -272,6 +282,7 @@ async function entered() {show('login-panel',false);show('studio',true);show('ac
 $('login-form').onsubmit=guarded(async()=>{await api('/login','POST',{password:$('password').value});$('password').value='';await entered();});
 $('logout').onclick=guarded(async()=>{if(!canLeave())return;await api('/logout','POST');pauseClipEditor();setLibraryOpen(false);sessionStorage.removeItem('builder-game');state.snapshot=null;state.doc=null;state.index=-1;state.dirty=false;show('editor',false);show('empty',true);loginScreen();});
 initCategories();
+initGameSettings();
 initEditorNavigation();
 initEvents();
 initMediaEditor();
