@@ -17,6 +17,7 @@ from app.store import Store
 from app.media import MAX_MEDIA_BYTES, detect_media
 from app.packs import list_packs, find_pack, materialize_pack
 from app.limits import MAX_SAFE_INTEGER
+from app.version import version_info, versioned_html
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / '.env')
@@ -114,13 +115,13 @@ def current_user(authorization):
 
 @app.get('/')
 def index():
-    return FileResponse(ROOT / 'static/index.html', headers={'Cache-Control': 'no-cache'})
+    return HTMLResponse(versioned_html(ROOT / 'static/index.html'), headers={'Cache-Control': 'no-cache'})
 
 
 @app.get('/display', response_class=HTMLResponse)
 def display_page():
     # Share the game renderer while keeping Telegram authentication out of the web screen.
-    html = (ROOT / 'static/index.html').read_text(encoding='utf-8')
+    html = versioned_html(ROOT / 'static/index.html')
     html = html.replace('<title>Клан крыс · Крысиные бега</title>', '<title>Общий экран · Крысиные бега</title>')
     html = html.replace('<script src="https://telegram.org/js/telegram-web-app.js"></script>', '')
     return HTMLResponse(html, headers={'Cache-Control': 'no-cache'})
@@ -158,7 +159,17 @@ def display_session(body: DisplayRoom, request: Request, response: Response):
 def health():
     with store.connect() as db:
         db.execute('SELECT 1').fetchone()
-    return {'status': 'ok', 'build': os.getenv('BUILD_SHA', 'local')}
+    return {'status': 'ok', **version_info()}
+
+
+@app.get('/api/version')
+def app_version():
+    return version_info()
+
+
+@app.get('/favicon.ico')
+def favicon():
+    return FileResponse(ROOT / 'static/rat.svg', media_type='image/svg+xml')
 
 
 @app.get('/api/config')

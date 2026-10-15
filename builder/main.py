@@ -8,7 +8,7 @@ from typing import Literal
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,7 @@ from app.media import MAX_MEDIA_BYTES
 from app.pack_validation import PublicationError
 from builder.auth import check_password
 from builder.store import Catalog, Conflict
+from app.version import version_info, versioned_html
 
 ROOT = Path(__file__).resolve().parent.parent
 COOKIE = 'ratrace_builder'
@@ -82,13 +83,21 @@ def create_app(catalog, password_hash):
 
     @app.get('/')
     def index():
-        return FileResponse(ROOT / 'builder/static/index.html')
+        return HTMLResponse(versioned_html(ROOT / 'builder/static/index.html'))
+
+    @app.get('/favicon.ico')
+    def favicon():
+        return FileResponse(ROOT / 'static/rat.svg', media_type='image/svg+xml')
+
+    @app.get('/api/version')
+    def app_version():
+        return version_info()
 
     app.mount('/static', StaticFiles(directory=ROOT / 'builder/static'), name='static')
 
     @app.get('/api/health')
     def health():
-        return dict(status='ok', service='builder', build=os.getenv('BUILD_SHA', 'local'))
+        return dict(status='ok', service='builder', **version_info())
 
     @app.post('/api/login')
     async def login(body: Login, request: Request, response: Response):
