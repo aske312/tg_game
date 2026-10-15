@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 from builder.auth import hash_password
 from server_admin import connect, run_remote
 from server import update_script
+from server_access import save_builder_access
 
 
 def main():
@@ -36,8 +37,7 @@ def main():
                 text = '\n'.join(['BUILDER_PASSWORD_HASH='+hash_password(password),
                                   'BUILDER_DATA_DIR=/var/lib/rat-race/builder',
                                   'GAME_PACKS_DIR='+shlex.quote(games),'BUILDER_SITE='+shlex.quote(site),''])
-                access.parent.mkdir(parents=True,exist_ok=True)
-                access.write_text('Конструктор игр: '+site+'\nПароль: '+password+'\n',encoding='utf-8')
+                save_builder_access(access, site, password)
                 with sftp.open('/etc/rat-race/builder.env.part','w') as stream:
                     stream.write(text)
                 sftp.chmod('/etc/rat-race/builder.env.part',0o600)

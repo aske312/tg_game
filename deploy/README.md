@@ -62,7 +62,7 @@ sudo rat-race update
 .\.venv\Scripts\python.exe -m pip install -r requirements-admin.txt
 ```
 
-Создайте в папке проекта приватный `server.txt`:
+Доступы находятся в приватном `data/builder-server-access.txt`. Для SSH в нём нужны поля ниже; адрес и пароль веб-редактора оставьте в том же файле:
 
 ```text
 IP: адрес сервера
@@ -74,10 +74,10 @@ PSW: пароль
 Нужен root либо пользователь с sudo без запроса пароля. После установки сервера используйте те же команды:
 
 ```powershell
-.\server.cmd update
-.\server.cmd restart app
-.\server.cmd status
-.\server.cmd logs app --follow
+.\commands\server.cmd update
+.\commands\server.cmd restart app
+.\commands\server.cmd status
+.\commands\server.cmd logs app --follow
 ```
 
 ## Настройки и данные
@@ -85,4 +85,4 @@ PSW: пароль
 - `/etc/rat-race/` — настройки и доступы.
 - `/var/lib/rat-race/` — база, игры, материалы и резервные копии.
 
-Резервируйте оба каталога. Пароли, токены и `server.txt` не размещайте в GitHub.
+Резервируйте оба каталога. Пароли, токены и файлы доступов не размещайте в GitHub.

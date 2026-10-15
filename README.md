@@ -31,16 +31,16 @@
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 Copy-Item .env.example .env
-.\start-local.cmd
+.\commands\start-local.cmd
 ```
 
 Откройте http://127.0.0.1:8000. Локально можно войти под любым именем. Для второго игрока используйте другой браузер или приватное окно.
 
-Конструктор запускается через `start-builder.cmd`: http://127.0.0.1:8124. Пароль при первом запуске сохраняется в `data/builder-access.txt`.
+Конструктор запускается через `commands\start-builder.cmd`: http://127.0.0.1:8124. Пароль при первом запуске сохраняется в `data/builder-access.txt`. Все CMD-файлы собраны в папке [commands](commands/README.md).
 
 ## Сервер
 
-Установка и обновление выполняются через GitHub, ветку `main`. На сервере доступны команды `rat-race`, с Windows — `server.cmd`.
+Установка и обновление выполняются через GitHub, ветку `main`. На сервере доступны команды `rat-race`, с Windows — `commands\server.cmd`. Доступы хранятся в приватном `data/builder-server-access.txt`.
 
 [Установка и управление сервером →](deploy/README.md)
 

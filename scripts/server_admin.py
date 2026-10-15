@@ -1,24 +1,12 @@
-"""Private SSH access from server.txt; never print connection credentials."""
+"""Private SSH administration; never print connection credentials."""
 import argparse
-import re
 import sys
 from pathlib import Path
 
 import paramiko
+from server_access import settings
 
 ROOT = Path(__file__).resolve().parent.parent
-
-
-def settings():
-    result = {}
-    for line in (ROOT / 'server.txt').read_text(encoding='utf-8-sig').splitlines():
-        if ':' in line:
-            key, value = line.split(':', 1)
-            result[key.strip().upper()] = value.strip()
-        elif '=' in line:
-            key, value = line.split('=', 1)
-            result[key.strip().upper()] = value.strip()
-    return result
 
 
 def connect():
@@ -29,7 +17,7 @@ def connect():
     if known.exists():
         client.load_host_keys(str(known))
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    port = int(re.match(r'\d+', str(cfg.get('PORT', 22))).group())
+    port = cfg['PORT']
     client.connect(cfg['IP'], port=port, username=cfg['USER'], password=cfg['PSW'],
                    look_for_keys=False, allow_agent=False, timeout=15, auth_timeout=15, banner_timeout=15)
     client.save_host_keys(str(known))
