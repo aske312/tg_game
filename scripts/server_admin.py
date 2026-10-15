@@ -36,6 +36,18 @@ def connect():
     return client
 
 
+def run_remote(client, command, script=None):
+    """Stream merged output so a full stderr pipe cannot deadlock deployment."""
+    stdin, stdout, stderr = client.exec_command(command, timeout=1800)
+    stdout.channel.set_combine_stderr(True)
+    if script is not None:
+        stdin.write(script)
+        stdin.channel.shutdown_write()
+    for line in stdout:
+        print(line, end='', flush=True)
+    return stdout.channel.recv_exit_status()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('operation', choices=['exec', 'upload', 'download'])
@@ -45,15 +57,7 @@ def main():
     with connect() as client:
         if args.operation == 'exec':
             script = Path(args.source).read_text(encoding='utf-8')
-            stdin, stdout, stderr = client.exec_command('bash -s', timeout=600)
-            stdin.write(script)
-            stdin.channel.shutdown_write()
-            for line in stdout:
-                print(line, end='', flush=True)
-            error = stderr.read().decode('utf-8', errors='replace')
-            if error:
-                print(error, file=sys.stderr)
-            sys.exit(stdout.channel.recv_exit_status())
+            sys.exit(run_remote(client, 'bash -s', script))
         with client.open_sftp() as sftp:
             if args.operation == 'upload':
                 sftp.put(args.source, args.target)

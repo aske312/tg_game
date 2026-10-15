@@ -12,7 +12,7 @@ WorkingDirectory=/opt/rat-race/current
 EnvironmentFile=/etc/rat-race/app.env
 EnvironmentFile=-/etc/rat-race/release.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/rat-race/.venv/bin/python -m app.bot
+ExecStart=/opt/rat-race/current/.venv/bin/python -m app.bot
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

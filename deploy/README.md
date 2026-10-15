@@ -2,27 +2,115 @@
 
 Разработка и тесты выполняются локально. Код передаётся через `https://github.com/aske312/tg_game`, ветка `main`. Сервер получает только закоммиченную версию из GitHub.
 
-## Обновление
+## Установка на новый сервер
+
+Поддерживаются **Ubuntu 24.04+ и Debian 12+ с systemd**. Нужны root или sudo, публичный домен либо IP и входящие TCP-порты **80**, **443**, а для конструктора — **8443**. Откройте их в облачном firewall и локальном firewall заранее; скрипт не меняет правила других служб. Для домена DNS должен указывать на сервер. Установка получает код только из GitHub `main`.
+
+Подключитесь по SSH и выполните:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates
+curl -fsSL https://raw.githubusercontent.com/aske312/tg_game/main/deploy/install.sh -o /tmp/rat-race-install.sh
+sudo bash /tmp/rat-race-install.sh
+```
+
+Скрипт спросит HTTPS-адрес, токен Telegram-бота (ввод скрыт), имя бота и email для сертификата. По умолчанию устанавливаются приложение, бот и конструктор. Для установки только приложения и бота:
+
+```bash
+sudo bash /tmp/rat-race-install.sh --app-only
+```
+
+Для установки без вопросов создайте **на сервере** `/root/rat-race-install.env` по примеру [install.env.example](install.env.example), ограничьте доступ и передайте путь:
+
+```bash
+sudo chmod 600 /root/rat-race-install.env
+sudo bash /tmp/rat-race-install.sh --config /root/rat-race-install.env
+```
+
+Приватный файл не размещается в GitHub. Настройки сохраняются в `/etc/rat-race/*.env` с правами 600. Для нового конструктора пароль сохраняется в `/etc/rat-race/builder-access.txt`, доступном root; в `builder.env` хранится только его хеш. Посмотреть адрес и пароль:
+
+```bash
+sudo cat /etc/rat-race/builder-access.txt
+```
+
+Установщик создаёт пользователя `ratrace`, каталоги данных, окружение Python для релиза, службы systemd, HTTPS через Caddy и автоматическое продление сертификата. Для IP используется Certbot 5.4+ и профиль `shortlived` ([документация Let's Encrypt](https://letsencrypt.org/2026/03/11/shorter-certs-certbot/)). Проверка сертификата проходит через HTTP на порту 80. На новом сервере занятые порты и собственная конфигурация Caddy требуют ручной настройки прокси; скрипт не заменяет чужие сайты.
+
+Повторный запуск сохраняет существующие настройки, пароли, игры и базы. Чтобы добавить конструктор после `--app-only`, снова запустите установщик без этого параметра.
+
+## Команды управления на сервере
+
+После установки доступна команда `rat-race`:
+
+| Команда | Действие |
+| --- | --- |
+| `sudo rat-race update` | Получить GitHub `main` и обновить все установленные компоненты |
+| `sudo rat-race update app` | Обновить приложение и бота |
+| `sudo rat-race update builder` | Обновить только конструктор |
+| `sudo rat-race start` | Запустить установленные службы |
+| `sudo rat-race stop` | Остановить установленные службы |
+| `sudo rat-race restart` | Перезапустить установленные службы и проверить доступность |
+| `sudo rat-race status` | Показать состояние systemd |
+| `sudo rat-race logs` | Показать последние 100 строк журналов |
+| `sudo rat-race logs app --follow` | Смотреть журналы приложения и бота в реальном времени |
+| `sudo rat-race health` | Проверить службы, локальный HTTP, публичный HTTPS и SHA релиза |
+| `sudo rat-race version` | Показать установленные SHA из GitHub |
+| `rat-race help` | Краткая справка |
+
+Команды принимают цель `app`, `builder` или `all`; по умолчанию — `all`. Конструктор обновляется и управляется отдельно от игры. Общий Caddy и другие службы сервера команда `stop` не останавливает. `start` и `restart` завершаются с ошибкой, если службы или HTTPS не прошли проверку. Просмотр состояния, логов и версии не скачивает код и не обновляет приложение.
+
+## Обновление через GitHub
 
 Локально:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
-git add app static games tests deploy scripts README.md requirements.txt .env.example .gitignore start-local.cmd start-telegram.cmd
+git add <изменённые-файлы>
 git commit -m "Describe the change"
 git push origin main
-.\.venv\Scripts\python.exe scripts/deploy_server.py
+.\server.cmd update
 ```
 
 На сервере:
 
 ```bash
-sudo bash /opt/rat-race/current/deploy/update.sh
+sudo rat-race update
 ```
 
-Можно также запустить `deploy-server.cmd` после `git push`. Подключение берётся из локального `server.txt`; на сервер копируется версия из GitHub, а не незакоммиченные файлы компьютера.
+В GitHub Actions при push в `main` и в pull request выполняются Python-тесты, UI-тесты, проверка синтаксиса Bash и ShellCheck. Автоматического развёртывания при push нет: установку релиза запускает команда обновления. На сервере тесты выполняются повторно перед переключением служб.
 
-Скрипт скачивает `main`, создаёт отдельный каталог релиза по SHA, запускает тесты, делает согласованную резервную копию SQLite и переключает `/opt/rat-race/current`. После проверки `/api/health` перезапускается бот. Предыдущие релизы сохраняются. Если новый веб-сервер не отвечает, переключается предыдущий каталог. Зависимости находятся в общей `.venv`; изменения зависимостей требуют отдельной проверки совместимости при откате.
+Скрипт скачивает `main` из фиксированного GitHub-репозитория, создаёт каталог релиза по SHA и отдельную `.venv` внутри него. Запускает Python- и UI-тесты с временными каталогами данных, делает согласованную резервную копию SQLite и переключает `/opt/rat-race/current`. Проверяет `/api/health` по HTTP и HTTPS с ожидаемым SHA, затем запускает бота. При ошибке переключения, health-check или запуска бота возвращает прежнюю ссылку, unit-файлы и ранее работавшие службы. У конструктора также восстанавливается конфигурация прокси. Предыдущие релизы и их зависимости сохраняются; резервная копия базы автоматически назад не записывается.
+
+Установка, обновление и изменение состояния служб используют общую блокировку. При обновлении обеих частей используется один SHA; компоненты переключаются последовательно. Если конструктор не прошёл проверку, приложение остаётся на уже успешно установленном релизе, конструктор возвращается на предыдущий. Повторная команда продолжает обновление.
+
+### Переход с существующего развёртывания
+
+Один раз запустите установщик из GitHub командами из раздела установки. Он добавит команду `rat-race`, Node.js для UI-проверок и окружения релизов. Существующие `app.env`, `builder.env`, настройки HTTPS, база и игры сохраняются. Обновление перезапустит службы приложения; выполняйте его между играми. Если файл `install.env` ещё не создан, установщик спросит email для сертификата.
+
+Прежние точки входа `deploy-server.cmd`, `scripts/deploy_server.py`, `scripts/deploy_builder.py`, `deploy/update.sh` и `deploy/update_builder.sh` сохранены. Локальный `deploy_server.py` теперь получает и выполняет свежую логику развёртывания из GitHub. На старом сервере сначала нужен запуск установщика, чтобы установить недостающие системные зависимости.
+
+## Управление с Windows по SSH
+
+Один раз установите зависимости администратора:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-admin.txt
+```
+
+Подключение берётся из локального `server.txt`, исключённого из Git. Формат: `IP: ...`, `PORT: 22`, `USER: ...`, `PSW: ...`. Пользователю нужен root либо sudo без запроса пароля для команд управления. Сервер получает приложение из GitHub; локальные исходники не загружаются.
+
+```powershell
+.\server.cmd update
+.\server.cmd update builder
+.\server.cmd start
+.\server.cmd restart app
+.\server.cmd status
+.\server.cmd logs app --follow
+.\server.cmd health
+.\server.cmd version
+```
+
+То же через Python: `.\.venv\Scripts\python.exe scripts/server.py status`.
 
 ## Постоянные файлы
 
@@ -33,9 +121,10 @@ sudo bash /opt/rat-race/current/deploy/update.sh
 - `/var/lib/rat-race/media/` — материалы комнат. Для полной резервной копии нужны база, этот каталог и авторские игры.
 - `/var/lib/rat-race/backups/` — резервные копии перед обновлением.
 - `/opt/rat-race/repo.git` — зеркало GitHub.
-- `/opt/rat-race/releases/<SHA>/` — неизменяемые версии приложения.
+- `/opt/rat-race/releases/<SHA>/` — версии приложения с отдельными `.venv/`.
+- `/usr/local/sbin/rat-race` — команда управления; обновляется вместе с релизом.
 
-Файлы `.env`, `server.txt`, базы и ключи SSH не передаются в GitHub. `scripts/server_admin.py` использует локальный `server.txt`; для него отдельно установите `paramiko` в локальное окружение. Формат: `IP: ...`, `PORT: 22`, `USER: ...`, `PSW: ...`.
+Файлы `.env`, `server.txt`, базы и ключи SSH не передаются в GitHub. `scripts/server_admin.py` остаётся низкоуровневым SSH-инструментом; обычные операции выполняйте через `server.cmd` или `scripts/server.py`.
 
 ## Диагностика
 
@@ -44,9 +133,9 @@ systemctl status rat-race-web rat-race-bot --no-pager
 journalctl -u rat-race-web -u rat-race-bot -n 50 --no-pager
 curl -fsS http://127.0.0.1:8010/api/health
 systemctl status rat-race-cert-renew.timer --no-pager
-sudo /opt/rat-race/.venv/bin/python /opt/rat-race/current/deploy/smoke_test.py
-sudo /opt/rat-race/.venv/bin/python /opt/rat-race/current/deploy/smoke_modes.py
-sudo /opt/rat-race/.venv/bin/python /opt/rat-race/current/deploy/smoke_presentation.py
+sudo /opt/rat-race/current/.venv/bin/python /opt/rat-race/current/deploy/smoke_test.py
+sudo /opt/rat-race/current/.venv/bin/python /opt/rat-race/current/deploy/smoke_modes.py
+sudo /opt/rat-race/current/.venv/bin/python /opt/rat-race/current/deploy/smoke_presentation.py
 ```
 
 Smoke-тест создаёт временную явно обозначенную тестовую сессию и тренировочную комнату. Через публичные HTTPS/WebSocket проверяет текстовый ответ, очки, искусственного соперника и адрес кнопки Telegram. В конце удаляет только созданные им комнату и сессию.
@@ -76,12 +165,12 @@ Smoke-тест создаёт временную явно обозначенну
 На сервере последующие обновления можно запускать так:
 
 ```bash
-sudo bash /opt/rat-race/builder-current/deploy/update_builder.sh
+sudo rat-race update builder
 systemctl status rat-race-builder rat-race-builder-proxy --no-pager
 curl -fsS http://127.0.0.1:8011/api/health
 ```
 
-Обновление запускает тесты, проверяет свободные порты и переключает только службы конструктора. Используется существующий TLS-сертификат; после его продления перезагружаются оба прокси. Зависимости общие с основным приложением, новые зависимости в этой версии не добавлены.
+Обновление запускает тесты, проверяет свободные порты и переключает только службы конструктора. Используется существующий TLS-сертификат; после его продления перезагружаются оба прокси. Каждый релиз использует своё окружение Python.
 
 Постоянные файлы конструктора:
 

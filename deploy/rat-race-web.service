@@ -11,7 +11,7 @@ WorkingDirectory=/opt/rat-race/current
 EnvironmentFile=/etc/rat-race/app.env
 EnvironmentFile=-/etc/rat-race/release.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/rat-race/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8010 --proxy-headers --forwarded-allow-ips=127.0.0.1
+ExecStart=/opt/rat-race/current/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8010 --proxy-headers --forwarded-allow-ips=127.0.0.1
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true

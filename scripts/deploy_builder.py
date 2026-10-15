@@ -12,7 +12,8 @@ import paramiko
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from builder.auth import hash_password
-from server_admin import connect
+from server_admin import connect, run_remote
+from server import update_script
 
 
 def main():
@@ -42,14 +43,7 @@ def main():
                 sftp.chmod('/etc/rat-race/builder.env.part',0o600)
                 sftp.rename('/etc/rat-race/builder.env.part','/etc/rat-race/builder.env')
                 print('Пароль сохранён локально в data/builder-server-access.txt',flush=True)
-        command = "git --git-dir=/opt/rat-race/repo.git fetch origin main && git --git-dir=/opt/rat-race/repo.git show FETCH_HEAD:deploy/update_builder.sh | bash"
-        stdin, stdout, stderr = client.exec_command(command,timeout=600)
-        for line in stdout:
-            print(line,end='',flush=True)
-        error = stderr.read().decode('utf-8',errors='replace')
-        if error:
-            print(error,file=sys.stderr)
-        return stdout.channel.recv_exit_status()
+        return run_remote(client, 'bash -s', update_script('builder'))
 
 
 if __name__ == '__main__':
