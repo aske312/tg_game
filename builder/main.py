@@ -12,7 +12,8 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app.media import MAX_MEDIA_BYTES
+from app.media import MAX_MEDIA_BYTES, MEDIA_EXTENSIONS, detect_media
+from starlette.concurrency import run_in_threadpool
 from app.pack_validation import PublicationError
 from builder.auth import check_password
 from builder.store import Catalog, Conflict
@@ -175,7 +176,7 @@ def create_app(catalog, password_hash):
                     if total > MAX_MEDIA_BYTES:
                         raise HTTPException(413, 'Максимальный размер файла — 25 МБ')
                     output.write(chunk)
-            return invoke(catalog.upload, game_id, temporary, kind)
+            return await run_in_threadpool(invoke, catalog.upload, game_id, temporary, kind)
         finally:
             temporary.unlink(missing_ok=True)
 
@@ -183,9 +184,12 @@ def create_app(catalog, password_hash):
     def media(game_id: str, file: str):
         folder = invoke(catalog.folder, catalog.drafts, game_id)
         path = invoke(catalog.asset, folder, file)
-        if not path.is_file() or path.suffix.lower() not in ('.png','.jpg','.jpeg','.gif','.webp','.mp3','.wav','.ogg','.m4a','.mp4','.webm'):
+        if not path.is_file() or path.suffix.lower() not in {ext for extensions in MEDIA_EXTENSIONS.values() for ext in extensions}:
             raise HTTPException(404, 'Материал не найден')
-        return FileResponse(path)
+        kind = next(kind for kind, extensions in MEDIA_EXTENSIONS.items() if path.suffix.lower() in extensions)
+        with path.open('rb') as stream:
+            mime, _ = invoke(detect_media, stream.read(128), kind)
+        return FileResponse(path, media_type=mime)
 
     @app.get('/api/games/{game_id}/export', dependencies=[Depends(author)])
     def export(game_id: str):

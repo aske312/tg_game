@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="half" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 0 0 18Z" fill="currentColor"/></symbol>
+  <symbol id="shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m8 12 3 3 5-6" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="bolt" viewBox="0 0 24 24"><path d="M14 2 4 14h7l-1 8 10-12h-7Z" fill="currentColor"/></symbol>
+  <symbol id="warning" viewBox="0 0 24 24"><path d="m12 3 10 18H2Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v5m0 3v1" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="spark" viewBox="0 0 24 24"><path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z" fill="currentColor"/></symbol>
+</svg>

@@ -200,6 +200,15 @@ def check_display(browser, stack, app_url, game_id, watch):
     expect(screen.locator('#round-results')).to_contain_text('1400')
     screenshot(screen, 'display-results')
     assert player.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), 'Player UI overflows'
+    player.evaluate("""() => {
+        const box=document.createElement('div');box.id='qa-effects';box.className='panel';
+        box.innerHTML=['half_reward','shield','double_reward','double_penalty','bonus_points'].map(kind=>
+            effectBadge({...room,phase:'board',modifiers:{[auth.user.id]:{kind,remaining:2,amount:100}}},auth.user.id)).join('');
+        document.querySelector('main').append(box);
+    }""")
+    player.wait_for_function("[...document.querySelectorAll('#qa-effects use')].every(node => node.getBBox().width > 0)")
+    expect(player.locator('#qa-effects svg')).to_have_count(5)
+    screenshot(player, 'effect-icons-mobile')
 
 
 def main():

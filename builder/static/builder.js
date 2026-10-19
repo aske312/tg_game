@@ -74,7 +74,7 @@ function markDirty(refreshLists=true) {
   if(refreshLists){updateActions();renderStages();renderRounds();renderCategoryOverview();}
   else {
     // Clip bounds do not change the library, categories or navigation.
-    $('save').disabled=state.busy;$('save-status').textContent='???? ????????????? ?????????';$('save-status').dataset.dirty=true;
+    $('save').disabled=state.busy;$('save-status').textContent='Есть несохранённые изменения';$('save-status').dataset.dirty=true;
   }
   schedulePublicationValidation();
 }
@@ -172,7 +172,7 @@ function renderMediaFields() {
   show('media-fields',!!type);show('clip-fields',type==='audio'||type==='video');show('attached-file',!!m?.file);
   show('video-audio-option',type==='video');$('video-audio-only').checked=m?.audio_only===true;
   $('file-name').textContent=typeof m?.file==='string'?m.file.split('/').pop():'';
-  $('media-file').value='';$('media-file').accept=type==='image'?'.png,.jpg,.jpeg,.gif,.webp':type==='audio'?'.mp3,.wav,.ogg,.m4a':'.mp4,.webm';
+  $('media-file').value='';$('media-file').accept=type==='image'?'.png,.jpg,.jpeg,.jfif,.gif,.webp,.avif,.bmp':type==='audio'?'.mp3,.wav,.ogg,.oga,.opus,.m4a,.aac,.flac':'.mp4,.webm,.mov,.m4v';
   $('upload-label').textContent=m?.file?'Заменить материал':'Выбрать файл';
   $('material-status').textContent=m?.file?'файл добавлен':type?'выбери файл':'не добавлен';
   renderClipEditor();
@@ -222,9 +222,9 @@ $('media-type').onchange=()=>{if(!round())return;const type=$('media-type').valu
 $('video-audio-only').onchange=()=>{const media=round()?.media;if(media?.type!=='video'||state.busy)return;media.audio_only=$('video-audio-only').checked;markDirty();renderPreview();};
 $('remove-media').onclick=()=>{delete round().media;$('media-type').value='';markDirty();renderMediaFields();renderPreview();};
 $('media-file').onchange=guarded(async()=>{
-  const file=$('media-file').files[0];if(!file)return;if(file.size>25*1024*1024)throw new Error('Файл должен быть не больше 25 МБ.');
-  const q=round(),type=q.media.type;const response=await fetch('/api/games/'+id()+'/media?kind='+type,{method:'POST',headers:{'X-Builder-Request':'1'},body:file});
-  const result=await response.json();if(!response.ok)throw new Error(result.detail||'Не удалось загрузить материал.');
+  const file=$('media-file').files[0];$('media-file').value='';if(!file)return;if(file.size>25*1024*1024)throw new Error('Файл должен быть не больше 25 МБ.');
+  const q=round(),type=q.media.type;pauseClipEditor();
+  const result=await uploadEditorMedia(file,type);
   q.media={...q.media,type:result.type,file:result.file};markDirty();renderMediaFields();renderPreview();notice('Материал загружен. Сохрани черновик, чтобы сохранить его в вопросе.');
 });
 for(const [field,key] of [['game-title','title'],['game-description','description']])$(field).oninput=()=>{state.doc[key]=$(field).value;$('editor-title').textContent=state.doc.title||'Без названия';markDirty();};

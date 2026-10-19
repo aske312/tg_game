@@ -6,15 +6,15 @@
   <meta name="theme-color" content="#101e18">
   <title>Конструктор · Крысиные бега</title>
   <link rel="icon" href="/favicon.ico" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/builder.css?v=6">
-  <link rel="stylesheet" href="/static/editor.css?v=11">
+  <link rel="stylesheet" href="/static/builder.css?v=7">
+  <link rel="stylesheet" href="/static/editor.css?v=12">
   <script src="/static/navigation.js?v=7" defer></script>
   <script src="/static/categories.js?v=7" defer></script>
   <script src="/static/game-settings.js?v=1" defer></script>
   <script src="/static/events.js?v=6" defer></script>
-  <script src="/static/media-editor.js?v=8" defer></script>
+  <script src="/static/media-editor.js?v=9" defer></script>
   <script src="/static/validation.js?v=4" defer></script>
-  <script src="/static/builder.js?v=12" defer></script>
+  <script src="/static/builder.js?v=13" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -77,7 +77,9 @@
                 <div id="grid-category-field" hidden><div class="label-row"><label for="grid-category">Категория <span class="required-note">обязательно</span></label><button id="open-categories" class="quiet" type="button">Настроить →</button></div><select id="grid-category" required></select></div>
                 <details id="material-panel" class="field-details"><summary>Медиаматериал <span id="material-status" class="hint">не добавлен</span></summary><div class="media-heading"><h3>Материал к вопросу</h3><span class="hint">до 25 МБ</span></div>
                 <label for="media-type" class="sr-only">Тип материала</label><select id="media-type"><option value="">Без материала</option><option value="image">Изображение</option><option value="audio">Аудио</option><option value="video">Видео</option></select>
-                <div id="media-fields" hidden><label for="media-file" class="upload-zone"><span id="upload-label">Выбрать файл</span><span class="hint">Нажми, чтобы загрузить или заменить материал</span><input id="media-file" type="file"></label><div id="attached-file" class="attached-file"><span id="file-name"></span><button id="remove-media" class="quiet danger-text" type="button">Убрать</button></div></div>
+                <div id="media-fields" hidden><label for="media-file" class="upload-zone"><span id="upload-label">Выбрать файл</span><span class="hint">Нажми, чтобы загрузить или заменить материал</span><input id="media-file" type="file"></label>
+                  <div id="media-upload" class="media-upload" role="status" aria-live="polite" hidden><span id="media-upload-label">Загружаем файл…</span><progress id="media-upload-progress" max="100" aria-label="Прогресс загрузки файла"></progress><p class="hint">Дождись завершения загрузки. Редактор снова станет доступен.</p></div>
+                  <div id="attached-file" class="attached-file"><span id="file-name"></span><button id="remove-media" class="quiet danger-text" type="button">Убрать</button></div></div>
                 <div id="video-audio-option" class="video-audio-option" hidden><label for="video-audio-only"><input id="video-audio-only" type="checkbox">В вопросе воспроизводить только звук</label><p class="hint">Изображение видео скрыто до показа ответа. После проверки полная запись воспроизводится с видео.</p></div>
                 <div id="clip-fields" class="clip-editor" hidden>
                   <h3>Выбор отрывка</h3><p class="hint">Отрывок не меняет время на ответ.</p><div id="clip-player-slot" class="clip-player-slot"></div><p id="clip-duration" class="hint"></p>

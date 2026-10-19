@@ -1,3 +1,30 @@
+function uploadEditorMedia(file,kind) {
+  return new Promise((resolve,reject)=>{
+    const request=new XMLHttpRequest();
+    const label=$('media-upload-label'),progress=$('media-upload-progress');
+    show('media-upload',true);$('media-fields').setAttribute('aria-busy','true');
+    label.textContent='Загружаем файл…';progress.removeAttribute('value');
+    request.open('POST','/api/games/'+id()+'/media?kind='+encodeURIComponent(kind));
+    request.setRequestHeader('X-Builder-Request','1');
+    request.responseType='json';
+    request.upload.onprogress=event=>{
+      if(event.lengthComputable){
+        const percent=Math.min(100,Math.floor(event.loaded/event.total*100));
+        progress.value=percent;label.textContent=`Загружаем файл: ${percent}%`;
+      }
+    };
+    request.upload.onload=()=>{label.textContent='Файл передан. Обрабатываем на сервере…';progress.removeAttribute('value');};
+    request.onload=()=>{
+      const result=request.response;
+      if(request.status>=200&&request.status<300&&result?.file)resolve(result);
+      else reject(new Error(typeof result?.detail==='string'?result.detail:'Не удалось загрузить материал. Попробуй ещё раз.'));
+    };
+    request.onerror=()=>reject(new Error('Загрузка прервана: нет связи с сервером. Попробуй ещё раз.'));
+    request.onabort=()=>reject(new Error('Загрузка отменена.'));
+    request.send(file);
+  }).finally(()=>{show('media-upload',false);$('media-fields').removeAttribute('aria-busy');});
+}
+
 // Release decoders and pending requests before replacing a media element.
 function disposeEditorMedia(container) {
   for(const player of container?.querySelectorAll('audio,video')||[]){

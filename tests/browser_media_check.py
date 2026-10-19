@@ -66,6 +66,30 @@ def check(page, url, allow_unsupported=False):
     page.evaluate("commitClip(0.2,0.7)")
     page.evaluate('originalPreview.play()')
     page.wait_for_function('originalPreview.paused && originalPreview.currentTime >= 0.7')
+    # Hold a video request to inspect the UI throughout a slow upload.
+    pending = []
+    page.route('**/api/games/*/media?kind=video', lambda route: pending.append(route))
+    page.locator('#media-type').select_option('video')
+    page.locator('#media-file').set_input_files(str(ROOT/'static/demo/colors.mp4'))
+    expect(page.locator('#media-upload')).to_be_visible()
+    expect(page.locator('#media-file')).to_be_disabled()
+    page.screenshot(path=ARTIFACTS/'video-upload-pending.png', full_page=True)
+    page.wait_for_function("document.getElementById('media-fields').getAttribute('aria-busy') === 'true'")
+    assert page.evaluate('1 + 1') == 2, 'Upload blocked the page event loop'
+    assert pending
+    pending.pop().fulfill(status=400, content_type='application/json', body='{"detail":"Test upload failure"}')
+    expect(page.locator('#media-upload')).to_be_hidden()
+    expect(page.locator('#media-file')).to_be_enabled()
+    expect(page.locator('#notice')).to_contain_text('Test upload failure')
+    # Retry without reloading or losing the edited question.
+    page.locator('#media-file').set_input_files(str(ROOT/'static/demo/colors.mp4'))
+    expect(page.locator('#media-upload')).to_be_visible()
+    assert pending
+    pending.pop().continue_()
+    expect(page.locator('#media-upload')).to_be_hidden()
+    expect(page.locator('#media-file')).to_be_enabled()
+    expect(page.locator('#question-text')).to_have_value('Editing audio question 39')
+    page.unroute('**/api/games/*/media?kind=video')
     # Repeated question changes must release the old decoder and media request.
     page.locator('#add-question').click()
     assert page.evaluate("!originalClip.hasAttribute('src') && !originalPreview.hasAttribute('src')")

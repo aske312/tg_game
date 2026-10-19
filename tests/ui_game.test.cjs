@@ -284,7 +284,7 @@ test('player sees trap description, remaining questions and future effects',()=>
   const trap={kind:'half_reward',remaining:2,title:'Половина награды'};
   h.apply({round_modifiers:{p:trap},modifiers:{p:trap}});
   assert(!h.node('my-effects').hidden);
-  assert.match(h.node('my-effect-list').innerHTML,/🪤.*Половина награды.*2 вопроса.*включая текущий/s);
+  assert.match(h.node('my-effect-list').innerHTML,/effects\.svg#half.*Половина награды.*2 вопроса.*включая текущий/s);
   assert(h.node('host-management').hidden);assert(h.node('skip-stage').hidden);
   h.apply({phase:'review',round_modifiers:{p:trap},modifiers:{p:{kind:'shield',remaining:1}}});
   assert.match(h.node('my-effect-list').innerHTML,/В этом вопросе.*Защита от штрафа.*Далее/s);

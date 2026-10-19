@@ -157,6 +157,49 @@ def test_media_upload_and_path_boundaries(client, catalog, monkeypatch, kind, fi
     assert not list((catalog.data/'uploads').glob('*.part'))
 
 
+def test_jfif_upload_and_import_are_served_as_jpeg(client, catalog):
+    client.post('/api/login', json={'password':'editor-password'})
+    snapshot = client.post('/api/games', json={'title':'JFIF'}).json()
+    path = '/api/games/'+snapshot['id']
+    data = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00' + bytes(64)
+    response = client.post(path+'/media?kind=image', content=data, headers={'Content-Type':'image/jpeg'})
+    assert response.status_code == 200
+    asset = response.json()
+    assert asset['mime'] == 'image/jpeg' and asset['file'].endswith('.jpg')
+    folder = catalog.folder(catalog.drafts, snapshot['id'])
+    imported = folder/'media/imported.jfif'
+    imported.write_bytes(data)
+    for file in (asset['file'], 'media/imported.jfif'):
+        response = client.get(path+'/media', params={'file':file}, headers={'Range':'bytes=0-10'})
+        assert response.status_code == 206 and response.content == data[:11]
+        assert response.headers['content-type'] == 'image/jpeg'
+
+
+def test_media_processing_does_not_block_other_requests(client, catalog, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    entered, release = Event(), Event()
+    original = catalog.upload
+
+    def slow_upload(*args):
+        entered.set()
+        assert release.wait(5)
+        return original(*args)
+
+    monkeypatch.setattr(catalog, 'upload', slow_upload)
+    client.post('/api/login', json={'password':'editor-password'})
+    game = client.post('/api/games', json={'title':'Slow upload'}).json()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        upload = pool.submit(client.post, '/api/games/'+game['id']+'/media?kind=image',
+                             content=(ROOT/'games/example-race/media/red.png').read_bytes())
+        try:
+            assert entered.wait(2)
+            assert pool.submit(client.get, '/api/health').result(timeout=2).status_code == 200
+        finally:
+            release.set()
+        assert upload.result(timeout=2).status_code == 200
+
+
 def test_api_conflict_and_export_validation(client, catalog):
     client.post('/api/login',json={'password':'editor-password'})
     snapshot = client.post('/api/games',json={'title':'New game'}).json()
