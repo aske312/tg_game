@@ -1,3 +1,10 @@
+// Release decoders and pending requests before replacing a media element.
+function disposeEditorMedia(container) {
+  for(const player of container?.querySelectorAll('audio,video')||[]){
+    player.onloadedmetadata=player.onerror=player.ontimeupdate=player.onplay=null;
+    player.pause();player.removeAttribute('src');player.load();
+  }
+}
 const clipEditor={key:'',duration:null,durations:new Map()};
 function clipMedia() {const q=round();return q?.type==='question'&&['audio','video'].includes(q.media?.type)?q.media:null;}
 function clipTime(value) {
@@ -47,20 +54,20 @@ function renderClipEditor() {
   const media=clipMedia(),key=media?.file?state.snapshot.id+':'+round().id+':'+media.file:'';
   if(key!==clipEditor.key){
     pauseClipEditor();clipEditor.key=key;clipEditor.duration=media?.file?clipEditor.durations.get(clipDurationKey(media))??null:null;
-    $('clip-player-slot').replaceChildren();
+    disposeEditorMedia($('clip-player-slot'));$('clip-player-slot').replaceChildren();
     if(key){
       const player=document.createElement(media.type);player.id='clip-player';player.controls=true;player.preload='metadata';player.src=mediaURL(media.file);player.setAttribute('aria-label','Запись для выбора отрывка');
       if(media.type==='video')player.setAttribute('playsinline','');
       player.onloadedmetadata=()=>{
-        if(clipEditor.key!==key)return;
+        if(clipEditor.key!==key||$('clip-player')!==player)return;
         if(Number.isFinite(player.duration)&&player.duration>0){clipEditor.duration=player.duration;clipEditor.durations.set(clipDurationKey(media),player.duration);}
         updateClipControls();
       };
-      player.onerror=()=>{if(clipEditor.key===key){clipEditor.duration=null;$('clip-duration').textContent='Не удалось открыть запись. Загрузи материал заново.';updateClipActions();}};
+      player.onerror=()=>{if(clipEditor.key===key&&$('clip-player')===player){clipEditor.duration=null;$('clip-duration').textContent='Не удалось открыть запись. Загрузи материал заново.';updateClipActions();}};
       player.ontimeupdate=()=>{
-        const current=clipMedia();if(player.paused||!current)return;
+        const current=clipMedia();if($('clip-player')!==player||player.paused||!current)return;
         const end=current.end??clipEditor.duration;
-        if(end!=null&&player.currentTime>=end){player.pause();player.currentTime=end;}
+        if(end!=null&&player.currentTime>=end){player.pause();}
       };
       player.onplay=()=>{
         const current=clipMedia();if(!current)return;
@@ -76,7 +83,7 @@ function renderClipEditor() {
 function commitClip(start,end) {
   if(state.busy||!clipMedia())return;
   pauseClipEditor();const media=clipMedia();media.start=Math.round(start*1000)/1000;media.end=end==null?null:Math.round(end*1000)/1000;
-  markDirty();updateClipControls();renderPreview();
+  markDirty(false);updateClipControls();
 }
 function validateMediaClips() {
   for(const [index,q] of state.doc.rounds.entries()){
@@ -93,7 +100,7 @@ function initMediaEditor() {
       if(state.busy||!clipMedia())return;
       const text=$(id).value,value=parseClipTime(text);
       clipMedia()[key]=key==='end'&&!text.trim()?null:value??text;
-      pauseClipEditor();markDirty();updateClipControls();renderPreview();
+      pauseClipEditor();markDirty(false);updateClipControls();
     };
     $(id).onchange=()=>{const media=clipMedia();if(media){$(id).value=key==='end'&&media.end==null?'':clipTime(media[key]??0);updateClipControls();}};
   }

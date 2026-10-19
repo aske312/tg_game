@@ -133,16 +133,22 @@ def test_bundled_game_edit_preserves_source_and_media(catalog):
         assert len(archive.namelist()) == 4
 
 
-def test_media_upload_and_path_boundaries(client, catalog, monkeypatch):
+@pytest.mark.parametrize('kind,filename', [('image', 'red.png'), ('audio', 'signals.wav'), ('video', 'colors.mp4')])
+def test_media_upload_and_path_boundaries(client, catalog, monkeypatch, kind, filename):
     client.post('/api/login',json={'password':'editor-password'})
     snapshot = client.post('/api/games',json={'title':'Media test'}).json()
     path = '/api/games/'+snapshot['id']
     assert client.post(path+'/media?kind=image',content=b'<svg/>').status_code == 400
-    data = (ROOT/'games/example-race/media/red.png').read_bytes()
-    media = client.post(path+'/media?kind=image',content=data)
+    data = (ROOT/'games/example-race/media'/filename).read_bytes()
+    media = client.post(path+'/media?kind='+kind,content=data)
     assert media.status_code == 200
     name = media.json()['file']
-    assert client.get(path+'/media',params={'file':name},headers={'Range':'bytes=0-7'}).status_code == 206
+    for start in (0, 8, 0, len(data)-8):
+        response = client.get(path+'/media',params={'file':name},headers={'Range':f'bytes={start}-{start+7}'})
+        assert response.status_code == 206
+        assert response.content == data[start:start+8]
+        assert response.headers['content-range'] == f'bytes {start}-{start+7}/{len(data)}'
+    assert client.get(path+'/media',params={'file':name}).content == data
     for name in ['../../sessions.sqlite3','/etc/passwd','../outside.png']:
         assert client.get(path+'/media',params={'file':name}).status_code == 400
     from builder import main

@@ -66,12 +66,16 @@ function updateActions() {
   $('save-status').textContent=message;$('save-status').dataset.dirty=state.dirty;
   renderPublicationValidation();
 }
-function markDirty() {
+function markDirty(refreshLists=true) {
   state.dirty=true;
   if(editorNav.search&&round()&&!visibleStageItems().some(({i})=>i===state.index)){
     editorNav.search='';$('question-search').value='';
   }
-  updateActions();renderStages();renderRounds();renderCategoryOverview();
+  if(refreshLists){updateActions();renderStages();renderRounds();renderCategoryOverview();}
+  else {
+    // Clip bounds do not change the library, categories or navigation.
+    $('save').disabled=state.busy;$('save-status').textContent='???? ????????????? ?????????';$('save-status').dataset.dirty=true;
+  }
   schedulePublicationValidation();
 }
 function canLeave() {return !state.dirty||confirm('В игре есть несохранённые изменения. Продолжить без сохранения?');}
@@ -144,7 +148,7 @@ $('stage-delete').onclick=()=>{
   selectStage(Math.min(state.stageIndex,state.doc.stages.length-1));markDirty();
 };
 function renderRound() {
-  const q=round();show('round-empty',!q);show('round-details',!!q);if(!q){renderClipEditor();return;}
+  const q=round();show('round-empty',!q);show('round-details',!!q);if(!q){renderClipEditor();disposeEditorMedia($('preview-media'));$('preview-content').replaceChildren();return;}
   const event=q.type==='event';show('question-fields',!event);show('event-fields',event);
   $('round-type').textContent=event?'СОБЫТИЕ':'ВОПРОС';$('round-heading').textContent=(event?'Событие ':'Вопрос ')+(stageQuestions().findIndex(({i})=>i===state.index)+1);
   if(event) {
@@ -176,7 +180,13 @@ function renderMediaFields() {
 function mediaURL(file) {return '/api/games/'+id()+'/media?file='+encodeURIComponent(file);}
 function renderPreview() {
   const q=round();if(!q)return;
-  const box=$('preview-content');
+  const box=$('preview-content'),m=q.media;
+  const key=q.type==='question'&&m?.file?JSON.stringify([state.snapshot.id,q.id,m.type,m.file,!!m.audio_only]):'';
+  const previous=$('preview-media');
+  const reusable=!!key&&previous?.dataset.mediaKey===key;
+  if(reusable)previous.remove();
+  else disposeEditorMedia(previous);
+
   if(q.type==='event') {
     const targetTitles={all_players:'всем игрокам',random_player:'случайному игроку',leader:'лидеру',last_player:'последнему игроку'};
     box.innerHTML=`<div class="preview-meta"><span>СОБЫТИЕ · ${eventOption(q.effect)?.positive?'ПОЛОЖИТЕЛЬНОЕ':'ОТРИЦАТЕЛЬНОЕ'}</span><span>${esc(countLabel(q.effect?.questions??1,['вопрос','вопроса','вопросов']))}</span></div><h3>${esc(q.title||'Название события')}</h3><p>${esc(q.text||'Описание события появится здесь.')}</p><div class="preview-answer">${esc(eventOption(q.effect)?.title||'Эффект')} · ${esc(targetTitles[q.effect?.target]||'получатели не заданы')}<p>${esc(eventDescription(q.effect))}</p></div>`;
@@ -184,16 +194,18 @@ function renderPreview() {
   }
   box.innerHTML=`<div class="preview-meta"><span>${esc(stage()?.type==='grid'?q.category||'Категория не выбрана':modeTitles[stage()?.type]||'ВОПРОС')}</span><span>${esc(questionValue(q,'points'))} очков · ${esc(questionValue(q,'time_limit'))} сек.</span></div><h3>${esc(q.text||'Текст вопроса появится здесь.')}</h3><div id="preview-media"></div><div class="preview-answer">Ответ для ведущего: <strong>${esc(q.choices?.[q.correct_choice]||q.answer||'Ещё не указан')}</strong></div>`;
   if(Array.isArray(q.choices)){const choices=document.createElement('div');choices.className='choice-preview';choices.innerHTML=q.choices.map(c=>`<span>${esc(c)}</span>`).join('');box.insertBefore(choices,box.querySelector('.preview-answer'));}
-  const m=q.media;if(typeof m?.file!=='string'||!m.file||!['image','audio','video'].includes(m.type))return;
+  if(reusable){$('preview-media').replaceWith(previous);return;}
+  if(typeof m?.file!=='string'||!m.file||!['image','audio','video'].includes(m.type))return;
+  const container=$('preview-media');container.dataset.mediaKey=key;
   const node=document.createElement(m.type==='image'?'img':m.type==='video'&&m.audio_only?'audio':m.type);node.src=mediaURL(m.file);
-  node.onerror=()=>{$('preview-media')?.replaceChildren(Object.assign(document.createElement('p'),{textContent:'Материал не найден. Загрузи файл для этого вопроса.'}));};
+  node.onerror=()=>{if($('preview-media')!==container)return;disposeEditorMedia(container);container.replaceChildren(Object.assign(document.createElement('p'),{textContent:'Материал не найден. Загрузи файл для этого вопроса.'}));};
   if(m.type==='image')node.alt='Материал к вопросу';
   else {
     node.controls=true;node.preload='metadata';if(m.type==='video')node.setAttribute('playsinline','');
-    const start=typeof m.start==='number'&&Number.isFinite(m.start)?m.start:0,end=typeof m.end==='number'&&Number.isFinite(m.end)?m.end:null;
-    node.addEventListener('loadedmetadata',()=>{if(start<node.duration)node.currentTime=start;});
-    node.addEventListener('play',()=>{if(node.currentTime<start||(end!=null&&node.currentTime>=end))node.currentTime=start;});
-    node.addEventListener('timeupdate',()=>{if(end!=null&&node.currentTime>=end)node.pause();});
+    const bounds=()=>{const media=round()?.media;return {start:typeof media?.start==='number'&&Number.isFinite(media.start)?media.start:0,end:typeof media?.end==='number'&&Number.isFinite(media.end)?media.end:null};};
+    node.addEventListener('loadedmetadata',()=>{if($('preview-media')!==container)return;const {start}=bounds();if(start<node.duration)node.currentTime=start;});
+    node.addEventListener('play',()=>{if($('preview-media')!==container)return;const {start,end}=bounds();if(node.currentTime<start||(end!=null&&node.currentTime>=end))node.currentTime=start;});
+    node.addEventListener('timeupdate',()=>{if($('preview-media')!==container)return;const {end}=bounds();if(!node.paused&&end!=null&&node.currentTime>=end)node.pause();});
   }
   $('preview-media').append(node);
 }
