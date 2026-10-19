@@ -3,8 +3,8 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101e18"><title>Клан крыс · Крысиные бега</title>
 <link rel="icon" href="/static/rat.svg?v=2" type="image/svg+xml">
-<link rel="stylesheet" href="/static/style.css?v=11"><link rel="stylesheet" href="/static/roles.css?v=7"><link rel="stylesheet" href="/static/quiz.css?v=10"><link rel="stylesheet" href="/static/modes.css?v=9"><link rel="stylesheet" href="/static/experience.css?v=4"><link rel="stylesheet" href="/static/display.css?v=7"><link rel="stylesheet" href="/static/host.css?v=2">
-<script src="https://telegram.org/js/telegram-web-app.js"></script><script defer src="/static/experience.js?v=9"></script><script defer src="/static/playback.js?v=7"></script><script defer src="/static/app.js?v=31"></script>
+<link rel="stylesheet" href="/static/style.css?v=11"><link rel="stylesheet" href="/static/roles.css?v=7"><link rel="stylesheet" href="/static/quiz.css?v=10"><link rel="stylesheet" href="/static/modes.css?v=9"><link rel="stylesheet" href="/static/experience.css?v=4"><link rel="stylesheet" href="/static/display.css?v=7"><link rel="stylesheet" href="/static/host.css?v=3">
+<script src="https://telegram.org/js/telegram-web-app.js"></script><script defer src="/static/experience.js?v=10"></script><script defer src="/static/playback.js?v=7"></script><script defer src="/static/app.js?v=32"></script>
 </head><body><main>
 <header class="app-header"><a id="brand-link" href="/" class="brand" aria-label="Клан крыс — главная"><span class="brand-mark"><img src="/static/rat.svg?v=2" alt="" width="36" height="36"></span><span>клан<br><span>крыс.</span></span></a><div class="identity"><i aria-hidden="true"></i><span id="identity">Квиз для своих</span></div></header>
 <div id="notice" role="status" aria-live="polite"></div>
@@ -29,6 +29,7 @@
     <div id="presentation-controls" class="host-scenes" hidden><p id="presentation-status" aria-live="polite"></p><div class="inline" role="group" aria-label="Показать на демонстрации"><button id="scene-question" class="secondary small">Вопрос</button><button id="scene-answer" class="secondary small">Ответ</button><button id="scene-board" class="secondary small">Сетка</button></div></div>
     <div id="host-toolbar" class="host-toolbar" hidden><button id="pause-game" class="secondary small" title="Остановить игру и показать экран перерыва">Пауза игры</button><button id="display-game-scores" class="secondary small" title="Остановить игру и показать игроков с баллами">Показать счёт</button><button id="continue-game" class="small" hidden>Продолжить игру</button><button id="end-round" class="small" hidden>Завершить раунд</button></div>
   </section>
+  <div id="host-content">
   <section id="my-effects" class="panel my-effects" aria-label="Твои эффекты" aria-live="polite" hidden><h3>Твои эффекты</h3><div id="my-effect-list"></div></section>
   <section id="display-media-unlock" class="display-sound-prompt" hidden><p>Разрешите звук один раз. Аудио и видео запускает ведущий со своего экрана.</p><button id="enable-display-media" class="secondary small">Разрешить звук</button></section>
   <div class="game-grid">
@@ -41,7 +42,7 @@
       </section>
       <section id="pause-panel" class="panel pause-panel" hidden><span class="eyebrow">ПЕРЕРЫВ</span><h2>Клан на паузе</h2><p>Время остановлено. Продолжим по сигналу ведущего.</p></section>
       <section id="round-end" class="panel round-end" hidden><span class="eyebrow">ПАУЗА МЕЖДУ РАУНДАМИ</span><h2 id="round-end-title">Раунд завершён</h2><h3 id="round-end-name"></h3><p id="round-end-caption"></p><div class="round-end-actions"><button id="round-next" hidden>Следующий раунд →</button><button id="round-results-button" class="secondary" hidden>Промежуточные результаты</button></div></section>
-      <section id="round-scores" class="panel" hidden><span class="eyebrow">РАУНД ЗАВЕРШЁН</span><h2 id="scores-title"></h2><div id="round-results" class="final-results"></div><p id="scores-waiting" class="footnote" hidden></p><div class="round-end-actions"><button id="scores-next" hidden>Следующий раунд →</button><button id="results-back" class="secondary" hidden>К завершению раунда</button></div></section>
+      <section id="round-scores" class="panel" hidden><span id="scores-eyebrow" class="eyebrow">РАУНД ЗАВЕРШЁН</span><h2 id="scores-title"></h2><div id="round-results" class="final-results"></div><p id="scores-waiting" class="footnote" hidden></p><div class="round-end-actions"><button id="scores-next" hidden>Следующий раунд →</button><button id="results-back" class="secondary" hidden>К завершению раунда</button></div></section>
       <section id="grid-intro" class="grid-intro" hidden aria-label="Превью и правила раунда"><div id="round-preview-content"></div><p class="intro-caption" id="intro-countdown"></p><button id="skip-intro" class="button-wide" hidden>Начать раунд →</button></section>
       <section id="board-waiting" class="panel board-waiting" hidden><span class="eyebrow">ВЫБОР ВОПРОСА</span><h2>Следующий ход</h2><p id="chooser-waiting"></p></section>
       <section id="lobby" class="panel lobby-panel" hidden><span class="eyebrow">ПЕРЕД СТАРТОМ</span><h2 id="lobby-title">Все на месте?</h2><p id="pack-count"></p><div class="lobby-rule"><span aria-hidden="true">↗</span><p>Дождись всех игроков и запусти игру. Ответы появятся в панели ведущего, счёт — на общем экране.</p></div><button id="start" class="button-wide" hidden>Начать игру <span aria-hidden="true">→</span></button><p id="waiting" class="waiting-note" hidden>Ведущий запустит игру, когда все соберутся.</p></section>
@@ -56,7 +57,7 @@
       </article>
       <article id="event" class="panel event-panel" hidden><div class="event-top"><span class="eyebrow">ПОВОРОТ В ЗАБЕГЕ</span><span class="event-symbol" aria-hidden="true">✳</span></div><h2 id="event-title"></h2><p id="event-text"></p><div class="effect-card"><span class="eyebrow">ЧТО МЕНЯЕТСЯ</span><h3 id="effect-title"></h3><p id="effect-description"></p><p id="effect-targets"></p></div><button id="event-next" class="button-wide">Продолжить <span aria-hidden="true">→</span></button></article>
       <section id="presentation-scores" class="panel" hidden><span class="eyebrow">УЧАСТНИКИ И СЧЁТ</span><h2>Текущий счёт</h2><div id="presentation-results" class="final-results"></div></section><section id="ready" class="panel" hidden><span class="eyebrow">СНОВА НА СТАРТ</span><h2>Продолжим забег?</h2><button id="resume" class="button-wide">Следующий вопрос →</button></section>
-      <section id="finished" class="panel finished-panel ceremony" hidden><span class="eyebrow">КЛАН, ВСТРЕЧАЙ ПОБЕДИТЕЛЕЙ</span><h2 id="awards-title">Итоги игры</h2><p id="awards-caption">Начинаем с последних мест…</p><div id="award-spotlight" class="award-spotlight" aria-live="polite"></div><div id="final-results" class="final-results" aria-live="polite"></div><button id="enable-sound" class="secondary small">Включить фанфары</button><button id="another" class="button-wide">Новая комната <span aria-hidden="true">↗</span></button></section>
+      <section id="finished" class="panel finished-panel ceremony" hidden><span class="eyebrow">КЛАН, ВСТРЕЧАЙ ПОБЕДИТЕЛЕЙ</span><h2 id="awards-title">Итоги игры</h2><p id="awards-caption">Начинаем с последних мест…</p><div id="award-spotlight" class="award-spotlight" aria-live="polite"></div><div id="final-results" class="final-results" aria-live="polite"></div><button id="final-round-scores" class="secondary" hidden>Результаты и места по раундам</button><button id="enable-sound" class="secondary small">Включить фанфары</button><button id="another" class="button-wide">Новая комната <span aria-hidden="true">↗</span></button></section>
     </div>
 
   </div>
@@ -80,4 +81,5 @@
   <div id="reaction-stream" class="reaction-stream" role="status" aria-label="Реакции комнаты" aria-live="polite"></div>
   <div id="confetti-layer" class="confetti-layer" aria-hidden="true"></div>
   <div class="game-footer"><span id="room-footer" class="room-footer"></span><button id="display-fullscreen" class="secondary small" hidden>На весь экран ↗</button><button id="leave" class="text-button">← На главную</button></div>
+  </div>
 </section></main><footer id="app-version" class="app-version" aria-label="Версия приложения">__APP_VERSION_LABEL__</footer></body></html>

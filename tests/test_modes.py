@@ -9,6 +9,64 @@ from app.modes import stages_from_doc
 from app.packs import load_pack
 from app.store import Store
 from builder.store import Catalog
+from app.events import score_delta
+
+
+@pytest.mark.parametrize('answers,traps,kind,expected', [
+    (True, True, 'double_penalty', -200),
+    (True, False, 'double_penalty', -100),
+    (False, True, 'double_penalty', -100),
+    (False, False, 'double_penalty', 0),
+    (False, True, 'penalty_points', -35),
+    (True, False, 'penalty_points', -100),
+    (True, False, 'shield', 0),
+])
+def test_independent_round_penalties(answers, traps, kind, expected):
+    s = dict(stages=[dict(answer_penalties=answers, trap_penalties=traps)], stage_index=0,
+             round_modifiers={'a':dict(kind=kind, amount=35)})
+    assert score_delta(s, 'a', 100, False) == expected
+    assert score_delta(s, 'a', 100, True) == 100
+
+
+@pytest.mark.parametrize('setting', ['answer_penalties', 'trap_penalties'])
+def test_round_penalty_settings_validate_and_default(setting):
+    doc = dict(stages=[stage('s', 'blitz')])
+    assert stages_from_doc(doc)[0][setting] is True
+    doc['stages'][0][setting] = False
+    assert stages_from_doc(doc)[0][setting] is False
+    doc['stages'][0][setting] = 'false'
+    with pytest.raises(ValueError):
+        stages_from_doc(doc)
+
+
+def test_binary_manual_steps_and_final_round_results(tmp_path):
+    db, code, host, a, b = room(tmp_path,
+        [stage('s', 'binary', answer_penalties=False, trap_penalties=False)],
+        [question('q1', 's', choices=['Yes', 'No'], correct_choice=0),
+         question('q2', 's', choices=['Yes', 'No'], correct_choice=0)])
+    db.change(code, a, 'answer', choice=0)
+    db.change(code, b, 'answer', choice=1)
+    state = db.public(code, host['id'])
+    assert state['phase'] == 'reveal' and state['advance_at'] is None
+    assert state['answers']['a']['text'] == 'Yes'
+    assert state['answers']['b']['verdict'] == 'wrong'
+    assert state['answers']['b']['points'] == 0
+    db.change(code, host, 'next')
+    db.change(code, host, 'close')
+    assert db.read(code)['omission_penalties'] == {'a':0, 'b':0}
+    db.change(code, host, 'end_round')
+    db.change(code, host, 'next')
+    before = db.read(code)
+    assert before['phase'] == 'finished'
+    with pytest.raises(ValueError):
+        db.change(code, a, 'show_scores')
+    db.change(code, host, 'show_scores')
+    assert Store(db.path).public(code, a['id'])['scores_visible']
+    db.change(code, host, 'hide_scores')
+    after = db.read(code)
+    assert not after['scores_visible'] and after['phase'] == 'finished'
+    assert before['finished_at'] == after['finished_at']
+    assert before['round_results'] == after['round_results']
 
 
 def stage(sid, mode, **settings):

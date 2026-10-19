@@ -676,9 +676,11 @@ class Store:
                     if s.get('media_playback'):
                         s['media_playback']['updated_at'] = time.time()
                 elif action in ('show_scores', 'hide_scores'):
-                    if s['phase'] not in ('reveal', 'event') or remaining_stage(s):
+                    if s['phase'] == 'finished':
+                        s.update(scores_visible=action == 'show_scores', advance_at=None)
+                    elif s['phase'] not in ('reveal', 'event') or remaining_stage(s):
                         raise ValueError('Счёт можно показать после завершения раунда')
-                    if action == 'show_scores':
+                    elif action == 'show_scores':
                         show_round_scores(s, question)
                     else:
                         s.update(scores_visible=False, advance_at=None, display_scene='round_end')

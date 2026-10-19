@@ -14,7 +14,7 @@ function issueItem(issue) {
 function issueField(issue) {
   const item=issueItem(issue),si=issueStage(issue);
   if(si==null)return {stages:'add-stage',settings:'game-time-limit','settings.time_limit':'game-time-limit','settings.points':'game-points',description:'game-description'}[issue.field]||'game-title';
-  if(item==null)return {answer_mode:'stage-answer-mode',title:'stage-title',categories:'new-category',questions:'add-question'}[issue.field];
+  if(item==null)return {answer_mode:'stage-answer-mode',answer_penalties:'stage-answer-penalties',trap_penalties:'stage-trap-penalties',title:'stage-title',categories:'new-category',questions:'add-question'}[issue.field];
   if(issue.field==='title')return 'event-title';
   if(issue.field==='text'&&state.doc?.rounds[item]?.type==='event')return 'event-text';
   return publicationFields[issue.field];

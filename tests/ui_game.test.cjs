@@ -6,6 +6,25 @@ const vm=require('node:vm');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 
+test('binary host retains checked choices and final scores return to awards',()=>{
+  const h=harness();h.run("auth.user.id='h'");
+  const stage={id:'g',type:'binary',title:'Binary',answer_penalties:false,trap_penalties:false};
+  h.apply({stage,phase:'intro'});
+  assert.match(h.node('round-preview-content').innerHTML,/обычные штрафы не снимаются.*ловушек выключены/s);
+  h.apply({stage,phase:'reveal',question:{id:'q1',text:'Pick',answer:'Yes',choices:['Yes','No']},
+    answers:{p:{text:'No',choice:1,verdict:'wrong',points:0}},answered_ids:['p']});
+  assert(!h.node('host-answers').hidden);
+  assert.match(h.node('host-answers').innerHTML,/Player.*No.*Неверно.*\(0\)/s);
+  h.apply({stage,phase:'finished',scores_visible:false});
+  assert(!h.node('final-round-scores').hidden);assert(!h.node('finished').hidden);
+  h.apply({stage,phase:'finished',scores_visible:true,round_results:[{stage_id:'g',players:[{id:'p',round_points:0}]}]});
+  assert(h.node('finished').hidden);assert(!h.node('round-scores').hidden);
+  assert(h.node('scores-next').hidden);assert.equal(h.node('results-back').textContent,'К награждению');
+  assert.match(h.node('round-results').innerHTML,/1 место/);
+  h.apply({stage,phase:'finished',scores_visible:false});
+  assert(!h.node('finished').hidden);assert(h.node('round-scores').hidden);
+});
+
 test('single answer shows the buzzer then input only for its winner',()=>{
   const h=harness();
   const stage={id:'g',type:'grid',title:'Grid',answer_mode:'single'};

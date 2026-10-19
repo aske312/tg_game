@@ -338,6 +338,53 @@ def check_hidden_display_media(browser, stack, app_url, database, watch):
     screenshot(screen,'hidden-picture-answer')
 
 
+def check_host_panel_and_final_scores(browser, stack, app_url, database, watch):
+    from app.store import Store
+    context=stack.enter_context(browser.new_context(viewport=dict(width=390,height=844)))
+    display_context=stack.enter_context(browser.new_context(viewport=dict(width=1280,height=720)))
+    host,screen=context.new_page(),display_context.new_page()
+    for page in (host,screen):watch(page)
+    login(host,app_url,'Panel Host')
+    db=Store(database)
+    user=host.evaluate('auth.user')
+    code=db.create(user,stages=[dict(id='b',type='binary',title='Binary',order='sequential',chooser='host',auto_advance=False,answer_penalties=False,trap_penalties=False)],questions=[
+        dict(id='pick',stage='b',text='Choose a side. '*70,answer='Yes',choices=['Yes','No'],correct_choice=0,value=100,seconds=3600)])
+    players=[dict(id='panel-a',name='Alice'),dict(id='panel-b',name='Bob')]+[dict(id='panel-'+str(i),name='Player '+str(i)) for i in range(3,9)]
+    for player in players:db.change(code,player,'join')
+    host.goto(app_url+'/?room='+code);screen.goto(app_url+'/display?room='+code)
+    host.locator('#start').click()
+    expect(screen.locator('#round-preview-content')).to_contain_text('обычные штрафы не снимаются')
+    host.locator('#skip-intro').click()
+    expect(host.locator('#question-text')).to_be_visible()
+    host.evaluate('document.fonts.ready')
+    panel=host.locator('#host-console').bounding_box()
+    host.locator('#host-content').evaluate('(node)=>node.scrollTop=node.scrollHeight')
+    assert host.locator('#host-console').bounding_box()==panel, 'Host panel moved while scrolling'
+    assert host.evaluate("document.getElementById('host-content').getBoundingClientRect().top >= document.getElementById('host-console').getBoundingClientRect().bottom"), 'Content overlaps host panel'
+    assert host.evaluate('document.scrollingElement.scrollHeight <= innerHeight+1'), 'Host page has an outer scrollbar'
+    screenshot(host,'host-fixed-panel-mobile')
+    for choice,player in enumerate(players[:2]):
+        response=httpx.post(app_url+'/api/rooms/'+code+'/action',
+                            headers={'Authorization':'Bearer '+db.session(player)},
+                            json=dict(action='answer',choice=choice))
+        response.raise_for_status()
+    host.locator('#close').click()
+    expect(host.locator('#host-answers')).to_contain_text('Alice')
+    expect(host.locator('#host-answers')).to_contain_text('No · ✕ Неверно (0)')
+    host.locator('#end-round').click();host.locator('#round-next').click()
+    expect(screen.locator('#finished')).to_be_visible()
+    host.locator('#final-round-scores').click()
+    expect(screen.locator('#round-scores')).to_be_visible()
+    expect(screen.locator('#finished')).to_be_hidden()
+    expect(screen.locator('#round-results')).to_contain_text('2 место')
+    assert screen.locator('#round-results tbody tr').count()==8
+    assert screen.locator('#round-results tbody tr').last.bounding_box()['y']+screen.locator('#round-results tbody tr').last.bounding_box()['height']<=720, 'Final scores clip players'
+    screenshot(screen,'display-final-round-scores')
+    host.locator('#results-back').click()
+    expect(screen.locator('#finished')).to_be_visible()
+    expect(screen.locator('#round-scores')).to_be_hidden()
+
+
 def main():
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     errors = []
@@ -362,6 +409,7 @@ def main():
             check_display(browser, stack, game, game_id, watch)
             check_display_media(browser, stack, game, folder/'game.sqlite3', watch)
             check_hidden_display_media(browser, stack, game, folder/'game.sqlite3', watch)
+            check_host_panel_and_final_scores(browser, stack, game, folder/'game.sqlite3', watch)
             assert not errors, '\n'.join(errors)
         except Exception:
             for index, page in enumerate(pages):

@@ -33,6 +33,19 @@ function harness(doc){
     input(id,value){const n=nodes.get(id);n.value=value;n.emit('input');},
     removeCategory(index){ctx.categoryButton={dataset:{categoryRemove:String(index)}};run("$('grid-category-list').onclick({target:{closest:s=>s==='[data-category-remove]'?categoryButton:null}})");}};
 }
+test('round penalty settings remain independent across round changes',()=>{
+  const h=harness(document());
+  assert.equal(h.node('stage-answer-penalties').value,'on');
+  h.input('stage-answer-penalties','off');
+  assert.equal(h.doc().stages[0].answer_penalties,false);
+  assert.equal(h.doc().stages[0].trap_penalties,undefined);
+  h.run('selectStage(1)');
+  assert.equal(h.node('stage-answer-penalties').value,'on');
+  h.input('stage-trap-penalties','off');
+  h.run('selectStage(0)');
+  assert.equal(h.node('stage-answer-penalties').value,'off');
+  assert.equal(h.node('stage-trap-penalties').value,'on');
+});
 function document(){return {title:'Game',stages:[{id:'g',type:'grid',title:'Grid',categories:['Space','Other']},{id:'b',type:'blitz',title:'Blitz'}],
   rounds:[{id:'g1',stage:'g',type:'question',category:'Space',text:'A',answer:'A'},
     {id:'g2',stage:'g',type:'question',category:' space ',text:'B',answer:'B'},

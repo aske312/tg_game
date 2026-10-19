@@ -127,6 +127,7 @@ function renderStageSettings() {
   $('stage-heading').textContent='Раунд '+(state.stageIndex+1);
   $('stage-title').value=s.title||'';$('stage-type').value=s.type;
   $('stage-order').value=s.order||'sequential';$('stage-auto').value=s.auto_advance?'auto':'manual';$('stage-chooser').value=s.chooser||'winner';$('stage-answer-mode').value=s.answer_mode||'all';
+  $('stage-answer-penalties').value=s.answer_penalties===false?'off':'on';$('stage-trap-penalties').value=s.trap_penalties===false?'off':'on';
   show('stage-linear-settings',s.type!=='grid');show('stage-grid-settings',s.type==='grid');
   $('stage-explanation').textContent=s.type==='grid'?'Категории и стоимость вопросов образуют сетку. Первый вопрос выбирает ведущий; если никто не ответил верно, выбор возвращается ему. События добавляй в другие раунды.':s.type==='binary'?'У каждого вопроса две кнопки со своими подписями. Можно повторять этот режим и сочетать его с любыми другими раундами.':'Все отвечают на вопросы один за другим. Случайный порядок перемешивает вопросы, сохраняя позиции событий.';
   $('new-category').value='';renderCategoryControls();
@@ -135,6 +136,7 @@ function selectStage(index) {resetStageNavigation();editorNav.gameTab='rounds';s
 $('stage-list').onclick=e=>{const button=e.target.closest('[data-stage]');if(button&&!state.busy)selectStage(Number(button.dataset.stage));};
 $('add-stage').onclick=()=>{if(state.busy||state.doc.stages.length>=30)return;const type=$('new-stage-type').value;state.doc.stages.push({id:roundId(),type,title:'Раунд '+(state.doc.stages.length+1),order:'sequential',chooser:'winner',auto_advance:false});selectStage(state.doc.stages.length-1);addRound('question');};
 for(const [field,key] of [['stage-title','title'],['stage-order','order'],['stage-chooser','chooser'],['stage-answer-mode','answer_mode'],['stage-auto','auto_advance']])$(field).oninput=()=>{if(!stage())return;stage()[key]=key==='auto_advance'?$(field).value==='auto':$(field).value;markDirty();};
+for(const [field,key] of [['stage-answer-penalties','answer_penalties'],['stage-trap-penalties','trap_penalties']])$(field).oninput=()=>{if(!stage())return;stage()[key]=$(field).value==='on';markDirty();};
 $('stage-type').onchange=()=>{const old=stage().type;stage().type=$('stage-type').value;normalizeStageCategories(state.doc);for(const {q} of stageQuestions()){if(q.type!=='question')continue;if(stage().type==='binary')binaryDefaults(q);else if(old==='binary'){delete q.choices;delete q.correct_choice;}}markDirty();renderStageSettings();renderRound();};
 function moveStage(delta) {const target=state.stageIndex+delta;if(target<0||target>=state.doc.stages.length)return;const [s]=state.doc.stages.splice(state.stageIndex,1);state.doc.stages.splice(target,0,s);state.stageIndex=target;markDirty();renderStageSettings();}
 $('stage-up').onclick=()=>moveStage(-1);$('stage-down').onclick=()=>moveStage(1);

@@ -140,7 +140,7 @@ function renderReview() {
   const answers=Object.values(room.answers),checked=answers.filter(a=>a.verdict).length;
   const missed=Object.keys(room.omission_penalties||{}).length;
   show('host-review-status',isHost()&&['review','reveal'].includes(room.phase)&&(answers.length>0||missed>0));
-  $('host-review-status').textContent=`Проверено ${checked} из ${answers.length} ответов`+(missed?` · Пропусков: ${missed}, штрафы учтены`:'');
+  $('host-review-status').textContent=`Проверено ${checked} из ${answers.length} ответов`+(missed?` · Пропусков: ${missed}, учтены по правилам раунда`:'');
   const visible=isHost()&&(room.phase==='review'||single&&room.phase==='question'&&room.responder);
   $('review-list').innerHTML=visible?'<h3 class="review-heading">Проверить ответ</h3>'+room.players.filter(p=>single?p.id===room.responder&&!room.answers[p.id]?.verdict:room.answers[p.id]&&!room.answers[p.id].verdict).map(p=>{
     const a=room.answers[p.id];
@@ -170,11 +170,12 @@ function renderHostLayout() {
 }
 
 function renderHostAnswers() {
-  const visible=isHost()&&room.phase==='question';
+  const visible=isHost()&&(room.phase==='question'||!!room.question?.choices&&['review','reveal'].includes(room.phase));
   const single=room.stage?.type==='grid'&&room.stage.answer_mode==='single';
-  show('host-hint',visible);show('host-answers',visible&&!single&&Object.keys(room.answers).length>0);
+  show('host-hint',visible);show('host-answers',visible&&!single&&(Object.keys(room.answers).length>0||room.phase==='reveal'));
   $('host-hint').textContent=single?(room.responder?'Таймер остановлен. Оцените устный или письменный ответ.':room.answered_ids.length>=room.players.length-1?'Все игроки использовали попытку. Завершите вопрос.':'Ждём нажатия «Ответить». После ошибки вопрос продолжается.'):(Object.keys(room.answers).length?'Ответы поступили · проверка после закрытия приёма':'Ждём ответы игроков…');
-  $('host-answers').innerHTML=visible&&!single?room.players.filter(p=>room.answers[p.id]).map(p=>`<div class="host-answer"><strong>${esc(p.name)}</strong><span>${esc(room.answers[p.id].text)}</span></div>`).join(''):'';
+  if(visible&&room.phase==='reveal')$('host-hint').textContent=room.stage_complete?'Ответы проверены автоматически · завершите раунд, когда будете готовы':room.stage.auto_advance?'Ответы проверены автоматически · следующий вопрос откроется автоматически':'Ответы проверены автоматически · следующий вопрос открывает ведущий';
+  $('host-answers').innerHTML=visible&&!single?room.players.filter(p=>p.id!==room.host&&(room.answers[p.id]||room.phase==='reveal')).map(p=>{const a=room.answers[p.id];return `<div class="host-answer"><strong>${esc(p.name)}</strong><span>${esc(a?.text||'Ответ не отправлен')}${a?.verdict?` · ${a.verdict==='correct'?'✓ Верно':'✕ Неверно'} (${a.points>0?'+':''}${a.points})`:''}</span></div>`;}).join(''):'';
 }
 
 function renderPackPreview() {
@@ -261,6 +262,7 @@ function apply(s){
     const missing=s.players.length-1-s.answered_ids.length,all=s.stage?.type!=='grid'||s.stage.answer_mode!=='single';
     $('close').textContent=all&&missing>0?`Завершить вопрос · без ответа: ${missing}`:'Завершить вопрос';
     show('close-hint',hasControls()&&s.phase==='question'&&all&&missing>0);
+    $('close-hint').textContent='Пропущенные ответы будут учтены по правилам раунда.';
     $('next').textContent=s.stage_complete?'Показать счёт раунда →':s.stage?.type==='grid'?'Вернуться к сетке →':'Следующий вопрос →';
     if(oldQuestion!==s.code+':'+s.active){$('answer-text').value='';}
     if(s.phase!=='finished')renderMedia(q);renderReview();
@@ -332,6 +334,7 @@ $('scores-next').onclick=guard(()=>command('next'));
 $('round-next').onclick=guard(()=>command('next'));
 $('end-round').onclick=guard(()=>command('end_round'));
 $('round-results-button').onclick=guard(()=>command('show_scores'));
+$('final-round-scores').onclick=guard(()=>command('show_scores'));
 $('results-back').onclick=guard(()=>command('hide_scores'));
 $('skip-intro').onclick=guard(()=>command('next'));
 $('manage-player').onchange=renderManagement;

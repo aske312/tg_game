@@ -26,6 +26,10 @@ def stages_from_doc(doc):
         if order not in ('sequential', 'random') or chooser not in ('winner', 'host') or type(auto) is not bool:
             raise ValueError(f'Раунд {index}: недопустимые настройки порядка, выбора или перехода')
         parsed = dict(id=sid, type=stage['type'], title=title.strip(), order=order, chooser=chooser, auto_advance=auto)
+        for setting in ('answer_penalties', 'trap_penalties'):
+            if type(stage.get(setting, True)) is not bool:
+                raise ValueError(f'Раунд {index}: настройка {setting} должна быть переключателем')
+            parsed[setting] = stage.get(setting, True)
         if stage['type'] == 'grid':
             answer_mode = stage.get('answer_mode', 'all')
             if answer_mode not in ('all', 'single'):

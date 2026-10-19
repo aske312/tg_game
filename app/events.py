@@ -1,6 +1,7 @@
 import copy
 import secrets
 from fractions import Fraction
+from app.modes import LEGACY_STAGE
 
 from app.limits import integer, finite_number
 
@@ -84,4 +85,13 @@ def score_delta(s, uid, value, correct):
     effect = describe_effect(dict(modifier, type=modifier['kind'])) if modifier else dict(reward=1, penalty=1)
     if correct:
         return int(value * Fraction(str(effect['reward']))) + effect.get('bonus', 0)
-    return -int(value * Fraction(str(effect['penalty']))) - effect.get('extra_penalty', 0)
+    stage = s.get('stages', [LEGACY_STAGE])[s.get('stage_index', 0)]
+    base = value if stage.get('answer_penalties', True) else 0
+    multiplier = effect['penalty']
+    # Shields still protect; disabling traps removes only their added penalty.
+    extra = 0
+    if stage.get('trap_penalties', True):
+        extra = max(0, int(value * Fraction(str(multiplier))) - value) + effect.get('extra_penalty', 0)
+    if multiplier < 1:
+        base = int(base * Fraction(str(multiplier)))
+    return -base - extra

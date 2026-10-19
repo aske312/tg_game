@@ -62,6 +62,9 @@ def publication_issues(doc, directory=None):
     for si, s in enumerate(stages):
         if not isinstance(s, dict):
             continue
+        for setting in ('answer_penalties', 'trap_penalties'):
+            if type(s.get(setting, True)) is not bool:
+                add(setting, 'Выберите включённое или выключенное состояние.', si)
         text(s.get('title', TITLES.get(s.get('type'), 'Раунд') if isinstance(s.get('type'), str) else 'Раунд'), 'title', 'Название раунда', 100, si)
         if not any(isinstance(q, dict) and q.get('stage', stages[0].get('id')) == s.get('id') and q.get('type') == 'question' for q in items):
             add('questions', 'Добавьте хотя бы один вопрос в раунд.', si)

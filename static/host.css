@@ -1,4 +1,19 @@
 /* A compact control desk; secondary tools stay below the current task. */
+#host-content{display:contents}
+body[data-role=host]:has(#host-console:not([hidden])){overflow:hidden}
+body[data-role=host]:has(#host-console:not([hidden]))>.app-version{display:none}
+body[data-role=host]:has(#host-console:not([hidden])) main{height:100dvh;display:flex;flex-direction:column;overflow:hidden;padding-bottom:env(safe-area-inset-bottom)}
+body[data-role=host]:has(#host-console:not([hidden])) main>.app-header{flex-shrink:0}
+body[data-role=host]:has(#host-console:not([hidden])) #game{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+body[data-role=host]:has(#host-console:not([hidden])) #game>.room-head,body[data-role=host]:has(#host-console:not([hidden])) #game>.status-line,body[data-role=host]:has(#host-console:not([hidden])) #round-status{flex-shrink:0}
+body[data-role=host]:has(#host-console:not([hidden])) #host-console{position:static;flex-shrink:0;margin-bottom:10px}
+body[data-role=host]:has(#host-console:not([hidden])) #host-content{display:block;flex:1;min-height:0;overflow:auto;overscroll-behavior-y:contain;padding-bottom:20px;scroll-padding-top:12px}
+.round-place{display:block;color:var(--muted);font-size:12px;margin-top:5px}
+body[data-role=display] #game[data-phase=finished] #round-scores{padding:20px}
+body[data-role=display] #game[data-phase=finished] #round-scores h2{font-size:28px;margin-bottom:12px}
+body[data-role=display] #game[data-phase=finished] .round-table-scroll{margin:12px 0}
+body[data-role=display] #game[data-phase=finished] .round-score-table{font-size:18px}
+body[data-role=display] #game[data-phase=finished] .round-score-table th,body[data-role=display] #game[data-phase=finished] .round-score-table td{padding:7px 10px}
 .host-console{position:sticky;top:8px;z-index:8;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;margin-bottom:18px;border:1px solid #4e6b57;border-radius:16px;background:var(--bg);box-shadow:0 8px 24px #0003}
 .host-scenes{display:flex;align-items:center;gap:16px;min-width:0}.host-scenes p{font-size:12px;white-space:nowrap}.host-scenes .inline{gap:6px;flex-wrap:wrap}.host-scenes button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
 .host-console .host-toolbar{margin:0;gap:6px;flex-shrink:0}.host-console button{min-height:44px;font-size:12px;padding:10px 14px}

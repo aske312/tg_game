@@ -13,6 +13,7 @@ function roundPreview(stage) {
   }else{
     rules=[stage.order==='random'?'Вопросы идут в случайном порядке. На каждый отвечают все игроки.':'Вопросы идут один за другим. На каждый отвечают все игроки.',input,'Смотрите и слушайте материалы на общем экране. Ответ отправляйте со своего телефона.'];
   }
+  if(stage.answer_penalties===false&&single)rules[2]='После ошибки попытка переходит к остальным игрокам. У каждого одна попытка. Вопрос продолжается до верного ответа или завершения ведущим.';
   return {rules,single};
 }
 
@@ -34,7 +35,7 @@ function roundScoreTable() {
     return null;
   };
   return '<div class="round-table-scroll" tabindex="0" role="region" aria-label="Очки по всем раундам"><table class="round-score-table"><thead><tr><th scope="col">Место</th><th scope="col">Игрок</th>'+stages.map((s,i)=>`<th scope="col"><span>Раунд ${i+1}</span><strong>${esc(s.title||room.stage.title)}</strong></th>`).join('')+'<th scope="col">Всего</th></tr></thead><tbody>'+rankedPlayers(room.players,room.host).map(p=>
-    `<tr><td>${p.rank}</td><th scope="row">${esc(p.name)}</th>`+stages.map(s=>{const value=points(s,p.id);return `<td>${value==null?'—':(value>0?'+':'')+value}</td>`;}).join('')+`<td><strong>${p.score} очков</strong></td></tr>`).join('')+'</tbody></table></div>';
+    `<tr><td>${p.rank}</td><th scope="row">${esc(p.name)}</th>`+stages.map(s=>{const value=points(s,p.id),rank=1+room.players.filter(other=>other.id!==room.host&&points(s,other.id)!=null&&points(s,other.id)>value).length;return `<td>${value==null?'—':(value>0?'+':'')+value+(room.phase==='finished'?`<small class="round-place">${rank} место</small>`:'')}</td>`;}).join('')+`<td><strong>${p.score} очков</strong></td></tr>`).join('')+'</tbody></table></div>';
 }
 function ceremonyPlan(players,host) {
   const ranked=rankedPlayers(players,host);
@@ -50,6 +51,9 @@ function renderExperience() {
   show('show-scores',roundEnd&&room.display_scene==='round_end'&&!scores);show('hide-scores',scores);
   show('end-round',hasControls()&&roundEnd&&!paused&&!scores&&room.display_scene!=='round_end');
   show('pause-panel',paused);show('round-scores',scores&&!paused);
+  show('finished',finished&&!scores);show('final-round-scores',finished&&hasControls());
+  $('scores-eyebrow').textContent=finished?'ИГРА ЗАВЕРШЕНА':'РАУНД ЗАВЕРШЁН';
+  $('results-back').textContent=finished?'К награждению':'К завершению раунда';
   show('grid-intro',intro&&!paused&&!scores);
   const endScreen=roundEnd&&!paused&&!scores&&room.display_scene==='round_end';
   show('round-end',endScreen);
@@ -58,9 +62,9 @@ function renderExperience() {
   $('round-end-name').textContent=room.stage?.title||'';
   $('round-end-caption').textContent=hasControls()?'Перейдите дальше или покажите промежуточные результаты.':room.stage_number===room.stage_count?'Дальше — итоги игры. Ждём решения ведущего.':'Дальше — следующий раунд. Ждём решения ведущего.';
   $('round-next').textContent=room.stage_number===room.stage_count?'К награждению →':'Следующий раунд →';
-  show('skip-intro',hasControls());show('scores-next',hasControls()&&!paused);
+  show('skip-intro',hasControls());show('scores-next',hasControls()&&!paused&&!finished);
   $('scores-next').textContent=room.stage_number===room.stage_count?'К награждению →':'Следующий раунд →';
-  show('scores-waiting',scores&&!hasControls());
+  show('scores-waiting',scores&&!hasControls()&&!finished);
   $('scores-waiting').textContent=room.stage_number===room.stage_count?'Ведущий запустит награждение.':'Следующий раунд начнётся по команде ведущего.';
   show('board-waiting',isPlayer()&&room.stage?.type==='grid'&&['board','reveal'].includes(room.phase)&&!room.stage_complete&&!room.can_pick&&!paused&&!scores);
   const chooser=room.players.find(p=>p.id===room.chooser);
@@ -76,7 +80,7 @@ function renderExperience() {
   if(paused||scores||intro||finished)show('round-status',false);
   if(paused||scores||intro||finished)show('finish',false);
   if(paused)$('phase').textContent='Игра на паузе';
-  else if(scores)$('phase').textContent='Счёт после раунда';
+  else if(scores)$('phase').textContent=finished?'Итоговый счёт по раундам':'Счёт после раунда';
   else if(intro)$('phase').textContent='Перед началом раунда';
   else if(endScreen)$('phase').textContent='Раунд завершён';
   else if(room.stage?.type==='grid'&&room.stage.answer_mode==='single'&&['question','review'].includes(room.phase)){
@@ -95,7 +99,7 @@ function renderExperience() {
       const categories=grid?(room.stage.categories||[...new Set((room.board||[]).map(q=>q.category))]):[];
       $('round-preview-content').innerHTML=`<span class="eyebrow">РАУНД ${room.stage_number} ИЗ ${room.stage_count}</span><h2>${esc(room.stage.title)}</h2><p class="intro-mode">${esc(modeTitles[room.stage.type])}${grid?' · '+(single?'Отвечает один':'Отвечают все'):''}</p><div class="intro-rules"><h3>Как отвечать</h3><ol>${rules.map(rule=>`<li>${esc(rule)}</li>`).join('')}</ol></div>`+
         (categories.length?`<div class="intro-categories"><h3>Темы раунда</h3><div>${categories.map(c=>`<span>${esc(c)}</span>`).join('')}</div></div>`:'')+
-        `<p class="intro-scoring">Верный ответ приносит стоимость вопроса, неверный — штраф.${single?'':' Ответ не отправлен — тоже штраф при завершении вопроса ведущим.'} Активные эффекты меняют награды и штрафы.</p>`;
+        `<p class="intro-scoring">Верный ответ приносит стоимость вопроса. ${room.stage.answer_penalties===false?'За неверные и пропущенные ответы обычные штрафы не снимаются.':`За неверный ответ снимается стоимость вопроса.${single?'':' За пропущенный ответ тоже начисляется штраф при завершении вопроса ведущим.'}`} ${room.stage.trap_penalties===false?'Дополнительные минусы от ловушек выключены.':'Дополнительные минусы от ловушек включены.'} Активные эффекты могут менять награду.</p>`;
     }
   }
   if(finished&&ceremonyKey!==room.code){
