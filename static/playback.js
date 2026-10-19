@@ -1,7 +1,11 @@
-let activeClip=null, mediaNode=null, displaySoundEnabled=false;
+let activeClip=null, mediaNode=null, mediaNotice='', displaySoundEnabled=false;
+
+function mediaError(message){mediaNotice=message;notice(message,'error');}
+function clearMediaError(){if(mediaNotice&&$('notice').textContent===mediaNotice)notice('');mediaNotice='';}
 
 function disposeQuestionMedia(){
   activeClip=null;
+  clearMediaError();
   if(mediaNode){
     mediaNode.onerror=null;
     if(['AUDIO','VIDEO'].includes(mediaNode.tagName)){mediaNode.pause();mediaNode.removeAttribute('src');mediaNode.load();}
@@ -63,7 +67,7 @@ function renderQuestionMedia(q) {
   const audioOnly=m.kind==='video'&&hiddenPicture;
   const node=document.createElement(m.kind==='image'?'img':m.kind);
   mediaNode=node;
-  node.onerror=()=>notice('Не удалось открыть материал. Проверьте формат файла или обновите игру.','error');
+  node.onerror=()=>mediaError('Не удалось открыть материал. Проверьте формат файла или обновите игру.');
   if(m.kind==='image'){node.alt='Материал к вопросу';node.src=m.url;$('media-content').append(node);return;}
   node.preload='auto';node.controls=false;
   if(m.kind==='video')node.setAttribute('playsinline','');
@@ -80,12 +84,13 @@ function clipPlayer(node,m,questionId) {
     try{
       await node.play();
       if(!current()){node.pause();return;}
+      clearMediaError();
       if(room.paused||room.scores_visible||['board','scores'].includes(room.display_scene)||(!userInitiated&&!mediaTransport().playing))node.pause();
       else {displaySoundEnabled=true;renderDisplaySound();}
     }catch(error){
       if(!current()||room.paused||!mediaTransport().playing||error.name==='AbortError')return;
       if(error.name==='NotAllowedError'){displaySoundEnabled=false;renderDisplaySound();}
-      else notice('Не удалось воспроизвести запись. Повторите запуск с панели ведущего.','error');
+      else mediaError('Не удалось воспроизвести запись. Повторите запуск с панели ведущего.');
     }
   };
   const localPlay=async()=>{
@@ -111,7 +116,7 @@ function clipPlayer(node,m,questionId) {
     if(!current()||!Number.isFinite(node.duration)||controller.ready)return;
     end=Math.min(m.end==null?node.duration:Number(m.end),node.duration);
     controller.ready=end>start;
-    if(!controller.ready){notice('Отрывок за пределами записи.','error');return;}
+    if(!controller.ready){mediaError('Отрывок за пределами записи.');return;}
     node.currentTime=start;
     syncMediaPlayback();
   };

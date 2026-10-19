@@ -66,6 +66,17 @@ test('display releases old decoders and ignores stale media errors',()=>{
   h.node('leave').onclick();assert.equal(h.run('mediaNode'),null);
 });
 
+test('media errors disappear with the failed question without clearing connection errors',()=>{
+  const h=harness({pathname:'/display'});
+  h.apply({display:true,question:{id:'a',media:{kind:'image',url:'/missing.png'}}});
+  h.node('media-content').children[0].onerror();assert.match(h.node('notice').textContent,/Не удалось/);
+  h.apply({display:true,question:{id:'b',media:{kind:'image',url:'/new.png'}}});
+  assert.equal(h.node('notice').textContent,'');
+  h.node('media-content').children[0].onerror();h.run("notice('Connection error','error')");
+  h.apply({display:true,question:{id:'c',media:{kind:'image',url:'/next.png'}}});
+  assert.equal(h.node('notice').textContent,'Connection error');
+});
+
 test('binary host retains checked choices and final scores return to awards',()=>{
   const h=harness();h.run("auth.user.id='h'");
   const stage={id:'g',type:'binary',title:'Binary',answer_penalties:false,trap_penalties:false};
