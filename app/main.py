@@ -48,6 +48,7 @@ class Login(BaseModel):
 
 
 class Command(BaseModel):
+    volume: Optional[float] = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     media_mode: Optional[Literal['excerpt', 'full']] = None
     action: str = Field(max_length=20)
     question: str = Field(default='', max_length=64)
@@ -381,7 +382,7 @@ async def watch(code: str, authorization: str = Header(default='')):
 async def action(code: str, body: Command, authorization: str = Header(default='')):
     user = current_user(authorization)
     try:
-        changed = store.change(code.upper(), user, body.action, body.question, body.text, body.player, body.choice, body.delta, body.effect, body.position, body.duration, body.media_mode)
+        changed = store.change(code.upper(), user, body.action, body.question, body.text, body.player, body.choice, body.delta, body.effect, body.position, body.duration, body.media_mode, volume=body.volume)
         if changed:
             await publish(code.upper())
         return store.public(code.upper(), user['id'])

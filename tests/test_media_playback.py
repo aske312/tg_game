@@ -78,6 +78,51 @@ def test_actual_file_end_can_shorten_configured_excerpt(media_game):
     assert db.read(code)['media_playback']['position']==0
 
 
+def test_host_volume_persists_without_changing_playback_or_pause(media_game):
+    db,code,host,player,now=media_game
+    playback=db.read(code)['media_playback']
+    db.change(code,host,'media_volume',volume=.35)
+    assert db.read(code)['media_volume']==.35
+    assert db.read(code)['media_playback']==playback
+    db.change(code,host,'pause')
+    db.change(code,host,'media_volume',volume=0)
+    assert db.read(code)['paused'] and db.read(code)['media_volume']==0
+    db.change(code,host,'unpause')
+    db.change(code,host,'close');db.change(code,host,'next')
+    assert Store(db.path).public(code,host['id'])['media_volume']==0
+    with pytest.raises(ValueError):db.change(code,player,'media_volume',volume=1)
+
+
+@pytest.mark.parametrize('volume', [-.01, 1.01, float('nan'), float('inf'), None, True, '0.5'])
+def test_invalid_volume_is_atomic(media_game,volume):
+    db,code,host,player,now=media_game
+    before=db.read(code)
+    with pytest.raises(ValueError):db.change(code,host,'media_volume',volume=volume)
+    assert db.read(code)==before
+
+
+def test_only_host_can_expand_visual_media_and_new_scenes_reset_it(media_game):
+    db,code,host,player,now=media_game
+    with pytest.raises(ValueError):db.change(code,host,'media_expand',question='audio')
+    db.change(code,host,'close');db.change(code,host,'next')
+    with pytest.raises(ValueError):db.change(code,player,'media_expand',question='image')
+    with pytest.raises(ValueError):db.change(code,host,'media_expand',question='audio')
+    db.change(code,host,'media_expand',question='image')
+    assert db.public(code,host['id'],display=True)['media_expanded']
+    db.change(code,host,'media_collapse',question='image')
+    assert not db.read(code)['media_expanded']
+    db.change(code,host,'media_expand',question='image')
+    db.change(code,host,'pause');assert not db.read(code)['media_expanded']
+    db.change(code,host,'unpause')
+    db.change(code,host,'media_expand',question='image')
+    db.change(code,host,'close');db.change(code,host,'next')
+    assert not db.read(code)['media_expanded']
+    db.change(code,host,'media_expand',question='video')
+    assert db.read(code)['media_expanded']
+    db.change(code,host,'display_question')
+    assert not db.read(code)['media_expanded']
+
+
 @pytest.mark.parametrize('body', [dict(question='old'),dict(question='audio',position=-1),dict(question='audio',position=float('inf')),dict(question='audio',duration=0)])
 def test_invalid_or_stale_media_commands_are_atomic(media_game,body):
     db,code,host,player,now=media_game

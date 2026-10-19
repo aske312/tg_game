@@ -1,7 +1,7 @@
 let activeClip=null, displaySoundEnabled=false;
 
 function renderDisplaySound() {
-  show('display-media-unlock',isDisplay()&&!displaySoundEnabled);
+  show('display-media-unlock',isDisplay()&&!displaySoundEnabled&&['audio','video'].includes(room?.question?.media?.kind));
 }
 async function sendMediaAction(action,position,duration) {
   if(!room?.question)return;
@@ -25,8 +25,19 @@ function renderHostMediaToggle() {
   button.setAttribute('aria-label',playing?'Поставить запись на паузу на демонстрации':'Воспроизвести запись на демонстрации');
 }
 function renderQuestionMedia(q) {
-  const m=q?.media,av=['audio','video'].includes(m?.kind),host=isHost()&&av&&room.phase!=='finished';
+  const m=q?.media,av=['audio','video'].includes(m?.kind),host=isHost()&&!!m&&room.phase!=='finished';
   show('host-media-controls',host);
+  show('display-media-toggle',host&&av);show('host-media-volume-label',host&&av);
+  const volume=$('host-media-volume');
+  if(document.activeElement!==volume)volume.value=Math.round((room.media_volume??1)*100);
+  $('host-media-volume-value').textContent=volume.value+'%';
+  const visual=m?.kind==='image'||m?.kind==='video'&&(!m.audio_only||mediaTransport().mode==='full');
+  const canExpand=visual&&['question','review','reveal'].includes(room.phase)&&!room.paused&&!room.scores_visible&&['question','answer'].includes(room.display_scene||'question');
+  show('display-media-expand',host&&!!visual);
+  $('display-media-expand').disabled=!canExpand;
+  $('display-media-expand').textContent=room.media_expanded?'Свернуть медиа на общем экране':'Развернуть медиа на весь экран';
+  $('display-media-expand').setAttribute('aria-pressed',String(!!room.media_expanded));
+  document.body.dataset.mediaExpanded=String(isDisplay()&&!!room.media_expanded&&!!canExpand);
   renderHostMediaToggle();
   const visible=!!m&&(!av||isDisplay());
   show('media-content',visible);
@@ -48,21 +59,10 @@ function renderQuestionMedia(q) {
 }
 function clipPlayer(node,m,questionId) {
   const wrapper=document.createElement('div');wrapper.className='clip-player';
-  const controls=document.createElement('div');controls.className='clip-buttons';
-  const toggle=document.createElement('button');toggle.type='button';toggle.className='secondary small';toggle.disabled=true;toggle.textContent='▶ Воспроизвести';controls.append(toggle);
-  const seek=document.createElement('input');seek.type='range';seek.min=0;seek.max=0;seek.step=.1;seek.value=0;seek.disabled=true;seek.setAttribute('aria-label','Позиция в отрывке');
-  const time=document.createElement('span');time.className='clip-time';time.textContent='Загрузка…';
   const start=Number(m.start)||0;
   let end=start,lastSync='',endReported=false;
   const current=()=>activeClip===controller&&room?.question?.id===questionId;
   const position=()=>Math.min(Math.max(0,node.currentTime-start),end-start);
-  const update=()=>{
-    if(!current())return;
-    seek.value=position();time.textContent=`${mediaTime(position())} / ${mediaTime(end-start)}`;
-    seek.setAttribute('aria-valuetext',time.textContent);
-    toggle.textContent=node.paused?'▶ Воспроизвести':'Ⅱ Пауза';
-    toggle.setAttribute('aria-label',node.paused?'Воспроизвести':'Пауза');
-  };
   const attemptPlay=async(userInitiated=false)=>{
     try{
       await node.play();
@@ -72,8 +72,8 @@ function clipPlayer(node,m,questionId) {
     }catch(error){
       if(!current()||room.paused||!mediaTransport().playing||error.name==='AbortError')return;
       if(error.name==='NotAllowedError'){displaySoundEnabled=false;renderDisplaySound();}
-      else notice('Не удалось воспроизвести запись. Нажмите «Воспроизвести» ещё раз.','error');
-    }finally{update();}
+      else notice('Не удалось воспроизвести запись. Повторите запуск с панели ведущего.','error');
+    }
   };
   const localPlay=async()=>{
     if(!current()||!controller.ready||room.paused||room.scores_visible||['board','scores'].includes(room.display_scene))return;
@@ -86,6 +86,7 @@ function clipPlayer(node,m,questionId) {
   };
   const controller={node,ready:false,localPlay,sync(){
     if(!current())return;
+    node.volume=room.media_volume??1;
     const state=mediaTransport(),key=JSON.stringify([state,room.paused,room.scores_visible]);
     if(lastSync===key)return;
     lastSync=key;
@@ -95,24 +96,14 @@ function clipPlayer(node,m,questionId) {
     if(Math.abs(node.currentTime-start-target)>.25)node.currentTime=start+target;
     if(playing&&target<end-start-.02){endReported=false;void attemptPlay();}
     else node.pause();
-    update();
   }};
   activeClip=controller;
-  toggle.onclick=guard(async()=>{
-    if(!current())return;
-    toggle.disabled=true;
-    try{
-      if(node.paused)await localPlay();
-      else {node.pause();update();await sendMediaAction('media_pause',position(),end-start);}
-    }finally{if(current())toggle.disabled=!controller.ready;}
-  });
   const metadata=()=>{
     if(!current()||!Number.isFinite(node.duration)||controller.ready)return;
     end=Math.min(m.end==null?node.duration:Number(m.end),node.duration);
-    controller.ready=end>start;toggle.disabled=seek.disabled=!controller.ready;
+    controller.ready=end>start;
     if(!controller.ready){notice('Отрывок за пределами записи.','error');return;}
-    seek.max=end-start;node.currentTime=start;update();
-    $('media-caption').textContent=(m.full?'Полная запись':m.kind==='audio'?'Аудиоотрывок':'Видеоотрывок')+' · '+mediaTime(end-start);
+    node.currentTime=start;
     syncMediaPlayback();
   };
   node.addEventListener('loadedmetadata',metadata);node.addEventListener('durationchange',metadata);
@@ -122,15 +113,9 @@ function clipPlayer(node,m,questionId) {
       node.pause();if(node.currentTime>end)node.currentTime=end;
       if(!endReported&&mediaTransport().playing){endReported=true;void sendMediaAction('media_pause',end-start,end-start).catch(()=>{});}
     }
-    update();
   };
   node.addEventListener('timeupdate',finish);node.addEventListener('ended',finish);
-  for(const event of ['play','pause'])node.addEventListener(event,update);
   node.addEventListener('seeking',()=>{if(controller.ready&&(node.currentTime<start||node.currentTime>end))node.currentTime=Math.min(end,Math.max(start,node.currentTime));});
-  seek.oninput=()=>{if(current()&&controller.ready){node.currentTime=start+Math.max(0,Math.min(end-start,Number(seek.value)));update();}};
-  seek.onchange=guard(()=>current()?sendMediaAction('media_seek',position(),end-start):undefined);
-  const volume=document.createElement('input');volume.type='range';volume.min=0;volume.max=1;volume.step=.05;volume.value=1;volume.setAttribute('aria-label','Громкость');volume.oninput=()=>{node.volume=Number(volume.value);};
-  const label=document.createElement('label');label.className='clip-volume';label.textContent='Громкость';label.append(volume);
-  node.hidden=m.kind==='audio';wrapper.append(node);wrapper.append(controls);wrapper.append(seek);wrapper.append(time);wrapper.append(label);
+  node.hidden=m.kind==='audio';wrapper.append(node);
   return wrapper;
 }

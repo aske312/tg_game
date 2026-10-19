@@ -165,8 +165,11 @@ def check_display(browser, stack, app_url, game_id, watch):
     expect(screen.locator('#question-text')).to_have_text('Сколько будет 2 + 2?')
     expect(screen.locator('#question')).to_be_visible()
     expect(screen.locator('#media-content audio')).to_have_count(1)
-    expect(screen.locator('#media-content .clip-player')).to_be_visible()
-    expect(screen.get_by_role('slider', name='Позиция в отрывке')).to_have_attribute('max', '1')
+    expect(screen.locator('#media-content .clip-player')).to_have_count(1)
+    expect(screen.locator('#media-content input, #media-content button')).to_have_count(0)
+    host.locator('#host-media-volume').fill('25')
+    host.locator('#host-media-volume').dispatch_event('input')
+    screen.wait_for_function("document.querySelector('#media-content audio').volume === 0.25")
     expect(player.locator('#media-content audio')).to_have_count(0)
     screenshot(screen, 'display-question')
     host.locator('#pause-game').click()
@@ -211,6 +214,58 @@ def check_display(browser, stack, app_url, game_id, watch):
     screenshot(player, 'effect-icons-mobile')
 
 
+def check_display_media(browser, stack, app_url, database, watch):
+    from app.store import Store
+    context = stack.enter_context(browser.new_context(viewport=dict(width=1440, height=1000)))
+    screen_context = stack.enter_context(browser.new_context(viewport=dict(width=1440, height=1000)))
+    host, screen = context.new_page(), screen_context.new_page()
+    for page in (host, screen):
+        watch(page)
+    login(host, app_url, 'Media Host')
+    db = Store(database)
+    code = db.create(host.evaluate('auth.user'), questions=[
+        dict(id='video', text='Video question', answer='Yes', value=100, seconds=3600,
+             media=dict(kind='video', url='/static/demo/colors.mp4')),
+        dict(id='image', text='Image question', answer='Yes', value=100, seconds=3600,
+             media=dict(kind='image', url='/static/demo/triangle.svg')),
+    ])
+    db.change(code, dict(id='media-test-player', name='Media Player'), 'join')
+    host.goto(app_url+'/?room='+code)
+    screen.goto(app_url+'/display?room='+code)
+    host.locator('#start').click();host.locator('#skip-intro').click()
+    screen.wait_for_function("document.querySelector('#media-content video')?.readyState >= 1")
+    screen.evaluate("window.mediaRef = document.querySelector('#media-content video')")
+    expect(screen.locator('#media-content input, #media-content button')).to_have_count(0)
+    host.locator('#host-media-volume').fill('0');host.locator('#host-media-volume').dispatch_event('input')
+    screen.wait_for_function('mediaRef.volume === 0')
+    host.locator('#display-media-expand').click()
+    screen.wait_for_function("document.body.dataset.mediaExpanded === 'true'")
+    assert screen.evaluate("mediaRef === document.querySelector('#media-content video') && !mediaRef.controls")
+    screen.wait_for_function("Math.abs(mediaRef.getBoundingClientRect().height-innerHeight)<2 && Math.abs(mediaRef.getBoundingClientRect().width-innerWidth)<2")
+    screenshot(screen, 'display-video-expanded')
+    host.locator('#display-media-expand').click()
+    screen.wait_for_function("document.body.dataset.mediaExpanded === 'false'")
+    host.locator('#close').click()
+    expect(host.locator('#next')).to_be_visible()
+    # The full recording shown with the answer must also fill the viewport.
+    host.locator('#display-media-expand').click()
+    screen.wait_for_function("document.body.dataset.mediaExpanded === 'true'")
+    screen.wait_for_function("Math.abs(document.querySelector('#media-content video').getBoundingClientRect().height-innerHeight)<2")
+    host.locator('#next').click()
+    expect(screen.locator('#question-text')).to_have_text('Image question')
+    assert screen.evaluate("document.body.dataset.mediaExpanded === 'false'")
+    expect(host.locator('#host-media-volume-label')).to_be_hidden()
+    host.locator('#display-media-expand').click()
+    screen.wait_for_function("document.body.dataset.mediaExpanded === 'true'")
+    screen.wait_for_function("document.querySelector('#media-content img').complete")
+    screenshot(screen, 'display-image-expanded')
+    screen.reload()
+    screen.wait_for_function("document.body.dataset.mediaExpanded === 'true'")
+    host.locator('#pause-game').click()
+    screen.wait_for_function("document.body.dataset.mediaExpanded === 'false'")
+    expect(screen.locator('#pause-panel')).to_be_visible()
+
+
 def main():
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     errors = []
@@ -233,6 +288,7 @@ def main():
             page = context.new_page();watch(page)
             game_id = check_builder(page, builder)
             check_display(browser, stack, game, game_id, watch)
+            check_display_media(browser, stack, game, folder/'game.sqlite3', watch)
             assert not errors, '\n'.join(errors)
         except Exception:
             for index, page in enumerate(pages):

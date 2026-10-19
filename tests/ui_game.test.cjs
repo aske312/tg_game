@@ -42,11 +42,11 @@ test('video can play as audio for the question and reveal the full video after g
   h.apply({display:true,question,media_playback:{question:'q1',mode:'excerpt',playing:true,position:0,updated_at:1000,revision:0}});
   const audio=h.node('media-content').children[0].children[0];
   assert.equal(audio.tagName,'AUDIO');assert(audio.hidden);
-  audio.emit('loadedmetadata');assert.match(h.node('media-caption').textContent,/Аудиоотрывок/);
+  audio.emit('loadedmetadata');assert(h.run('activeClip.ready'));
   h.apply({display:true,phase:'reveal',question,display_scene:'answer',media_playback:{question:'q1',mode:'full',playing:true,position:0,updated_at:1000,revision:1}});
   const video=h.node('media-content').children[0].children[0];
   assert.equal(video.tagName,'VIDEO');assert(!video.hidden);
-  video.emit('loadedmetadata');assert.match(h.node('media-caption').textContent,/Полная запись/);
+  video.emit('loadedmetadata');assert(h.run('activeClip.ready'));
 });
 
 test('score pause shows completed round points and live points for the current round',()=>{
@@ -62,7 +62,7 @@ test('host scenes preserve answers and full media uses the whole file timeline',
   const question={id:'q1',text:'Song?',category:'Music',value:100,answer:'Artist',media:{kind:'audio',url:'/song.wav',start:20,end:30}};
   h.apply({display:true,phase:'reveal',question,display_scene:'answer',media_playback:{question:'q1',mode:'full',playing:true,position:0,updated_at:1000,revision:1}});
   const clip=h.node('media-content').children[0];clip.children[0].emit('loadedmetadata');
-  assert.equal(clip.children[2].max,200);assert.equal(clip.children[0].currentTime,0);
+  assert.equal(clip.children.length,1);assert.equal(clip.children[0].currentTime,0);
   assert(!h.node('solution').hidden);assert(!h.node('question').hidden);assert(h.node('question-board').hidden);
   h.apply({display:true,phase:'reveal',question,display_scene:'board'});
   assert(h.node('question').hidden);assert(!h.node('question-board').hidden);
@@ -329,22 +329,20 @@ test('host focuses on the question or grid and keeps only pending answers in rev
   await h.node('scores-next').onclick();assert.equal(h.ctx.calls[2],'next');
 });
 
-test('audio timeline is relative to clip, seeks inside it and restarts at its beginning',async()=>{
+test('display has no media controls and follows remote seeking inside the clip',async()=>{
   const h=harness({pathname:'/display'});
   h.run("sendMediaAction=async(action,position,duration)=>{room.media_playback={question:room.question.id,playing:action==='media_play',position,duration,updated_at:0,revision:1};}");
   h.apply({display:true,question:{id:'music',text:'?',media:{kind:'audio',url:'/song.mp3',start:60,end:90}}});
   const wrapper=h.node('media-content').children[0];
-  const [audio,controls,seek,time]=wrapper.children;
+  const [audio]=wrapper.children;
   audio.emit('loadedmetadata');
   assert.equal(audio.controls,false);assert.equal(audio.hidden,true);
-  assert.equal(audio.currentTime,60);assert.equal(seek.max,30);
-  assert.equal(time.textContent,'0:00 / 0:30');
-  assert.equal(controls.children.length,1);assert.equal(audio.paused,false);
-  await controls.children[0].onclick();assert.equal(audio.paused,true);assert.equal(controls.children[0].textContent,'▶ Воспроизвести');
-  seek.value=12;seek.oninput();assert.equal(audio.currentTime,72);
-  assert.equal(time.textContent,'0:12 / 0:30');
+  assert.equal(audio.currentTime,60);assert.equal(wrapper.children.length,1);
+  assert.equal(audio.paused,false);
+  h.run("room.media_playback={question:'music',playing:false,position:12,updated_at:0,revision:2};syncMediaPlayback()");
+  assert.equal(audio.currentTime,72);assert.equal(audio.paused,true);
   audio.currentTime=90;
-  await controls.children[0].onclick();assert.equal(audio.currentTime,60);assert.equal(audio.paused,false);
+  await h.run('activeClip.localPlay()');assert.equal(audio.currentTime,60);assert.equal(audio.paused,false);
   audio.currentTime=91;audio.emit('timeupdate');assert.equal(audio.currentTime,90);assert.equal(audio.paused,true);
   audio.currentTime=50;audio.emit('seeking');assert.equal(audio.currentTime,60);
 });
@@ -352,11 +350,13 @@ test('audio timeline is relative to clip, seeks inside it and restarts at its be
 test('audio clips clamp to actual file length and reject missing intervals',()=>{
   const h=harness({pathname:'/display'});
   h.apply({display:true,question:{id:'music',media:{kind:'audio',url:'/song.mp3',start:150,end:300}}});
-  let [audio,,seek,time]=h.node('media-content').children[0].children;
-  audio.emit('loadedmetadata');assert.equal(seek.max,50);assert.equal(time.textContent,'0:00 / 0:50');
+  let [audio]=h.node('media-content').children[0].children;
+  audio.emit('loadedmetadata');assert(h.run('activeClip.ready'));
+  h.run("room.media_playback={question:'music',playing:false,position:100,updated_at:0};syncMediaPlayback()");
+  assert.equal(audio.currentTime,200);
   h.apply({display:true,question:{id:'bad',media:{kind:'audio',url:'/song.mp3',start:250}}});
-  [audio,,seek]=h.node('media-content').children[0].children;
-  audio.emit('loadedmetadata');assert(seek.disabled);
+  [audio]=h.node('media-content').children[0].children;
+  audio.emit('loadedmetadata');assert(!h.run('activeClip.ready'));
   assert.match(h.node('notice').textContent,/за пределами/);
 });
 
@@ -450,16 +450,16 @@ test('display media follows host pause/resume once and reaction updates do not r
   const state=h.apply({display:true,question:q,media_playback:playing});
   const [video,controls]=h.node('media-content').children[0].children;video.emit('loadedmetadata');
   assert.equal(video.hidden,false);assert.equal(video.controls,false);assert.equal(video.currentTime,22);assert.equal(video.paused,false);
-  assert.equal(controls.children[0].textContent,'Ⅱ Пауза');
+
   const plays=video.playCalls;
   h.apply({...state,version:state.version+1,reactions:[]});assert.equal(video.playCalls,plays);
   h.apply({display:true,question:q,media_playback:{...playing,playing:false,position:7,revision:1}});
-  assert.equal(video.currentTime,27);assert.equal(video.paused,true);assert.equal(controls.children[0].textContent,'▶ Воспроизвести');
+  assert.equal(video.currentTime,27);assert.equal(video.paused,true)
   h.apply({display:true,question:q,media_playback:{...playing,position:7,revision:2}});
   assert.equal(video.currentTime,27);assert.equal(video.paused,false);
 });
 
-test('blocked autoplay exposes one-click sound activation and keeps the real play/pause label',async()=>{
+test('blocked autoplay exposes only one-click sound activation',async()=>{
   const h=harness({pathname:'/display'});
   h.run("sendMediaAction=async()=>{}");
   h.apply({display:true,question:{id:'m',media:{kind:'audio',url:'/audio.wav',start:0,end:30}}});
@@ -467,9 +467,37 @@ test('blocked autoplay exposes one-click sound activation and keeps the real pla
   audio.play=async()=>{const error=new Error('Blocked');error.name='NotAllowedError';throw error;};
   audio.emit('loadedmetadata');await Promise.resolve();await Promise.resolve();
   assert(!h.node('display-media-unlock').hidden);assert.equal(audio.paused,true);
-  assert.equal(controls.children[0].textContent,'▶ Воспроизвести');
+
   audio.play=async()=>{audio.paused=false;audio.emit('play');};
   await h.node('enable-display-media').onclick();
   assert(h.node('display-media-unlock').hidden);assert.equal(audio.paused,false);
-  assert.equal(controls.children[0].textContent,'Ⅱ Пауза');
+
+});
+
+test('display expansion and volume preserve the current media player',()=>{
+  const h=harness({pathname:'/display'}),question={id:'q1',media:{kind:'video',url:'/video.mp4'}};
+  const initial=h.apply({display:true,question,display_scene:'question',media_volume:.7});
+  const wrapper=h.node('media-content').children[0],video=wrapper.children[0];video.emit('loadedmetadata');
+  assert.equal(wrapper.children.length,1);assert.equal(video.controls,false);assert.equal(video.volume,.7);
+  const plays=video.playCalls;
+  h.apply({...initial,media_volume:0,media_expanded:true,version:initial.version+1,ui_version:initial.ui_version+1});
+  assert.equal(h.ctx.document.body.dataset.mediaExpanded,'true');assert.equal(video.volume,0);
+  assert.equal(h.node('media-content').children[0],wrapper);assert.equal(video.playCalls,plays);
+  h.apply({display:true,question,media_expanded:true,paused:true,paused_at:1000});
+  assert.equal(h.ctx.document.body.dataset.mediaExpanded,'false');
+  h.apply({display:true,question,media_expanded:true,display_scene:'scores'});
+  assert.equal(h.ctx.document.body.dataset.mediaExpanded,'false');
+});
+
+test('host controls image expansion and sends display volume',async()=>{
+  const h=harness();h.run("auth.user.id='h';globalThis.sent=[];command=async(action,body)=>sent.push({action,body});api=async(path,body)=>{sent.push({action:body.action,body});return {...room,media_volume:body.volume,version:room.version+1,ui_version:room.ui_version+1}}");
+  h.apply({question:{id:'q1',media:{kind:'image',url:'/picture.png'}}});
+  assert(!h.node('display-media-expand').hidden);assert(h.node('display-media-toggle').hidden);
+  assert(h.node('host-media-volume-label').hidden);
+  await h.node('display-media-expand').onclick();assert.equal(h.ctx.sent[0].action,'media_expand');
+  h.apply({question:{id:'q1',media:{kind:'audio',url:'/music.wav'}},media_volume:.3});
+  assert(h.node('display-media-expand').hidden);assert(!h.node('host-media-volume-label').hidden);
+  assert.equal(h.node('host-media-volume').value,30);
+  h.node('host-media-volume').value=15;h.node('host-media-volume').oninput();await Promise.resolve();
+  assert.equal(h.ctx.sent.at(-1).action,'media_volume');assert.equal(h.ctx.sent.at(-1).body.volume,.15);
 });

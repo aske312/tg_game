@@ -133,11 +133,6 @@ function renderManagement() {
   $('skip-stage').textContent=room.stage_number===room.stage_count?'Пропустить раунд и к итогам':'Пропустить раунд →';
 }
 
-function mediaTime(seconds) {
-  const total=Math.max(0,Math.floor(seconds||0));
-  return `${Math.floor(total/60)}:${String(total%60).padStart(2,'0')}`;
-}
-
 function renderMedia(q) { renderQuestionMedia(q); }
 
 function renderReview() {
@@ -355,6 +350,26 @@ $('display-media-toggle').onclick=guard(async()=>{
   try {await sendMediaAction(mediaTransport().playing?'media_pause':'media_play');}
   finally {renderHostMediaToggle();}
 });
+$('display-media-expand').onclick=guard(()=>command(room.media_expanded?'media_collapse':'media_expand',{question:room.question.id}));
+let pendingMediaVolume=null,sendingMediaVolume=false;
+async function sendHostVolume(){
+  if(sendingMediaVolume)return;
+  sendingMediaVolume=true;
+  try{
+    while(pendingMediaVolume){
+      const item=pendingMediaVolume;pendingMediaVolume=null;
+      if(room?.code===item.code&&isHost()){
+        const state=await api('/rooms/'+item.code+'/action',{action:'media_volume',volume:item.volume});
+        if(room?.code===item.code&&isHost())apply(state);
+      }
+    }
+  }finally{sendingMediaVolume=false;}
+}
+$('host-media-volume').oninput=()=>{
+  $('host-media-volume-value').textContent=$('host-media-volume').value+'%';
+  pendingMediaVolume={code:room.code,volume:Number($('host-media-volume').value)/100};
+  void sendHostVolume().catch(error=>notice(error.message,'error'));
+};
 $('enable-display-media').onclick=guard(async()=>{
   displaySoundEnabled=true;void unlockSound();renderDisplaySound();
   if(activeClip?.ready)await activeClip.localPlay();
@@ -391,7 +406,7 @@ $('reaction-buttons').onclick=async event=>{
   try{await command('reaction',{text:button.dataset.reaction});}catch{/* Reactions are optional and never interrupt the game. */}
 };
 $('finish').onclick=guard(async()=>{if(confirm('Завершить квиз и показать итоговый счёт?'))await command('finish');});
-$('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem(displayPage?'displayRoom':'room');sessionStorage.removeItem('roomRole');delete document.body.dataset.role;room=null;resetExperience();$('media-content').querySelector('audio,video')?.pause();$('media-content').replaceChildren();mediaKey='';show('game',false);show('home',!displayPage);show('display-entry',displayPage);if(displayPage)auth=null;else setRole('player');notice('');history.replaceState(null,'',location.pathname);};
+$('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem(displayPage?'displayRoom':'room');sessionStorage.removeItem('roomRole');delete document.body.dataset.role;delete document.body.dataset.mediaExpanded;room=null;resetExperience();$('media-content').querySelector('audio,video')?.pause();$('media-content').replaceChildren();mediaKey='';show('game',false);show('home',!displayPage);show('display-entry',displayPage);if(displayPage)auth=null;else setRole('player');notice('');history.replaceState(null,'',location.pathname);};
 $('q-kind').onchange=()=>{const kind=$('q-kind').value;show('file-fields',!!kind);show('clip-fields',kind==='audio'||kind==='video');$('q-file').accept=kind==='image'?'.png,.jpg,.jpeg,.jfif,.gif,.webp,.avif,.bmp':kind==='audio'?'.mp3,.wav,.ogg,.oga,.opus,.m4a,.aac,.flac':'.mp4,.webm,.mov,.m4v';$('q-file').required=!!kind;};
 function renderQuestionEditor() {
   const selected=room?.stages.find(s=>s.id===$('q-stage').value),binary=selected?.type==='binary',grid=selected?.type==='grid';
