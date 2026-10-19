@@ -122,7 +122,10 @@ def main():
                     print(page.evaluate("""() => ({notice:document.getElementById('notice')?.textContent,
                         duration:document.getElementById('clip-duration')?.textContent,
                         media:[...document.querySelectorAll('audio,video')].map(p=>({
-                            src:p.currentSrc,ready:p.readyState,error:p.error?.message}))})"""), flush=True)
+                            src:p.currentSrc,ready:p.readyState,error:p.error?.message,
+                            time:p.currentTime,paused:p.paused,seeking:p.seeking,
+                            ended:p.ended,muted:p.muted,network:p.networkState}))})"""), flush=True)
+                    page.screenshot(path=ARTIFACTS/('media-failure-'+name+'.png'),full_page=True)
                     raise
                 print(name + ': ' + result, flush=True)
 
