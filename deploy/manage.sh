@@ -6,7 +6,7 @@ source /usr/local/lib/rat-race/common.sh
 usage() {
     cat <<'HELP'
 Usage: sudo rat-race COMMAND [app|builder|all]
-  update                  Fetch GitHub main, test and deploy (default: all installed)
+  update                  Fetch latest published release, test and deploy (default: all installed)
   start | stop | restart  Control services (default: all installed)
   status                  Show systemd status
   logs                    Last 100 journal entries (add --follow for live logs)
@@ -70,7 +70,7 @@ case "$command" in
         for component in "${components[@]}"; do
             link=current
             [ "$component" != builder ] || link=builder-current
-            printf '%s: %s\n' "$component" "$(basename "$(readlink -f "$base/$link")")"
+            printf '%s: %s build %s\n' "$component" "$(cat "$base/$link/VERSION")" "$(basename "$(readlink -f "$base/$link")")"
         done
         ;;
     health)

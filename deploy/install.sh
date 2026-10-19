@@ -52,6 +52,7 @@ if [ ! -d "$release" ]; then
 fi
 # shellcheck source=deploy/common.sh
 source "$release/deploy/common.sh"
+fetch_release
 prepare_release
 "$release/.venv/bin/python" "$release/deploy/configure.py" init "${config_args[@]}"
 read_setting() { "$release/.venv/bin/python" "$release/deploy/configure.py" get /etc/rat-race/install.env "$1"; }

@@ -16,12 +16,19 @@ lock_deploy() {
     flock -n 9 || die 'Another installation, deployment or service operation is running.'
 }
 
+published_release_tag() {
+    curl --retry 3 --connect-timeout 10 --max-time 30 -fsS https://api.github.com/repos/aske312/tg_game/releases/latest |
+        python3 -c 'import json,re,sys; d=json.load(sys.stdin); tag=d.get("tag_name", ""); assert not d.get("draft") and not d.get("prerelease") and re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",tag), "Invalid published release"; print(tag)'
+}
+
 fetch_release() {
+    local tag
+    tag=$(published_release_tag) || die 'No published stable GitHub Release is available; running services were not changed.'
     install -d -m 755 "$base/releases"
     if [ ! -d "$base/repo.git" ]; then git clone --bare "$repo" "$base/repo.git" >&2; fi
     # Never trust a changed origin or the checkout of the calling script.
-    git --git-dir="$base/repo.git" fetch "$repo" refs/heads/main >&2
-    revision=$(git --git-dir="$base/repo.git" rev-parse FETCH_HEAD)
+    git --git-dir="$base/repo.git" fetch "$repo" "refs/tags/$tag" >&2
+    revision=$(git --git-dir="$base/repo.git" rev-parse 'FETCH_HEAD^{commit}')
     [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || die 'Invalid GitHub revision.'
     release="$base/releases/$revision"
     if [ ! -d "$release" ]; then
@@ -34,6 +41,7 @@ fetch_release() {
         chmod 755 "$staging"
         mv -T "$staging" "$release"
     fi
+    [ "$(cat "$release/VERSION")" = "${tag#v}" ] || die 'Published release tag does not match VERSION.'
 }
 
 prepare_release() {

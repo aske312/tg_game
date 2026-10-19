@@ -92,6 +92,32 @@ systemctl() {
         'SANDBOX': str(tmp_path)}, capture_output=True, text=True, timeout=20)
 
 
+@pytest.mark.parametrize('version_matches', [True, False])
+def test_deployment_pins_published_tag_instead_of_unreleased_main(tmp_path, version_matches):
+    result = bash_test(tmp_path, '''repo="$SANDBOX/source"
+git init -b main "$repo" >/dev/null
+git -C "$repo" config user.email test@example.com
+git -C "$repo" config user.name Test
+printf '0.0.6\\n' > "$repo/VERSION"
+git -C "$repo" add VERSION
+git -C "$repo" commit -m release >/dev/null
+git -C "$repo" tag -a v0.0.6 -m release
+expected=$(git -C "$repo" rev-parse HEAD)
+printf '0.0.7\\n' > "$repo/VERSION"
+git -C "$repo" commit -am development >/dev/null
+published_release_tag() { echo '''+('v0.0.6' if version_matches else 'v0.0.7')+'''; }
+'''+('git -C "$repo" tag v0.0.7 "$expected"\n' if not version_matches else '')+'''
+fetch_release
+[ "$revision" = "$expected" ]
+[ "$(cat "$release/VERSION")" = 0.0.6 ]
+''')
+    if version_matches:
+        assert result.returncode == 0, result.stderr
+    else:
+        assert result.returncode != 0
+        assert 'does not match VERSION' in result.stderr
+
+
 @pytest.mark.parametrize('component', ['app', 'builder'])
 def test_failed_deployment_restores_link_units_config_and_running_service(tmp_path, component):
     link = 'current' if component == 'app' else 'builder-current'

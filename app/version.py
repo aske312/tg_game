@@ -6,8 +6,10 @@ from pathlib import Path
 import re
 import subprocess
 
-APP_VERSION = '0.0.5'
 ROOT = Path(__file__).resolve().parent.parent
+APP_VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
+if not re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', APP_VERSION):
+    raise ValueError('VERSION must contain a release number such as 0.0.6')
 
 
 @lru_cache(maxsize=1)
@@ -31,4 +33,8 @@ def version_info():
 
 
 def versioned_html(path):
-    return Path(path).read_text(encoding='utf-8').replace('__APP_VERSION_LABEL__', escape(version_info()['label']))
+    info = version_info()
+    html = Path(path).read_text(encoding='utf-8').replace('__APP_VERSION_LABEL__', escape(info['label']))
+    # Every release/build invalidates first-party assets in all three interfaces.
+    return re.sub(r'(/static/[^\s"\'<>?]+\?v=)[^\s"\'<>]+',
+                  lambda match: match[1]+info['version']+'-'+info['build_short'], html)

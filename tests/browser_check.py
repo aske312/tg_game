@@ -14,6 +14,7 @@ from playwright.sync_api import sync_playwright, expect
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from builder.auth import hash_password
+from app.version import APP_VERSION
 
 ARTIFACTS = ROOT/'data/browser-check'
 PASSWORD = 'browser-check-only-password'
@@ -64,7 +65,7 @@ def check_builder(page, url):
     page.get_by_role('tab', name='Настройки игры', exact=True).click()
     page.locator('#game-time-limit').fill('120')
     page.locator('#game-points').fill('200')
-    expect(page.locator('#app-version')).to_contain_text('0.0.5 build ')
+    expect(page.locator('#app-version')).to_contain_text(f'{APP_VERSION} build ')
     screenshot(page, 'builder-settings-desktop')
     page.set_viewport_size(dict(width=390, height=844))
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), 'Mobile editor overflows'
@@ -158,7 +159,7 @@ def check_display(browser, stack, app_url, game_id, watch):
     expect(player.locator('#game')).to_be_visible()
     screen.goto(app_url+'/display?room='+code)
     expect(screen.locator('#display-preview')).to_be_visible()
-    expect(screen.locator('#app-version')).to_contain_text('0.0.5 build ')
+    expect(screen.locator('#app-version')).to_contain_text(f'{APP_VERSION} build ')
     screenshot(screen, 'display-lobby')
     host.locator('#start').click()
     expect(screen.locator('#grid-intro')).to_be_visible()
