@@ -31,7 +31,9 @@ function renderQuestionMedia(q) {
   const volume=$('host-media-volume');
   if(document.activeElement!==volume)volume.value=Math.round((room.media_volume??1)*100);
   $('host-media-volume-value').textContent=volume.value+'%';
-  const visual=m?.kind==='image'||m?.kind==='video'&&(!m.audio_only||mediaTransport().mode==='full');
+  const answerVisible=room.phase==='reveal'&&(room.display_scene||'answer')==='answer';
+  const hiddenPicture=(m?.show_in_question??!m?.audio_only)===false&&!answerVisible;
+  const visual=['image','video'].includes(m?.kind)&&!hiddenPicture;
   const canExpand=visual&&['question','review','reveal'].includes(room.phase)&&!room.paused&&!room.scores_visible&&['question','answer'].includes(room.display_scene||'question');
   show('display-media-expand',host&&!!visual);
   $('display-media-expand').disabled=!canExpand;
@@ -39,22 +41,23 @@ function renderQuestionMedia(q) {
   $('display-media-expand').setAttribute('aria-pressed',String(!!room.media_expanded));
   document.body.dataset.mediaExpanded=String(isDisplay()&&!!room.media_expanded&&!!canExpand);
   renderHostMediaToggle();
-  const visible=!!m&&(!av||isDisplay());
+  const visible=!!m&&(!av||isDisplay())&&!(isDisplay()&&m.kind==='image'&&hiddenPicture);
   show('media-content',visible);
   const full=mediaTransport().mode==='full';
-  const key=room.code+':'+q?.id+':'+(isDisplay()?'display':isHost()?'host':'player')+':'+full+':'+JSON.stringify(m);
+  const key=room.code+':'+q?.id+':'+(isDisplay()?'display':isHost()?'host':'player')+':'+full+':'+(isDisplay()&&hiddenPicture)+':'+JSON.stringify(m);
   if(key===mediaKey)return;
   mediaKey=key;
   const previous=activeClip;activeClip=null;previous?.node.pause();
-  $('media-content').replaceChildren();$('media-caption').textContent='';
+  $('media-content').replaceChildren();
   if(!visible)return;
-  const audioOnly=m.kind==='video'&&m.audio_only&&!full;
-  const node=document.createElement(m.kind==='image'?'img':audioOnly?'audio':m.kind);
+  const audioOnly=m.kind==='video'&&hiddenPicture;
+  const node=document.createElement(m.kind==='image'?'img':m.kind);
   node.onerror=()=>notice('Не удалось открыть материал. Проверьте формат файла или обновите игру.','error');
   if(m.kind==='image'){node.alt='Материал к вопросу';node.src=m.url;$('media-content').append(node);return;}
   node.preload='auto';node.controls=false;
   if(m.kind==='video')node.setAttribute('playsinline','');
-  $('media-content').append(clipPlayer(node,full?{...m,start:0,end:null,full:true}:audioOnly?{...m,kind:'audio'}:m,q.id));
+  const playbackMedia=full?{...m,start:0,end:null,full:true}:m;
+  $('media-content').append(clipPlayer(node,audioOnly?{...playbackMedia,kind:'audio'}:playbackMedia,q.id));
   node.src=m.url;
 }
 function clipPlayer(node,m,questionId) {

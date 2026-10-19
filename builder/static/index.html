@@ -13,8 +13,8 @@
   <script src="/static/game-settings.js?v=1" defer></script>
   <script src="/static/events.js?v=6" defer></script>
   <script src="/static/media-editor.js?v=9" defer></script>
-  <script src="/static/validation.js?v=4" defer></script>
-  <script src="/static/builder.js?v=13" defer></script>
+  <script src="/static/validation.js?v=5" defer></script>
+  <script src="/static/builder.js?v=14" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -80,7 +80,7 @@
                 <div id="media-fields" hidden><label for="media-file" class="upload-zone"><span id="upload-label">Выбрать файл</span><span class="hint">Нажми, чтобы загрузить или заменить материал</span><input id="media-file" type="file"></label>
                   <div id="media-upload" class="media-upload" role="status" aria-live="polite" hidden><span id="media-upload-label">Загружаем файл…</span><progress id="media-upload-progress" max="100" aria-label="Прогресс загрузки файла"></progress><p class="hint">Дождись завершения загрузки. Редактор снова станет доступен.</p></div>
                   <div id="attached-file" class="attached-file"><span id="file-name"></span><button id="remove-media" class="quiet danger-text" type="button">Убрать</button></div></div>
-                <div id="video-audio-option" class="video-audio-option" hidden><label for="video-audio-only"><input id="video-audio-only" type="checkbox">В вопросе воспроизводить только звук</label><p class="hint">Изображение видео скрыто до показа ответа. После проверки полная запись воспроизводится с видео.</p></div>
+                <div id="media-display-option" class="video-audio-option" hidden><label for="media-show-in-question"><input id="media-show-in-question" type="checkbox" checked>Показывать медиаматериал во время вопроса</label><p class="hint">Если выключено, изображение на демонстрации появится вместе с правильным ответом. Звук аудио и видео сохраняется. Аудиоплеер на демонстрации всегда скрыт.</p></div>
                 <div id="clip-fields" class="clip-editor" hidden>
                   <h3>Выбор отрывка</h3><p class="hint">Отрывок не меняет время на ответ.</p><div id="clip-player-slot" class="clip-player-slot"></div><p id="clip-duration" class="hint"></p>
                   <div class="clip-timeline"><div class="clip-range-label"><label for="clip-start-range">Начало</label><span id="clip-start-label"></span></div><input id="clip-start-range" type="range" min="0" max="1" step="0.1" value="0"><div class="clip-range-label"><label for="clip-end-range">Конец</label><span id="clip-end-label"></span></div><input id="clip-end-range" type="range" min="0" max="1" step="0.1" value="1"></div>

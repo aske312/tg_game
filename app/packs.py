@@ -124,6 +124,10 @@ def load_pack(directory):
             q['media'] = dict(kind=media['type'], source=str(source), start=start, end=end)
             if audio_only:
                 q['media']['audio_only'] = True
+            if 'show_in_question' in media:
+                if type(media['show_in_question']) is not bool:
+                    raise ValueError(f'Вопрос {i}: показ медиа в вопросе должен быть true или false')
+                q['media']['show_in_question'] = media['show_in_question']
         questions.append(q)
     if sum(p.stat().st_size for p in paths) > 100 * 1024 * 1024:
         raise ValueError('Общий размер медиа пакета не должен превышать 100 МБ')

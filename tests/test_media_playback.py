@@ -123,6 +123,22 @@ def test_only_host_can_expand_visual_media_and_new_scenes_reset_it(media_game):
     assert not db.read(code)['media_expanded']
 
 
+@pytest.mark.parametrize('kind',['image','video'])
+def test_hidden_question_media_can_expand_only_with_answer(media_game,kind):
+    db,_,host,player,now=media_game
+    code=db.create(host,questions=[
+        dict(id='hidden',text='?',answer='Yes',value=100,media=dict(kind=kind,url='/file',show_in_question=False)),
+        dict(id='next',text='?',answer='Yes',value=100),
+    ])
+    db.change(code,player,'join');db.change(code,host,'start');db.change(code,host,'next')
+    with pytest.raises(ValueError):db.change(code,host,'media_expand',question='hidden')
+    db.change(code,host,'close')
+    db.change(code,host,'media_expand',question='hidden')
+    assert db.read(code)['media_expanded']
+    db.change(code,host,'display_question')
+    with pytest.raises(ValueError):db.change(code,host,'media_expand',question='hidden')
+
+
 @pytest.mark.parametrize('body', [dict(question='old'),dict(question='audio',position=-1),dict(question='audio',position=float('inf')),dict(question='audio',duration=0)])
 def test_invalid_or_stale_media_commands_are_atomic(media_game,body):
     db,code,host,player,now=media_game

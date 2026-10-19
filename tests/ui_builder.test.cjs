@@ -40,6 +40,19 @@ function document(){return {title:'Game',stages:[{id:'g',type:'grid',title:'Grid
     {id:'b1',stage:'b',type:'question',category:'Space',text:'D',answer:'D'},
     {id:'e',stage:'b',type:'event',title:'Bonus',effect:{type:'shield',target:'all_players'}}]};}
 
+test('display switch handles images and preserves legacy video sound settings',()=>{
+  const h=harness(document());
+  h.run("round().media={type:'image',file:'picture.png'};renderMediaFields()");
+  assert(!h.node('media-display-option').hidden);assert(h.node('media-show-in-question').checked);
+  h.node('media-show-in-question').checked=false;h.node('media-show-in-question').onchange();
+  assert.equal(h.doc().rounds[0].media.show_in_question,false);
+  h.run("round().media={type:'video',file:'clip.mp4',audio_only:true};renderMediaFields()");
+  assert(!h.node('media-show-in-question').checked);
+  h.node('media-show-in-question').checked=true;h.node('media-show-in-question').onchange();
+  assert.equal(h.doc().rounds[0].media.show_in_question,true);
+  assert(!('audio_only' in h.doc().rounds[0].media));
+});
+
 test('category deletion confirms and removes only its questions in this grid',()=>{
   const h=harness(document());
   h.approve(false);h.removeCategory(0);assert.equal(h.doc().rounds.length,5);

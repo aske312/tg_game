@@ -41,7 +41,7 @@ test('video can play as audio for the question and reveal the full video after g
   const question={id:'q1',text:'Song?',answer:'Yes',media:{kind:'video',url:'/clip.webm',start:20,end:30,audio_only:true}};
   h.apply({display:true,question,media_playback:{question:'q1',mode:'excerpt',playing:true,position:0,updated_at:1000,revision:0}});
   const audio=h.node('media-content').children[0].children[0];
-  assert.equal(audio.tagName,'AUDIO');assert(audio.hidden);
+  assert.equal(audio.tagName,'VIDEO');assert(audio.hidden);
   audio.emit('loadedmetadata');assert(h.run('activeClip.ready'));
   h.apply({display:true,phase:'reveal',question,display_scene:'answer',media_playback:{question:'q1',mode:'full',playing:true,position:0,updated_at:1000,revision:1}});
   const video=h.node('media-content').children[0].children[0];
@@ -500,4 +500,23 @@ test('host controls image expansion and sends display volume',async()=>{
   assert.equal(h.node('host-media-volume').value,30);
   h.node('host-media-volume').value=15;h.node('host-media-volume').oninput();await Promise.resolve();
   assert.equal(h.ctx.sent.at(-1).action,'media_volume');assert.equal(h.ctx.sent.at(-1).body.volume,.15);
+});
+
+test('hidden question images appear with the answer while hidden video retains audio',()=>{
+  for(const kind of ['image','video']){
+    const h=harness({pathname:'/display'}),question={id:'q1',media:{kind,url:'/file',show_in_question:false}};
+    h.apply({display:true,question,display_scene:'question'});
+    if(kind==='image')assert.equal(h.node('media-content').children.length,0);
+    else {
+      const audio=h.node('media-content').children[0].children[0];
+      assert.equal(audio.tagName,'VIDEO');assert(audio.hidden);assert.equal(audio.controls,false);
+    }
+    assert(h.node('display-media-expand').hidden);
+    h.apply({display:true,phase:'reveal',question,display_scene:'answer',media_playback:{question:'q1',mode:'full',playing:false,position:0}});
+    const media=kind==='image'?h.node('media-content').children[0]:h.node('media-content').children[0].children[0];
+    assert.equal(media.tagName,kind==='image'?'IMG':'VIDEO');assert(!media.hidden);
+    h.apply({display:true,phase:'reveal',question,display_scene:'question',media_playback:{question:'q1',mode:'full',playing:false,position:0}});
+    if(kind==='image')assert(h.node('media-content').hidden);
+    else assert(h.node('media-content').children[0].children[0].hidden);
+  }
 });

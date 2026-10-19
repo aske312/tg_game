@@ -488,10 +488,10 @@ class Store:
                         raise ValueError('Медиаматериал этого вопроса уже недоступен')
                     if action == 'media_expand':
                         media = q.get('media', {})
-                        audio_only = media.get('audio_only') and (s.get('media_playback') or {}).get('mode') != 'full'
+                        hidden_picture = not media.get('show_in_question', not media.get('audio_only', False)) and s.get('display_scene', 'question') != 'answer'
                         if (s['phase'] not in ('question', 'review', 'reveal') or s.get('scores_visible')
                                 or s.get('display_scene', 'question') not in ('question', 'answer')
-                                or media.get('kind') not in ('image', 'video') or audio_only):
+                                or media.get('kind') not in ('image', 'video') or hidden_picture):
                             raise ValueError('Сначала покажите изображение или видео на демонстрации')
                     s['media_expanded'] = action == 'media_expand'
                 elif action in ('media_play', 'media_pause', 'media_seek'):

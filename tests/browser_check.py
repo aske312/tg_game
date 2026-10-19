@@ -81,6 +81,7 @@ def check_builder(page, url):
     expect(page.locator('#clip-duration')).to_contain_text('Запись')
     page.locator('#clip-start').fill('00:01')
     page.locator('#clip-end').fill('00:02')
+    page.locator('#media-show-in-question').uncheck()
     page.locator('#preview-panel > summary').click()
     expect(page.locator('#preview-content')).to_contain_text('200 очков · 120 сек.')
     page.locator('#add-question').click()
@@ -266,6 +267,44 @@ def check_display_media(browser, stack, app_url, database, watch):
     expect(screen.locator('#pause-panel')).to_be_visible()
 
 
+def check_hidden_display_media(browser, stack, app_url, database, watch):
+    from app.store import Store
+    context=stack.enter_context(browser.new_context(viewport=dict(width=1440,height=1000)))
+    display_context=stack.enter_context(browser.new_context(viewport=dict(width=1440,height=1000)))
+    host,screen=context.new_page(),display_context.new_page()
+    for page in (host,screen):watch(page)
+    login(host,app_url,'Hidden Media Host')
+    db=Store(database)
+    code=db.create(host.evaluate('auth.user'),questions=[
+        dict(id='video',text='Listen to the recording',answer='Yes',value=100,seconds=3600,
+             media=dict(kind='video',url='/static/demo/colors.mp4',show_in_question=False)),
+        dict(id='image',text='Hidden picture question',answer='Yes',value=100,seconds=3600,
+             media=dict(kind='image',url='/static/demo/triangle.svg',show_in_question=False)),
+        dict(id='next',text='Next question',answer='Yes',value=100,seconds=3600),
+    ])
+    db.change(code,dict(id='hidden-test-player',name='Player'),'join')
+    host.goto(app_url+'/?room='+code);screen.goto(app_url+'/display?room='+code)
+    host.locator('#start').click();host.locator('#skip-intro').click()
+    screen.wait_for_function("document.querySelector('#media-content video')?.readyState >= 1")
+    expect(screen.locator('#media-content img, #media-content input, #media-content button')).to_have_count(0)
+    expect(screen.locator('#media-content video')).to_be_hidden()
+    expect(screen.locator('#media-caption')).to_have_count(0)
+    expect(host.locator('#display-media-expand')).to_be_hidden()
+    host.locator('#close').click()
+    expect(screen.locator('#media-content video')).to_be_visible()
+    host.locator('#scene-question').click()
+    expect(screen.locator('#media-content video')).to_be_hidden()
+    host.locator('#scene-answer').click()
+    expect(screen.locator('#media-content video')).to_be_visible()
+    host.locator('#next').click()
+    expect(screen.locator('#question-text')).to_have_text('Hidden picture question')
+    expect(screen.locator('#media-content img')).to_have_count(0)
+    screenshot(screen,'hidden-picture-question')
+    host.locator('#close').click()
+    expect(screen.locator('#media-content img')).to_be_visible()
+    screenshot(screen,'hidden-picture-answer')
+
+
 def main():
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     errors = []
@@ -289,6 +328,7 @@ def main():
             game_id = check_builder(page, builder)
             check_display(browser, stack, game, game_id, watch)
             check_display_media(browser, stack, game, folder/'game.sqlite3', watch)
+            check_hidden_display_media(browser, stack, game, folder/'game.sqlite3', watch)
             assert not errors, '\n'.join(errors)
         except Exception:
             for index, page in enumerate(pages):

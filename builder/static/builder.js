@@ -170,7 +170,7 @@ function renderRound() {
 function renderMediaFields() {
   const m=round()?.media,type=m?.type||'';
   show('media-fields',!!type);show('clip-fields',type==='audio'||type==='video');show('attached-file',!!m?.file);
-  show('video-audio-option',type==='video');$('video-audio-only').checked=m?.audio_only===true;
+  show('media-display-option',!!type);$('media-show-in-question').checked=m?.show_in_question??!m?.audio_only;
   $('file-name').textContent=typeof m?.file==='string'?m.file.split('/').pop():'';
   $('media-file').value='';$('media-file').accept=type==='image'?'.png,.jpg,.jpeg,.jfif,.gif,.webp,.avif,.bmp':type==='audio'?'.mp3,.wav,.ogg,.oga,.opus,.m4a,.aac,.flac':'.mp4,.webm,.mov,.m4v';
   $('upload-label').textContent=m?.file?'Заменить материал':'Выбрать файл';
@@ -181,7 +181,7 @@ function mediaURL(file) {return '/api/games/'+id()+'/media?file='+encodeURICompo
 function renderPreview() {
   const q=round();if(!q)return;
   const box=$('preview-content'),m=q.media;
-  const key=q.type==='question'&&m?.file?JSON.stringify([state.snapshot.id,q.id,m.type,m.file,!!m.audio_only]):'';
+  const key=q.type==='question'&&m?.file?JSON.stringify([state.snapshot.id,q.id,m.type,m.file,m.show_in_question??!m.audio_only]):'';
   const previous=$('preview-media');
   const reusable=!!key&&previous?.dataset.mediaKey===key;
   if(reusable)previous.remove();
@@ -197,7 +197,9 @@ function renderPreview() {
   if(reusable){$('preview-media').replaceWith(previous);return;}
   if(typeof m?.file!=='string'||!m.file||!['image','audio','video'].includes(m.type))return;
   const container=$('preview-media');container.dataset.mediaKey=key;
-  const node=document.createElement(m.type==='image'?'img':m.type==='video'&&m.audio_only?'audio':m.type);node.src=mediaURL(m.file);
+  const hiddenPicture=(m.show_in_question??!m.audio_only)===false;
+  if(m.type==='image'&&hiddenPicture){container.textContent='Изображение появится на демонстрации вместе с ответом.';return;}
+  const node=document.createElement(m.type==='image'?'img':m.type==='video'&&hiddenPicture?'audio':m.type);node.src=mediaURL(m.file);
   node.onerror=()=>{if($('preview-media')!==container)return;disposeEditorMedia(container);container.replaceChildren(Object.assign(document.createElement('p'),{textContent:'Материал не найден. Загрузи файл для этого вопроса.'}));};
   if(m.type==='image')node.alt='Материал к вопросу';
   else {
@@ -219,7 +221,7 @@ bind('correct-choice',Number,(q,v)=>{binaryDefaults(q);q.correct_choice=v;q.answ
 bind('accepted-answers',v=>v.split('\n').map(s=>s.trim()).filter(Boolean),(q,v)=>q.accepted_answers=v);
 for(const [field,key] of [['effect-target','target'],['effect-duration','questions']])bind(field,v=>field==='effect-duration'?Number(v):v,(q,v)=>{q.effect??={};q.effect[key]=v;renderEffect();});
 $('media-type').onchange=()=>{if(!round())return;const type=$('media-type').value;if(type)round().media={type,file:'',start:0};else delete round().media;markDirty();renderMediaFields();renderPreview();};
-$('video-audio-only').onchange=()=>{const media=round()?.media;if(media?.type!=='video'||state.busy)return;media.audio_only=$('video-audio-only').checked;markDirty();renderPreview();};
+$('media-show-in-question').onchange=()=>{const media=round()?.media;if(!media||state.busy)return;media.show_in_question=$('media-show-in-question').checked;delete media.audio_only;markDirty();renderPreview();};
 $('remove-media').onclick=()=>{delete round().media;$('media-type').value='';markDirty();renderMediaFields();renderPreview();};
 $('media-file').onchange=guarded(async()=>{
   const file=$('media-file').files[0];$('media-file').value='';if(!file)return;if(file.size>25*1024*1024)throw new Error('Файл должен быть не больше 25 МБ.');

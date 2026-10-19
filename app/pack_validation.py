@@ -137,6 +137,8 @@ def publication_issues(doc, directory=None):
             add('media.type', 'Выберите тип медиаматериала.', si, qi)
             continue
         filename = media.get('file')
+        if type(media.get('show_in_question', True)) is not bool:
+            add('media.show_in_question', 'Включите или выключите показ медиаматериала во время вопроса.', si, qi)
         if type(media.get('audio_only', False)) is not bool or media.get('audio_only') and media['type'] != 'video':
             add('media.audio_only', 'Режим «только звук» доступен для видео. Включите или выключите переключатель.', si, qi)
         if not isinstance(filename, str) or not filename.strip():
