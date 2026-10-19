@@ -63,7 +63,7 @@ class Command(BaseModel):
 
 class MediaCommand(BaseModel):
     media_mode: Optional[Literal['excerpt', 'full']] = None
-    action: Literal['media_play', 'media_pause', 'media_seek']
+    action: Literal['media_pause']
     question: str = Field(min_length=1, max_length=64)
     position: Optional[float] = Field(default=None, ge=0, le=MAX_SAFE_INTEGER, allow_inf_nan=False)
     duration: Optional[float] = Field(default=None, gt=0, le=MAX_SAFE_INTEGER, allow_inf_nan=False)

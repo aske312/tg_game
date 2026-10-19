@@ -36,9 +36,12 @@ def test_full_recording_starts_only_after_last_grade_and_survives_scene_switch(t
     db.change(code, host, 'wrong', player=b['id'])
     s = db.read(code)
     assert s['display_scene'] == 'answer'
-    assert s['media_playback']['mode'] == 'full' and s['media_playback']['playing']
+    assert s['media_playback']['mode'] == 'full' and not s['media_playback']['playing']
     assert s['media_playback']['position'] == 0 and s['advance_at'] is None
-    assert media_position(s, s['media_playback']['updated_at']+60) == 60
+    assert media_position(s, s['media_playback']['updated_at']+60) == 0
+    db.change(code,host,'media_play',question='q1')
+    playing=db.read(code)
+    assert media_position(playing,playing['media_playback']['updated_at']+60)==60
     display = db.public(code, 'screen', display=True)
     assert 'display_answers' not in display and display['answers'] == {}
     assert display['question']['answer'] == 'Yes'
@@ -101,6 +104,7 @@ def test_score_screen_pauses_and_resumes_question_without_losing_time(tmp_path, 
     now = [1000.]
     monkeypatch.setattr('app.store.time.time', lambda: now[0])
     db, code, host, a, b = game(tmp_path)
+    db.change(code,host,'media_play',question='q1')
     now[0] += 5
     with pytest.raises(ValueError): db.change(code, a, 'display_scores')
     db.change(code, host, 'display_scores')
@@ -124,6 +128,7 @@ def test_pause_and_score_views_switch_without_changing_saved_time(tmp_path, monk
     now = [1000.]
     monkeypatch.setattr('app.store.time.time', lambda: now[0])
     db, code, host, a, b = game(tmp_path)
+    db.change(code,host,'media_play',question='q1')
     now[0] += 7
     db.change(code, host, 'pause')
     paused = db.read(code)
@@ -160,6 +165,9 @@ def test_full_media_prevents_three_second_auto_advance(tmp_path, kind):
     db.change(code, player, 'answer', text='Yes')
     db.change(code, host, 'correct', player='p')
     s = db.read(code)
-    assert s['media_playback']['mode'] == 'full' and s['media_playback']['playing']
+    assert s['media_playback']['mode'] == 'full' and not s['media_playback']['playing']
     assert s['advance_at'] is None and not db.tick(code)
-    assert media_position(s, s['media_playback']['updated_at']+20) == 20
+    assert media_position(s, s['media_playback']['updated_at']+20) == 0
+    db.change(code,host,'media_play',question='0')
+    s=db.read(code)
+    assert media_position(s,s['media_playback']['updated_at']+20)==20

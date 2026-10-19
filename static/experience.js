@@ -47,10 +47,11 @@ function renderExperience() {
   show('pause-game',!paused||room.pause_view==='scores');show('continue-game',paused);
   show('display-game-scores',!paused||room.pause_view!=='scores');
   const roundEnd=room.stage_complete&&['reveal','event'].includes(room.phase);
-  show('show-scores',roundEnd&&!scores);show('hide-scores',scores);
+  show('show-scores',roundEnd&&room.display_scene==='round_end'&&!scores);show('hide-scores',scores);
+  show('end-round',hasControls()&&roundEnd&&!paused&&!scores&&room.display_scene!=='round_end');
   show('pause-panel',paused);show('round-scores',scores&&!paused);
   show('grid-intro',intro&&!paused&&!scores);
-  const endScreen=roundEnd&&!paused&&!scores&&(!isDisplay()||room.display_scene==='round_end');
+  const endScreen=roundEnd&&!paused&&!scores&&room.display_scene==='round_end';
   show('round-end',endScreen);
   show('round-next',hasControls());show('round-results-button',hasControls());
   $('round-end-title').textContent='Раунд завершён';

@@ -338,11 +338,13 @@ test('display has no media controls and follows remote seeking inside the clip',
   audio.emit('loadedmetadata');
   assert.equal(audio.controls,false);assert.equal(audio.hidden,true);
   assert.equal(audio.currentTime,60);assert.equal(wrapper.children.length,1);
+  assert.equal(audio.paused,true);
+  h.run("room.media_playback={question:'music',playing:true,position:0,updated_at:0,revision:1};syncMediaPlayback()");
   assert.equal(audio.paused,false);
   h.run("room.media_playback={question:'music',playing:false,position:12,updated_at:0,revision:2};syncMediaPlayback()");
   assert.equal(audio.currentTime,72);assert.equal(audio.paused,true);
   audio.currentTime=90;
-  await h.run('activeClip.localPlay()');assert.equal(audio.currentTime,60);assert.equal(audio.paused,false);
+  h.run("room.media_playback={question:'music',playing:true,position:0,updated_at:0,revision:3};syncMediaPlayback()");assert.equal(audio.currentTime,60);assert.equal(audio.paused,false);
   audio.currentTime=91;audio.emit('timeupdate');assert.equal(audio.currentTime,90);assert.equal(audio.paused,true);
   audio.currentTime=50;audio.emit('seeking');assert.equal(audio.currentTime,60);
 });
@@ -433,12 +435,12 @@ test('player never loads audio or video; host gets remote controls and images re
     host.run("sendMediaAction=async action=>{calls.push(action);room.media_playback={...mediaTransport(),playing:action==='media_play'};}");
     host.apply({question:{id:'m',media:{kind,url:'/private-media'}}});
     assert(!host.node('host-media-controls').hidden);assert.equal(host.node('media-content').children.length,0);
-    assert.equal(host.node('display-media-toggle').textContent,'Ⅱ Пауза');
-    await host.node('display-media-toggle').onclick();
     assert.equal(host.node('display-media-toggle').textContent,'▶ Воспроизвести');
     await host.node('display-media-toggle').onclick();
     assert.equal(host.node('display-media-toggle').textContent,'Ⅱ Пауза');
-    assert.deepEqual(Array.from(host.ctx.calls),['media_pause','media_play']);
+    await host.node('display-media-toggle').onclick();
+    assert.equal(host.node('display-media-toggle').textContent,'▶ Воспроизвести');
+    assert.deepEqual(Array.from(host.ctx.calls),['media_play','media_pause']);
   }
   const image=harness();image.apply({question:{id:'image',media:{kind:'image',url:'/picture.png'}}});
   assert.equal(image.node('media-content').children[0].src,'/picture.png');assert(!image.node('media-content').hidden);
@@ -462,7 +464,7 @@ test('display media follows host pause/resume once and reaction updates do not r
 test('blocked autoplay exposes only one-click sound activation',async()=>{
   const h=harness({pathname:'/display'});
   h.run("sendMediaAction=async()=>{}");
-  h.apply({display:true,question:{id:'m',media:{kind:'audio',url:'/audio.wav',start:0,end:30}}});
+  h.apply({display:true,question:{id:'m',media:{kind:'audio',url:'/audio.wav',start:0,end:30}},media_playback:{question:'m',playing:true,position:0,updated_at:0}});
   const [audio,controls]=h.node('media-content').children[0].children;
   audio.play=async()=>{const error=new Error('Blocked');error.name='NotAllowedError';throw error;};
   audio.emit('loadedmetadata');await Promise.resolve();await Promise.resolve();
@@ -519,4 +521,31 @@ test('hidden question images appear with the answer while hidden video retains a
     if(kind==='image')assert(h.node('media-content').hidden);
     else assert(h.node('media-content').children[0].children[0].hidden);
   }
+});
+
+test('last answer stays visible until host explicitly ends the round',async()=>{
+  for(const role of ['host','player','display']){
+    const h=harness();if(role==='host')h.run("auth.user.id='h'");
+    const state={display:role==='display',phase:'reveal',display_scene:'answer',stage_complete:true,
+      question:{id:'q1',text:'Last question',answer:'Answer'}};
+    h.apply(state);
+    assert(h.node('round-end').hidden);assert(!h.node('question').hidden);
+    assert.equal(h.node('end-round').hidden,role!=='host');
+    if(role==='host'){
+      h.ctx.actions=[];h.run('command=async action=>actions.push(action)');
+      await h.node('end-round').onclick();assert.equal(h.ctx.actions[0],'end_round');
+    }
+    h.apply({...state,display_scene:'round_end'});
+    assert(!h.node('round-end').hidden);assert(h.node('question').hidden);assert(h.node('end-round').hidden);
+  }
+});
+
+test('display sound permission cannot start media before host command',async()=>{
+  const h=harness({pathname:'/display'}),question={id:'m',media:{kind:'audio',url:'/audio.wav'}};
+  h.apply({display:true,question});
+  const audio=h.node('media-content').children[0].children[0];audio.emit('loadedmetadata');
+  await h.node('enable-display-media').onclick();
+  assert.equal(audio.playCalls,0);assert(audio.paused);
+  h.apply({display:true,question,media_playback:{question:'m',playing:true,position:0,updated_at:0,revision:1}});
+  assert.equal(audio.playCalls,1);assert(!audio.paused);
 });

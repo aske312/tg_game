@@ -12,7 +12,7 @@ async function sendMediaAction(action,position,duration) {
 }
 function mediaTransport() {
   return room?.media_playback&&room.media_playback.question===room?.question?.id?room.media_playback:
-    {question:room?.question?.id,playing:room?.phase==='question',position:0,updated_at:0,revision:0};
+    {question:room?.question?.id,playing:false,position:0,updated_at:0,revision:0};
 }
 function syncMediaPlayback() {
   if(!activeClip?.ready||!isDisplay())return;
@@ -65,7 +65,6 @@ function clipPlayer(node,m,questionId) {
   const start=Number(m.start)||0;
   let end=start,lastSync='',endReported=false;
   const current=()=>activeClip===controller&&room?.question?.id===questionId;
-  const position=()=>Math.min(Math.max(0,node.currentTime-start),end-start);
   const attemptPlay=async(userInitiated=false)=>{
     try{
       await node.play();
@@ -79,13 +78,9 @@ function clipPlayer(node,m,questionId) {
     }
   };
   const localPlay=async()=>{
-    if(!current()||!controller.ready||room.paused||room.scores_visible||['board','scores'].includes(room.display_scene))return;
-    if(node.currentTime<start||node.currentTime>=end-.05)node.currentTime=start;
-    endReported=false;
-    // play() starts inside the click handler, before awaiting the network command.
-    const playing=attemptPlay(true);
-    await sendMediaAction('media_play',position(),end-start);
-    await playing;
+    if(!current()||!controller.ready||!mediaTransport().playing||room.paused||room.scores_visible||['board','scores'].includes(room.display_scene))return;
+    // This click grants browser sound permission; playback is requested by the host.
+    await attemptPlay(true);
   };
   const controller={node,ready:false,localPlay,sync(){
     if(!current())return;

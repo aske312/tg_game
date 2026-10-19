@@ -247,7 +247,7 @@ function apply(s){
   show('question-list-panel',isHost()&&s.phase==='lobby'&&!!s.question_count);
   $('question-list').innerHTML=(s.question_list||[]).map((q,i)=>`<p><span class="question-list-number">${String(i+1).padStart(2,'0')}</span><span class="question-list-text">${esc(q.type==='event'?'✳ '+q.title:q.text)}${q.media?' · '+({image:'Изображение',video:'Видео',audio:'Аудио'}[q.media.kind]):''}</span></p>`).join('');
   show('event',s.phase==='event');
-  if(s.phase==='event'){const e=s.event;$('event-title').textContent=e.event_title;$('event-text').textContent=e.text;$('effect-title').textContent=e.title;$('effect-description').textContent=e.description;$('effect-targets').textContent='Получатели: '+e.targets.join(', ')+' · действует '+countLabel(e.questions,['вопрос','вопроса','вопросов']);show('event-next',hasControls());}
+  if(s.phase==='event'){const e=s.event;$('event-title').textContent=e.event_title;$('event-text').textContent=e.text;$('effect-title').textContent=e.title;$('effect-description').textContent=e.description;$('effect-targets').textContent='Получатели: '+e.targets.join(', ')+' · действует '+countLabel(e.questions,['вопрос','вопроса','вопросов']);show('event-next',hasControls()&&!s.stage_complete);}
   const q=s.question;
   if(!q||s.phase==='finished')renderMedia(null);show('question',!!q&&s.phase!=='finished');
   if(q){
@@ -330,6 +330,7 @@ $('show-scores').onclick=guard(()=>command('show_scores'));
 $('hide-scores').onclick=guard(()=>command('hide_scores'));
 $('scores-next').onclick=guard(()=>command('next'));
 $('round-next').onclick=guard(()=>command('next'));
+$('end-round').onclick=guard(()=>command('end_round'));
 $('round-results-button').onclick=guard(()=>command('show_scores'));
 $('results-back').onclick=guard(()=>command('hide_scores'));
 $('skip-intro').onclick=guard(()=>command('next'));

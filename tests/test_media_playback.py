@@ -19,10 +19,13 @@ def media_game(tmp_path, monkeypatch):
     return db,code,host,player,now
 
 
-def test_autoplay_pause_resume_and_position_persist(media_game):
+def test_media_waits_for_host_then_pause_resume_and_position_persist(media_game):
     db,code,host,player,now=media_game
     playback=db.read(code)['media_playback']
-    assert playback['playing'] and playback['question']=='audio' and playback['position']==0
+    assert not playback['playing'] and playback['question']=='audio' and playback['position']==0
+    now[0]+=100
+    assert media_position(db.read(code),now[0])==0
+    db.change(code,host,'media_play',question='audio')
     now[0]+=5
     db.change(code,host,'media_pause',question='audio')
     assert db.read(code)['media_playback']['position']==5
@@ -39,6 +42,7 @@ def test_autoplay_pause_resume_and_position_persist(media_game):
 
 def test_game_pause_freezes_media_and_round_scores_stop_it(media_game):
     db,code,host,player,now=media_game
+    db.change(code,host,'media_play',question='audio')
     now[0]+=6
     db.change(code,host,'pause')
     now[0]+=100
@@ -166,15 +170,19 @@ def test_host_commands_and_scoped_screen_controls_broadcast(media_game,monkeypat
         screen_headers={'Authorization':'Bearer '+guest['token']}
         with client.websocket_connect('/ws/'+code) as ws:
             ws.send_json(dict(token=guest['token']))
-            assert ws.receive_json()['media_playback']['playing']
+            assert not ws.receive_json()['media_playback']['playing']
+            result=client.post('/api/rooms/'+code+'/action',headers=host_headers,json=dict(action='media_play',question='audio'))
+            assert result.status_code==200 and ws.receive_json()['media_playback']['playing']
             now[0]+=4
             result=client.post('/api/rooms/'+code+'/action',headers=host_headers,json=dict(action='media_pause',question='audio'))
             assert result.status_code==200
             state=ws.receive_json();assert state['media_playback']['position']==4 and not state['media_playback']['playing']
             result=client.post('/api/display/media',headers=screen_headers,json=dict(action='media_play',question='audio',position=4,duration=30))
-            assert result.status_code==200 and result.json()['display']
+            assert result.status_code==422
+            result=client.post('/api/rooms/'+code+'/action',headers=host_headers,json=dict(action='media_play',question='audio',position=4,duration=30))
+            assert result.status_code==200
             assert ws.receive_json()['media_playback']['playing']
         assert client.post('/api/display/media',headers=screen_headers,json=dict(action='next',question='audio')).status_code==422
         assert client.post('/api/display/media',headers=host_headers,json=dict(action='media_pause',question='audio')).status_code==401
         assert client.post('/api/rooms/'+code+'/action',headers=screen_headers,json=dict(action='media_pause',question='audio')).status_code==401
-        assert client.post('/api/display/media',headers=screen_headers,json=dict(action='media_play',question='old')).status_code==400
+        assert client.post('/api/display/media',headers=screen_headers,json=dict(action='media_pause',question='old')).status_code==400

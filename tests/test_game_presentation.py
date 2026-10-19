@@ -149,7 +149,7 @@ def test_every_round_has_preview_before_questions_timers_events_or_media(tmp_pat
         db.change(code,host,'next')
         if mode=='grid':db.change(code,host,'pick',question=stages[index]['id'])
         assert db.read(code)['deadline']==now[0]+45
-        assert db.read(code)['media_playback']['playing']
+        assert not db.read(code)['media_playback']['playing']
         db.change(code,host,'close');db.change(code,host,'next')
     assert db.read(code)['phase']=='finished'
 

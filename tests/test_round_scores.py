@@ -39,12 +39,16 @@ def test_completed_round_waits_for_host_to_choose_scores_or_progression(tmp_path
         assert not db.read(code)['scores_visible']
         db.change(code, host, 'correct', player='b')
     state = db.read(code)
-    assert not state['scores_visible'] and state['phase'] == 'reveal' and state['display_scene'] == 'round_end'
+    assert not state['scores_visible'] and state['phase'] == 'reveal' and state['display_scene'] == 'answer'
     assert len(state['round_results']) == 1
     assert state['advance_at'] is None and state['stage_index'] == 0
     now[0] += 1000
     db = Store(db.path)
     assert not db.tick(code) and not db.read(code)['scores_visible']
+    assert db.read(code)['display_scene']=='answer'
+    with pytest.raises(ValueError): db.change(code,a,'end_round')
+    db.change(code,host,'end_round')
+    assert db.read(code)['display_scene']=='round_end'
     with pytest.raises(ValueError): db.change(code, a, 'next')
     db.change(code, host, 'adjust_score', player='a', delta=25)
     assert next(p for p in db.public(code, 'a')['players'] if p['id'] == 'a')['score'] == 125
@@ -55,6 +59,8 @@ def test_completed_round_waits_for_host_to_choose_scores_or_progression(tmp_path
     db.change(code, host, 'next')
     assert db.read(code)['active'] == 'q2'
     db.change(code, host, 'close')
+    assert db.read(code)['display_scene']=='answer'
+    db.change(code,host,'end_round')
     assert not db.read(code)['scores_visible'] and db.read(code)['display_scene'] == 'round_end'
     results = db.read(code)['round_results']
     assert [r['stage_id'] for r in results] == ['s1', 's2']
@@ -83,6 +89,8 @@ def test_last_media_question_plays_in_full_then_waits_for_host(tmp_path, media):
     assert not db.read(code)['scores_visible']
     db.change(code, host, 'media_play', question='q1')
     db.change(code, screen, 'media_pause', question='q1', position=60, duration=60, media_mode='full')
+    assert db.read(code)['display_scene']=='answer'
+    db.change(code,host,'end_round')
     assert not db.read(code)['scores_visible'] and db.read(code)['display_scene'] == 'round_end'
     db.change(code, host, 'show_scores')
     # A delayed second display must not close the results selected by the host.
@@ -102,7 +110,7 @@ def test_legacy_scheduled_transition_waits_at_round_end(tmp_path, monkeypatch):
         conn.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(state), code))
     monkeypatch.setattr('app.store.time.time', lambda: 1001)
     assert db.tick(code)
-    assert db.read(code)['stage_index'] == 0 and db.read(code)['display_scene'] == 'round_end'
+    assert db.read(code)['stage_index'] == 0 and db.read(code)['display_scene'] == 'answer'
     assert not db.read(code)['scores_visible']
 
 
@@ -118,9 +126,11 @@ def test_event_at_end_of_round_also_waits_for_host_choice(tmp_path):
     db.change(code, host, 'next')
     db.change(code, host, 'close'); db.change(code, host, 'next')
     state = db.read(code)
-    assert not state['scores_visible'] and state['phase'] == 'event' and state['display_scene'] == 'round_end'
+    assert not state['scores_visible'] and state['phase'] == 'event' and state['display_scene'] == 'question'
     assert state['advance_at'] is None and not db.tick(code)
     assert state['modifiers']['p']['kind'] == 'double_penalty'
+    db.change(code,host,'end_round')
+    assert db.read(code)['display_scene']=='round_end'
     db.change(code, host, 'next')
     assert db.read(code)['phase'] == 'finished'
 
@@ -137,8 +147,9 @@ def test_player_practice_stops_at_each_round_boundary(tmp_path, monkeypatch):
     now[0] = max(db.read(code)['bot_due'].values())+.1
     db.tick(code); now[0] += 2; db.tick(code)
     assert not db.read(code)['scores_visible'] and db.read(code)['advance_at'] is None
-    assert db.read(code)['display_scene'] == 'round_end'
+    assert db.read(code)['display_scene'] == 'answer'
     now[0] += 100
     assert not db.tick(code) and db.read(code)['stage_index'] == 0
+    db.change(code,player,'end_round')
     db.change(code, player, 'next')
     assert db.read(code)['stage_index'] == 1

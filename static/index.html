@@ -3,8 +3,8 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101e18"><title>Клан крыс · Крысиные бега</title>
 <link rel="icon" href="/static/rat.svg?v=2" type="image/svg+xml">
-<link rel="stylesheet" href="/static/style.css?v=11"><link rel="stylesheet" href="/static/roles.css?v=7"><link rel="stylesheet" href="/static/quiz.css?v=10"><link rel="stylesheet" href="/static/modes.css?v=9"><link rel="stylesheet" href="/static/experience.css?v=4"><link rel="stylesheet" href="/static/display.css?v=6"><link rel="stylesheet" href="/static/host.css?v=2">
-<script src="https://telegram.org/js/telegram-web-app.js"></script><script defer src="/static/experience.js?v=8"></script><script defer src="/static/playback.js?v=6"></script><script defer src="/static/app.js?v=30"></script>
+<link rel="stylesheet" href="/static/style.css?v=11"><link rel="stylesheet" href="/static/roles.css?v=7"><link rel="stylesheet" href="/static/quiz.css?v=10"><link rel="stylesheet" href="/static/modes.css?v=9"><link rel="stylesheet" href="/static/experience.css?v=4"><link rel="stylesheet" href="/static/display.css?v=7"><link rel="stylesheet" href="/static/host.css?v=2">
+<script src="https://telegram.org/js/telegram-web-app.js"></script><script defer src="/static/experience.js?v=9"></script><script defer src="/static/playback.js?v=7"></script><script defer src="/static/app.js?v=31"></script>
 </head><body><main>
 <header class="app-header"><a id="brand-link" href="/" class="brand" aria-label="Клан крыс — главная"><span class="brand-mark"><img src="/static/rat.svg?v=2" alt="" width="36" height="36"></span><span>клан<br><span>крыс.</span></span></a><div class="identity"><i aria-hidden="true"></i><span id="identity">Квиз для своих</span></div></header>
 <div id="notice" role="status" aria-live="polite"></div>
@@ -27,10 +27,10 @@
 
   <section id="host-console" class="host-console" aria-label="Пульт ведущего" hidden>
     <div id="presentation-controls" class="host-scenes" hidden><p id="presentation-status" aria-live="polite"></p><div class="inline" role="group" aria-label="Показать на демонстрации"><button id="scene-question" class="secondary small">Вопрос</button><button id="scene-answer" class="secondary small">Ответ</button><button id="scene-board" class="secondary small">Сетка</button></div></div>
-    <div id="host-toolbar" class="host-toolbar" hidden><button id="pause-game" class="secondary small" title="Остановить игру и показать экран перерыва">Пауза игры</button><button id="display-game-scores" class="secondary small" title="Остановить игру и показать игроков с баллами">Показать счёт</button><button id="continue-game" class="small" hidden>Продолжить игру</button></div>
+    <div id="host-toolbar" class="host-toolbar" hidden><button id="pause-game" class="secondary small" title="Остановить игру и показать экран перерыва">Пауза игры</button><button id="display-game-scores" class="secondary small" title="Остановить игру и показать игроков с баллами">Показать счёт</button><button id="continue-game" class="small" hidden>Продолжить игру</button><button id="end-round" class="small" hidden>Завершить раунд</button></div>
   </section>
   <section id="my-effects" class="panel my-effects" aria-label="Твои эффекты" aria-live="polite" hidden><h3>Твои эффекты</h3><div id="my-effect-list"></div></section>
-  <section id="display-media-unlock" class="display-sound-prompt" hidden><p>Включите звук один раз — аудио и видео следующих вопросов будут запускаться автоматически.</p><button id="enable-display-media" class="secondary small">Включить звук</button></section>
+  <section id="display-media-unlock" class="display-sound-prompt" hidden><p>Разрешите звук один раз. Аудио и видео запускает ведущий со своего экрана.</p><button id="enable-display-media" class="secondary small">Разрешить звук</button></section>
   <div class="game-grid">
 
     <div class="game-stage">

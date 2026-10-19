@@ -106,13 +106,13 @@ def finish_reveal(s):
     q = current_question(s)
     if q and q.get('media', {}).get('kind') in ('audio', 'video'):
         previous = s.get('media_playback') or {}
-        s['media_playback'] = dict(question=q['id'], mode='full', playing=True, position=0,
+        s['media_playback'] = dict(question=q['id'], mode='full', playing=False, position=0,
                                    updated_at=time.time(), revision=previous.get('revision', 0)+1)
         s['advance_at'] = None  # The host decides when the full recording ends.
         if not remaining_stage(s):
             complete_round(s, show_end=False)
     elif not remaining_stage(s):
-        complete_round(s)
+        complete_round(s, show_end=False)
 
 
 def record_round_result(s):
@@ -236,13 +236,13 @@ def start_question(s, selected=None):
         if current_stage(s)['auto_advance'] and remaining_stage(s):
             s['advance_at'] = time.time()+3
         if not remaining_stage(s):
-            complete_round(s)
+            complete_round(s, show_end=False)
         message(s, 'Ведущий', s['event']['title']+' · '+s['event']['description']+' Участники: '+', '.join(s['event']['targets']), 'system')
         return
     now = time.time()
     s.update(phase='question', active=q['id'], answers={}, deadline=now+q.get('seconds', 45), auto_at=None, event=None)
     if q.get('media', {}).get('kind') in ('audio', 'video'):
-        s['media_playback'] = dict(question=q['id'], mode='excerpt', playing=True, position=0, updated_at=now, revision=0)
+        s['media_playback'] = dict(question=q['id'], mode='excerpt', playing=False, position=0, updated_at=now, revision=0)
     snapshot_modifiers(s)
     s['bot_due'] = {p['id']: now+5+i*3 for i, p in enumerate([p for p in s['players'] if p.get('synthetic') and p['id'] != s['host']])}
     message(s, 'Ведущий', f"Вопрос {len(s['used'])+1}: {q['text']}", 'system')
@@ -468,12 +468,12 @@ class Store:
                         raise ValueError('Комната заполнена (8 игроков и ведущий)')
                     s['players'].append(dict(**user, score=0))
             else:
-                screen_media = (action in ('media_play', 'media_pause', 'media_seek') and user.get('role') == 'display'
+                screen_media = (action == 'media_pause' and user.get('role') == 'display'
                                 and user.get('room') == code and uid in s.get('observers', []))
                 if not member and not screen_media:
                     raise ValueError('Вы не участник комнаты')
                 practice_owner = s['practice'] and uid == s['owner']
-                if action not in ('answer', 'buzz', 'message', 'pick', 'reaction') and uid != s['host'] and not screen_media and not (practice_owner and action in ('close', 'next', 'finish', 'pause', 'unpause', 'show_scores', 'hide_scores', 'display_board', 'display_question', 'display_answer', 'display_scores')):
+                if action not in ('answer', 'buzz', 'message', 'pick', 'reaction') and uid != s['host'] and not screen_media and not (practice_owner and action in ('close', 'next', 'finish', 'pause', 'unpause', 'show_scores', 'hide_scores', 'display_board', 'display_question', 'display_answer', 'display_scores', 'end_round')):
                     raise ValueError('Это действие доступно только ведущему')
                 if s['paused'] and action not in ('reaction', 'pause', 'display_scores', 'unpause', 'show_scores', 'hide_scores', 'adjust_score', 'set_effect', 'clear_effect', 'skip_stage', 'media_volume', 'media_collapse'):
                     raise ValueError('Игра на паузе')
@@ -499,7 +499,7 @@ class Store:
                     if s['phase'] not in ('question', 'review', 'reveal') or not q or q['id'] != question or q.get('media', {}).get('kind') not in ('audio', 'video'):
                         raise ValueError('Медиаматериал этого вопроса уже недоступен')
                     now = time.time()
-                    playback = s.get('media_playback') or dict(question=q['id'], playing=True, position=0, updated_at=now, revision=0)
+                    playback = s.get('media_playback') or dict(question=q['id'], playing=False, position=0, updated_at=now, revision=0)
                     if media_mode is not None and media_mode != playback.get('mode', 'excerpt'):
                         return False  # Ignore delayed commands from the previous excerpt player.
                     if s.get('display_scene', 'question') not in ('question', 'answer'):
@@ -524,9 +524,14 @@ class Store:
                             position = 0
                     s['media_playback'] = dict(question=q['id'], playing=action == 'media_play' if action != 'media_seek' else playback['playing'],
                                                position=position, updated_at=now, revision=playback['revision']+1, duration=duration, mode=playback.get('mode', 'excerpt'))
-                    if (action == 'media_pause' and playback.get('mode') == 'full' and s['phase'] == 'reveal'
-                            and not remaining_stage(s) and duration is not None and position >= duration-.05):
-                        complete_round(s)
+                elif action == 'end_round':
+                    if s['phase'] not in ('reveal', 'event') or remaining_stage(s):
+                        raise ValueError('Сначала завершите вопросы и проверьте все ответы раунда')
+                    if s.get('media_playback'):
+                        now=time.time()
+                        playback=s['media_playback']
+                        playback.update(position=media_position(s,now),playing=False,updated_at=now,revision=playback['revision']+1)
+                    complete_round(s)
                 elif action in ('display_question', 'display_answer', 'display_board'):
                     scene = action.removeprefix('display_')
                     if s['phase'] in ('lobby', 'intro', 'finished'):
@@ -818,7 +823,7 @@ class Store:
                 if remaining_stage(s):
                     start_question(s)
                 else:
-                    complete_round(s)
+                    complete_round(s, show_end=False)
                 changed = True
             if changed:
                 s['version'] += 1
