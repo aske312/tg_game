@@ -312,7 +312,12 @@ async function connectDisplay(code){
 }
 async function create(){const s=await api('/rooms',{pack:$('pack').value});await join(s.code);}
 async function practice(role='host',pack=$('pack').value){const s=await api('/practice',{pack,role});apply(s);connect(s.code);}
-async function command(action,extra={}){apply(await api('/rooms/'+room.code+'/action',{action,...extra}));}
+async function roomRequest(path,body){
+  const code=room?.code;if(!code)return;
+  try{const snapshot=await api(path,body);if(room?.code===code)apply(snapshot);}
+  catch(error){if(room?.code===code)throw error;}
+}
+async function command(action,extra={}){if(room)await roomRequest('/rooms/'+room.code+'/action',{action,...extra});}
 async function refreshPacks(){
   const data=await api('/packs'),selected=$('pack').value;libraryPacks=data.packs;
   $('pack').querySelectorAll('[data-library],[value=demo]').forEach(n=>n.remove());
@@ -397,11 +402,12 @@ $('binary-options').onclick=guard(async event=>{const b=event.target.closest('[d
 $('board-cells').onclick=guard(async event=>{const b=event.target.closest('[data-pick]');if(b&&!b.disabled)await command('pick',{question:b.dataset.pick});});
 const pendingGrades=new Set();
 $('review-list').onclick=async e=>{
-  const b=e.target.closest('button[data-verdict]');if(!b||pendingGrades.has(b.dataset.player))return;
-  const player=b.dataset.player;pendingGrades.add(player);notice('');
+  const b=e.target.closest('button[data-verdict]');if(!b||!room)return;
+  const player=b.dataset.player,key=room.code+':'+b.dataset.question+':'+player;if(pendingGrades.has(key))return;
+  pendingGrades.add(key);notice('');
   for(const button of $('review-list').querySelectorAll('button'))if(button.dataset.player===player)button.disabled=true;
   try{await command(b.dataset.verdict,{player,question:b.dataset.question});}catch(error){notice(error.message||'Нет связи с сервером','error');}
-  finally{pendingGrades.delete(player);renderReview();}
+  finally{pendingGrades.delete(key);if(room)renderReview();}
 };
 $('reaction-buttons').onclick=async event=>{
   const button=event.target.closest('[data-reaction]'),now=Date.now();
@@ -410,7 +416,7 @@ $('reaction-buttons').onclick=async event=>{
   try{await command('reaction',{text:button.dataset.reaction});}catch{/* Reactions are optional and never interrupt the game. */}
 };
 $('finish').onclick=guard(async()=>{if(confirm('Завершить квиз и показать итоговый счёт?'))await command('finish');});
-$('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem(displayPage?'displayRoom':'room');sessionStorage.removeItem('roomRole');delete document.body.dataset.role;delete document.body.dataset.mediaExpanded;room=null;resetExperience();$('media-content').querySelector('audio,video')?.pause();$('media-content').replaceChildren();mediaKey='';show('game',false);show('home',!displayPage);show('display-entry',displayPage);if(displayPage)auth=null;else setRole('player');notice('');history.replaceState(null,'',location.pathname);};
+$('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem(displayPage?'displayRoom':'room');sessionStorage.removeItem('roomRole');delete document.body.dataset.role;delete document.body.dataset.mediaExpanded;room=null;resetExperience();disposeQuestionMedia();show('game',false);show('home',!displayPage);show('display-entry',displayPage);if(displayPage)auth=null;else setRole('player');notice('');history.replaceState(null,'',location.pathname);};
 $('q-kind').onchange=()=>{const kind=$('q-kind').value;show('file-fields',!!kind);show('clip-fields',kind==='audio'||kind==='video');$('q-file').accept=kind==='image'?'.png,.jpg,.jpeg,.jfif,.gif,.webp,.avif,.bmp':kind==='audio'?'.mp3,.wav,.ogg,.oga,.opus,.m4a,.aac,.flac':'.mp4,.webm,.mov,.m4v';$('q-file').required=!!kind;};
 function renderQuestionEditor() {
   const selected=room?.stages.find(s=>s.id===$('q-stage').value),binary=selected?.type==='binary',grid=selected?.type==='grid';
@@ -423,6 +429,7 @@ function renderQuestionEditor() {
 $('q-stage').onchange=renderQuestionEditor;
 $('question-form').onsubmit=guard(async()=>{
   if(uploading)return;
+  const code=room.code;
   const body={stage:$('q-stage').value,text:$('q-text').value,answer:$('q-answer').value,value:Number($('q-value').value),seconds:Number($('q-seconds').value),clip_start:Number($('clip-start').value||0),clip_end:$('clip-end').value?Number($('clip-end').value):null};
   if(room.stages.find(s=>s.id===body.stage)?.type==='grid')body.category=$('q-category').value;
   if(room.stages.find(s=>s.id===body.stage)?.type==='binary'){body.choices=[$('q-choice-a').value,$('q-choice-b').value];body.correct_choice=Number($('q-correct-choice').value);body.answer=body.choices[body.correct_choice];}
@@ -431,8 +438,11 @@ $('question-form').onsubmit=guard(async()=>{
   if(body.clip_end!=null&&body.clip_end<=body.clip_start)throw new Error('Конец отрывка должен быть позже начала');
   uploading=true;$('add-question').disabled=true;$('start').disabled=true;
   try{
-    if(kind){const r=await fetch(`/api/rooms/${room.code}/media?kind=${kind}`,{method:'POST',headers:{Authorization:'Bearer '+auth.token,'Content-Type':file.type||'application/octet-stream'},body:file});const data=await r.json();if(!r.ok)throw new Error(data.detail||'Не удалось загрузить файл');body.media_id=data.id;}
-    apply(await api('/rooms/'+room.code+'/questions',body));$('question-form').reset();$('q-kind').onchange();renderQuestionEditor();notice('Вопрос добавлен в конец пакета.');
+    if(kind){const r=await fetch(`/api/rooms/${code}/media?kind=${kind}`,{method:'POST',headers:{Authorization:'Bearer '+auth.token,'Content-Type':file.type||'application/octet-stream'},body:file});const data=await r.json();if(!r.ok)throw new Error(data.detail||'Не удалось загрузить файл');body.media_id=data.id;}
+    if(room?.code!==code)return;
+    await roomRequest('/rooms/'+code+'/questions',body);
+    if(room?.code!==code)return;
+    $('question-form').reset();$('q-kind').onchange();renderQuestionEditor();notice('Вопрос добавлен в конец пакета.');
   }finally{uploading=false;$('add-question').disabled=false;if(room)$('start').disabled=room.players.length<2||!room.question_count;}
 });
 $('invite').onclick=guard(async()=>{const link=config.bot_username?`https://t.me/${config.bot_username}?start=${room.code}`:`${location.origin}/?room=${room.code}`;if(tg?.initData&&config.bot_username)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Крысиные бега! Код: '+room.code)}`);else if(navigator.clipboard){await navigator.clipboard.writeText(link);notice('Ссылка скопирована. Код: '+room.code);}else notice('Код комнаты: '+room.code);});

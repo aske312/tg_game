@@ -1,14 +1,25 @@
-let activeClip=null, displaySoundEnabled=false;
+let activeClip=null, mediaNode=null, displaySoundEnabled=false;
+
+function disposeQuestionMedia(){
+  activeClip=null;
+  if(mediaNode){
+    mediaNode.onerror=null;
+    if(['AUDIO','VIDEO'].includes(mediaNode.tagName)){mediaNode.pause();mediaNode.removeAttribute('src');mediaNode.load();}
+    else mediaNode.removeAttribute('src');
+  }
+  mediaNode=null;mediaKey='';$('media-content').replaceChildren();
+}
 
 function renderDisplaySound() {
-  show('display-media-unlock',isDisplay()&&!displaySoundEnabled&&['audio','video'].includes(room?.question?.media?.kind));
+  const active=['question','review','reveal'].includes(room?.phase)&&!room.paused&&!room.scores_visible&&['question','answer'].includes(room.display_scene||'question');
+  show('display-media-unlock',isDisplay()&&active&&!displaySoundEnabled&&['audio','video'].includes(room?.question?.media?.kind));
 }
 async function sendMediaAction(action,position,duration) {
   if(!room?.question)return;
   const body={action,question:room.question.id,media_mode:mediaTransport().mode||'excerpt'};
   if(position!==undefined)body.position=position;
   if(duration!==undefined)body.duration=duration;
-  apply(await api(isDisplay()?'/display/media':'/rooms/'+room.code+'/action',body));
+  await roomRequest(isDisplay()?'/display/media':'/rooms/'+room.code+'/action',body);
 }
 function mediaTransport() {
   return room?.media_playback&&room.media_playback.question===room?.question?.id?room.media_playback:
@@ -46,12 +57,12 @@ function renderQuestionMedia(q) {
   const full=mediaTransport().mode==='full';
   const key=room.code+':'+q?.id+':'+(isDisplay()?'display':isHost()?'host':'player')+':'+full+':'+(isDisplay()&&hiddenPicture)+':'+JSON.stringify(m);
   if(key===mediaKey)return;
+  disposeQuestionMedia();
   mediaKey=key;
-  const previous=activeClip;activeClip=null;previous?.node.pause();
-  $('media-content').replaceChildren();
   if(!visible)return;
   const audioOnly=m.kind==='video'&&hiddenPicture;
   const node=document.createElement(m.kind==='image'?'img':m.kind);
+  mediaNode=node;
   node.onerror=()=>notice('Не удалось открыть материал. Проверьте формат файла или обновите игру.','error');
   if(m.kind==='image'){node.alt='Материал к вопросу';node.src=m.url;$('media-content').append(node);return;}
   node.preload='auto';node.controls=false;

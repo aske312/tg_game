@@ -246,11 +246,12 @@ def practice(body: PracticeRoom = PracticeRoom(), authorization: str = Header(de
 
 
 async def publish(code):
-    for ws, (uid, display) in list(connections.get(code, {}).items()):
+    async def send(ws,uid,display):
         try:
             await asyncio.wait_for(ws.send_json(store.public(code, uid, display)), timeout=3)
         except (RuntimeError, WebSocketDisconnect, asyncio.TimeoutError, OSError):
             connections.get(code, {}).pop(ws, None)
+    await asyncio.gather(*(send(ws,uid,display) for ws,(uid,display) in list(connections.get(code, {}).items())))
 
 
 async def simulate():
@@ -258,8 +259,11 @@ async def simulate():
         await asyncio.sleep(.5)
         try:
             for code in store.running_rooms():
-                if store.tick(code):
-                    await publish(code)
+                try:
+                    if store.tick(code):
+                        await publish(code)
+                except Exception:
+                    logging.getLogger(__name__).exception('Quiz timer or practice simulation failed for room %s',code)
         except Exception:
             logging.getLogger(__name__).exception('Quiz timers or practice simulation failed')
 

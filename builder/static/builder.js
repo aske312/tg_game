@@ -201,7 +201,7 @@ function renderPreview() {
   const container=$('preview-media');container.dataset.mediaKey=key;
   const hiddenPicture=(m.show_in_question??!m.audio_only)===false;
   if(m.type==='image'&&hiddenPicture){container.textContent='Изображение появится на демонстрации вместе с ответом.';return;}
-  const node=document.createElement(m.type==='image'?'img':m.type==='video'&&hiddenPicture?'audio':m.type);node.src=mediaURL(m.file);
+  const node=document.createElement(m.type==='image'?'img':m.type);node.src=mediaURL(m.file);
   node.onerror=()=>{if($('preview-media')!==container)return;disposeEditorMedia(container);container.replaceChildren(Object.assign(document.createElement('p'),{textContent:'Материал не найден. Загрузи файл для этого вопроса.'}));};
   if(m.type==='image')node.alt='Материал к вопросу';
   else {
@@ -210,6 +210,15 @@ function renderPreview() {
     node.addEventListener('loadedmetadata',()=>{if($('preview-media')!==container)return;const {start}=bounds();if(start<node.duration)node.currentTime=start;});
     node.addEventListener('play',()=>{if($('preview-media')!==container)return;const {start,end}=bounds();if(node.currentTime<start||(end!=null&&node.currentTime>=end))node.currentTime=start;});
     node.addEventListener('timeupdate',()=>{if($('preview-media')!==container)return;const {end}=bounds();if(!node.paused&&end!=null&&node.currentTime>=end)node.pause();});
+    if(m.type==='video'&&hiddenPicture){
+      // Keep the video decoder: Firefox cannot open a silent MP4 through <audio>.
+      node.hidden=true;node.controls=false;
+      const toggle=document.createElement('button');toggle.type='button';toggle.className='secondary';
+      const update=()=>{toggle.textContent=node.paused?'▶ Воспроизвести':'Ⅱ Пауза';toggle.setAttribute('aria-label',node.paused?'Воспроизвести звук в предпросмотре':'Приостановить звук в предпросмотре');};
+      toggle.onclick=async()=>{try{if(node.paused)await node.play();else node.pause();}catch(error){if($('preview-media')===container&&error.name!=='AbortError')notice('Не удалось воспроизвести запись в предпросмотре.','error');}};
+      for(const event of ['play','pause','ended'])node.addEventListener(event,update);
+      update();container.append(toggle);
+    }
   }
   $('preview-media').append(node);
 }

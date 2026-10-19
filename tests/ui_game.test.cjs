@@ -6,6 +6,66 @@ const vm=require('node:vm');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 
+test('delayed room commands cannot reopen a room after leaving or switching',async()=>{
+  for(const leave of [true,false]){
+    const h=harness();const original=h.apply({});
+    h.ctx.response={...original,version:original.version+10,ui_version:original.ui_version+10};
+    h.run('api=()=>new Promise(resolve=>globalThis.resolveRequest=resolve)');
+    const pending=h.run("command('reaction',{text:'x'})");
+    if(leave)h.node('leave').onclick();else h.apply({code:'OTHER2'});
+    h.run('resolveRequest(response)');await pending;
+    assert.equal(h.run('room?.code'),leave?undefined:'OTHER2');
+  }
+});
+
+test('leaving while a grade is pending does not render a closed room',async()=>{
+  const h=harness();h.run("auth.user.id='h'");
+  h.ctx.response=h.apply({phase:'review',answers:{p:{text:'Yes',verdict:null}}});
+  h.run("api=()=>new Promise(resolve=>globalThis.resolveRequest=resolve);globalThis.gradeButton={dataset:{player:'p',question:'q1',verdict:'correct'}}");
+  const pending=h.run("$('review-list').onclick({target:{closest:()=>gradeButton}})");
+  h.node('leave').onclick();h.run('resolveRequest(response)');await pending;
+  assert.equal(h.run('room'),null);
+});
+
+test('pending grades in an old room do not block the same player in a new room',async()=>{
+  const h=harness();h.run("auth.user.id='h';globalThis.resolvers=[];api=()=>new Promise(resolve=>resolvers.push(resolve));globalThis.gradeButton={dataset:{player:'p',question:'q1',verdict:'correct'}}");
+  h.ctx.old=h.apply({phase:'review',answers:{p:{text:'Yes',verdict:null}}});
+  const first=h.run("$('review-list').onclick({target:{closest:()=>gradeButton}})");
+  h.node('leave').onclick();h.ctx.newRoom=h.apply({code:'OTHER2',phase:'review',answers:{p:{text:'Yes',verdict:null}}});
+  const second=h.run("$('review-list').onclick({target:{closest:()=>gradeButton}})");
+  assert.equal(h.run('resolvers.length'),2);
+  h.run('resolvers[0](old)');await first;assert.equal(h.run('pendingGrades.size'),1);
+  h.run('resolvers[1](newRoom)');await second;assert.equal(h.run('pendingGrades.size'),0);
+});
+
+test('delayed question creation does not reopen a departed lobby',async()=>{
+  const h=harness();h.run("auth.user.id='h'");h.ctx.response=h.apply({});
+  h.node('q-file').files=[];
+  h.run('api=()=>new Promise(resolve=>globalThis.resolveRequest=resolve)');
+  const pending=h.node('question-form').onsubmit();
+  h.node('leave').onclick();h.run('resolveRequest(response)');await pending;
+  assert.equal(h.run('room'),null);assert.equal(h.node('notice').textContent,'');
+});
+
+test('display sound prompt disappears during breaks, round end and final results',()=>{
+  const h=harness({pathname:'/display'}),question={id:'music',media:{kind:'audio',url:'/song.wav'}};
+  h.apply({display:true,question});assert(!h.node('display-media-unlock').hidden);
+  for(const patch of [{phase:'finished'},{paused:true},{phase:'reveal',scores_visible:true},{phase:'reveal',stage_complete:true,display_scene:'round_end'}]){
+    h.apply({display:true,question,...patch});assert(h.node('display-media-unlock').hidden,JSON.stringify(patch));
+  }
+});
+
+test('display releases old decoders and ignores stale media errors',()=>{
+  const h=harness({pathname:'/display'});
+  h.apply({display:true,question:{id:'a',media:{kind:'audio',url:'/audio.wav'}}});
+  const old=h.node('media-content').children[0].children[0];
+  old.emit('loadedmetadata');
+  h.apply({display:true,question:{id:'b',media:{kind:'image',url:'/image.png'}}});
+  assert.equal(old.src,undefined);assert.equal(old.loads,1);assert.equal(old.onerror,null);assert(old.paused);
+  old.emit('loadedmetadata');assert.equal(h.run('activeClip'),null);
+  h.node('leave').onclick();assert.equal(h.run('mediaNode'),null);
+});
+
 test('binary host retains checked choices and final scores return to awards',()=>{
   const h=harness();h.run("auth.user.id='h'");
   const stage={id:'g',type:'binary',title:'Binary',answer_penalties:false,trap_penalties:false};
@@ -134,6 +194,7 @@ function harness(options={}) {
       emit(event){for(const fn of listeners[event]||[])fn();},
       get innerHTML(){return html;},set innerHTML(value){html=value;this.writes++;},
       querySelectorAll(){return [];},querySelector(){return null;},setAttribute(key,value){this.attributes[key]=value;},addEventListener(event,fn){(listeners[event]??=[]).push(fn);},
+      removeAttribute(key){delete this.attributes[key];if(key==='src')delete this.src;},load(){this.loads=(this.loads||0)+1;},
       replaceChildren(){this.children=[];},append(node){this.children.push(node);},remove(){},
     };
   }

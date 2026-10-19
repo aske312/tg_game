@@ -25,6 +25,7 @@ jobs:
   browser:
     needs: test
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     env:
       BUILD_SHA: ${{ github.sha }}
     steps:
@@ -43,6 +44,7 @@ jobs:
           pactl info
       - run: python tests/browser_check.py
       - run: python tests/browser_media_check.py
+      - run: python tests/browser_scenario_check.py
       - uses: actions/upload-artifact@v7
         if: always()
         with:

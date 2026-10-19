@@ -177,6 +177,8 @@ def review_single_answer(s):
 
 
 def finish_game(s):
+    if s.get('score_stage') == current_stage(s)['id']:
+        record_round_result(s)
     s['media_expanded'] = False
     s.update(phase='finished', deadline=None, advance_at=None, finished_at=time.time(), scores_visible=False, media_playback=None)
 

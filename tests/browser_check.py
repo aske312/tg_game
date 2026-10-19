@@ -282,6 +282,7 @@ def check_display_media(browser, stack, app_url, database, watch):
     expect(host.locator('#next')).to_be_visible()
     screen.wait_for_function("document.querySelector('#media-content video')?.readyState >= 1")
     assert screen.evaluate("document.querySelector('#media-content video').paused"), 'Answer media started automatically'
+    assert screen.evaluate("!mediaRef.hasAttribute('src') && mediaRef.paused"), 'Old question decoder remains attached'
     # The full recording shown with the answer must also fill the viewport.
     host.locator('#display-media-expand').click()
     screen.wait_for_function("document.body.dataset.mediaExpanded === 'true'")

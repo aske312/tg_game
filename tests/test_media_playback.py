@@ -40,6 +40,22 @@ def test_media_waits_for_host_then_pause_resume_and_position_persist(media_game)
     assert db.read(code)['media_playback']['position']==12
 
 
+def test_late_media_play_does_not_restart_media_after_round_end(media_game):
+    db,code,host,player,now=media_game
+    # Finish the remaining questions by moving them to the played list.
+    with db.connect() as connection:
+        import json
+        state=db.read(code)
+        state['used']=['image','video']
+        connection.execute('UPDATE rooms SET state=? WHERE code=?',(json.dumps(state),code))
+    db.change(code,host,'close')
+    db.change(code,host,'end_round')
+    before=db.read(code)
+    with pytest.raises(ValueError):
+        db.change(code,host,'media_play',question='audio')
+    assert db.read(code)==before
+
+
 def test_game_pause_freezes_media_and_round_scores_stop_it(media_game):
     db,code,host,player,now=media_game
     db.change(code,host,'media_play',question='audio')
