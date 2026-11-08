@@ -475,7 +475,7 @@ class Store:
                 if not member and not screen_media:
                     raise ValueError('Вы не участник комнаты')
                 practice_owner = s['practice'] and uid == s['owner']
-                if action not in ('answer', 'buzz', 'message', 'pick', 'reaction') and uid != s['host'] and not screen_media and not (practice_owner and action in ('close', 'next', 'finish', 'pause', 'unpause', 'show_scores', 'hide_scores', 'display_board', 'display_question', 'display_answer', 'display_scores', 'end_round')):
+                if action not in ('answer', 'buzz', 'message', 'pick', 'reaction') and uid != s['host'] and not screen_media and not (practice_owner and action in ('close', 'next', 'finish', 'pause', 'unpause', 'show_scores', 'hide_scores', 'display_board', 'display_question', 'display_answer', 'display_scores', 'end_round', 'media_play', 'media_pause', 'media_seek', 'media_volume')):
                     raise ValueError('Это действие доступно только ведущему')
                 if s['paused'] and action not in ('reaction', 'pause', 'display_scores', 'unpause', 'show_scores', 'hide_scores', 'adjust_score', 'set_effect', 'clear_effect', 'skip_stage', 'media_volume', 'media_collapse'):
                     raise ValueError('Игра на паузе')

@@ -163,3 +163,39 @@ test('each upload zone accepts drops explicitly for both initial upload and repl
     assert.equal(typeof h.node(id).ondragover,'function');assert.equal(typeof h.node(id).ondrop,'function');
   }
 });
+
+test('creating a game opens its first question after the asynchronous request',async()=>{
+  const h=harness(document());h.node('create-dialog').close=()=>{};h.node('new-title').value='New';
+  h.run("api=async()=>({id:'new',document:{title:'New',stages:[{id:'first',type:'blitz',title:'First'}],rounds:[]}});refresh=async()=>{}");
+  await h.node('create-form').onsubmit();
+  assert.equal(h.doc().rounds.length,1);assert.equal(h.run('round().stage'),'first');assert(h.run('state.dirty'));
+});
+test('a new empty stage at the question limit can be saved',()=>{
+  const doc=document();doc.rounds=Array.from({length:100},(_,i)=>({...doc.rounds[0],id:'q'+i}));
+  const h=harness(doc);h.node('new-stage-type').value='blitz';h.node('add-stage').onclick();
+  assert.equal(h.doc().stages.length,3);assert.equal(h.doc().rounds.length,100);assert(h.run('state.dirty'));
+  assert(!h.node('save').disabled);
+});
+test('movement in a category filter swaps visible questions without touching hidden questions',()=>{
+  const doc=document();[doc.rounds[1],doc.rounds[2]]=[doc.rounds[2],doc.rounds[1]];
+  const h=harness(doc);h.run("openCategoryQuestions('Space');move(1)");
+  assert.deepEqual(h.doc().rounds.slice(0,3).map(q=>q.id),['g2','other','g1']);
+  assert.equal(h.run('round().id'),'g1');assert(h.node('move-down').disabled);
+  assert.match(h.node('round-list').innerHTML,/round-number">03/);
+});
+test('leaving the editor pauses every preview attachment',()=>{
+  const h=harness(document());h.run("previewPlayers=[{paused:false,pause(){this.paused=true}},{paused:false,pause(){this.paused=true}}];$('preview-media').querySelectorAll=()=>previewPlayers");
+  h.run('pauseClipEditor()');assert(h.run('previewPlayers.every(p=>p.paused)'));
+});
+
+test('invalid imported attachment entries stay editable until validation',()=>{
+  const doc=document();doc.rounds[0].attachments=[null,{type:'video'},{type:'image',file:42}];
+  const h=harness(doc);assert(h.node('attachment-list').innerHTML.includes('Файл не выбран'));
+  assert.equal(h.doc().rounds[0].attachments.length,3);
+});
+
+test('answer-only attachments are visible in material status and question list',()=>{
+  const doc=document();doc.rounds[0].attachments=[{type:'image',file:'media/answer.png',answer:true}];
+  const h=harness(doc);assert.match(h.node('material-status').textContent,/1 файл/);
+  assert.match(h.node('round-list').innerHTML,/МЕДИА/);
+});

@@ -44,7 +44,7 @@ function updateActions() {
   $('save').disabled=state.busy||!state.dirty;
   $('add-question').disabled=$('add-event').disabled=state.busy||!stage()||(state.doc?.rounds.length??0)>=100;
   $('add-event').disabled||=stage()?.type==='grid';
-  const positions=stageQuestions().map(({i})=>i),position=positions.indexOf(state.index);
+  const positions=visibleStageItems().map(({i})=>i),position=positions.indexOf(state.index);
   $('move-up').disabled=state.busy||position<=0;
   $('move-down').disabled=state.busy||position<0||position>=positions.length-1;
   $('stage-up').disabled=state.busy||state.stageIndex<=0;
@@ -115,7 +115,8 @@ function renderRounds() {
   $('round-count').textContent=countLabel(questions,['вопрос','вопроса','вопросов'])+' · '+countLabel(events,['событие','события','событий'])+' · '+countLabel(state.doc.stages.length,['раунд','раунда','раундов']);
   renderCategoryOverview();
   const items=visibleStageItems();show('no-rounds',!items.length);
-  $('round-list').innerHTML=items.map(({q,i},n)=>`<li><button class="${i===state.index?'selected':''}" data-round="${i}" aria-pressed="${i===state.index}"><span class="round-number">${String(n+1).padStart(2,'0')}</span><span class="round-name"><small>${q.type==='event'?'✳ СОБЫТИЕ':'ВОПРОС'}${q.media?' · МЕДИА':''}</small>${esc(q.type==='event'?q.title||'Новое событие':q.text||'Новый вопрос')}</span></button></li>`).join('');
+  const numbers=new Map(stageQuestions().map(({i},n)=>[i,n+1]));
+  $('round-list').innerHTML=items.map(({q,i})=>`<li><button class="${i===state.index?'selected':''}" data-round="${i}" aria-pressed="${i===state.index}"><span class="round-number">${String(numbers.get(i)).padStart(2,'0')}</span><span class="round-name"><small>${q.type==='event'?'✳ СОБЫТИЕ':'ВОПРОС'}${q.media||q.attachments?.length?' · МЕДИА':''}</small>${esc(q.type==='event'?q.title||'Новое событие':q.text||'Новый вопрос')}</span></button></li>`).join('');
 }
 function renderStages() {
   if(!state.doc)return;
@@ -135,7 +136,7 @@ function renderStageSettings() {
 }
 function selectStage(index) {resetStageNavigation();editorNav.gameTab='rounds';state.stageIndex=index;state.index=stageQuestions()[0]?.i??-1;renderStages();renderStageSettings();renderRounds();renderRound();updateActions();}
 $('stage-list').onclick=e=>{const button=e.target.closest('[data-stage]');if(button&&!state.busy)selectStage(Number(button.dataset.stage));};
-$('add-stage').onclick=()=>{if(state.busy||state.doc.stages.length>=30)return;const type=$('new-stage-type').value;state.doc.stages.push({id:roundId(),type,title:'Раунд '+(state.doc.stages.length+1),order:'sequential',chooser:'winner',auto_advance:false});selectStage(state.doc.stages.length-1);addRound('question');};
+$('add-stage').onclick=()=>{if(state.busy||state.doc.stages.length>=30)return;const type=$('new-stage-type').value;state.doc.stages.push({id:roundId(),type,title:'Раунд '+(state.doc.stages.length+1),order:'sequential',chooser:'winner',auto_advance:false});selectStage(state.doc.stages.length-1);markDirty();addRound('question');};
 for(const [field,key] of [['stage-title','title'],['stage-order','order'],['stage-chooser','chooser'],['stage-answer-mode','answer_mode'],['stage-auto','auto_advance']])$(field).oninput=()=>{if(!stage())return;stage()[key]=key==='auto_advance'?$(field).value==='auto':$(field).value;markDirty();};
 for(const [field,key] of [['stage-answer-penalties','answer_penalties'],['stage-trap-penalties','trap_penalties']])$(field).oninput=()=>{if(!stage())return;stage()[key]=$(field).value==='on';markDirty();};
 $('stage-type').onchange=()=>{const old=stage().type;stage().type=$('stage-type').value;normalizeStageCategories(state.doc);for(const {q} of stageQuestions()){if(q.type!=='question')continue;if(stage().type==='binary')binaryDefaults(q);else if(old==='binary'){delete q.choices;delete q.correct_choice;}}markDirty();renderStageSettings();renderRound();};
@@ -177,7 +178,9 @@ function renderMediaFields() {
   $('file-name').textContent=typeof m?.file==='string'?m.file.split('/').pop():'';
   $('media-file').value='';$('media-file').accept=type==='image'?'.png,.jpg,.jpeg,.jfif,.gif,.webp,.avif,.bmp':type==='audio'?'.mp3,.wav,.ogg,.oga,.opus,.m4a,.aac,.flac':'.mp4,.webm,.mov,.m4v';
   $('upload-label').textContent=m?.file?'Заменить материал':'Выбрать файл';
-  $('material-status').textContent=m?.file?'файл добавлен':type?'выбери файл':'не добавлен';
+  const attached=Array.isArray(round()?.attachments)?round().attachments:[];
+  const count=Number(!!m?.file)+attached.filter(item=>typeof item?.file==='string'&&item.file).length;
+  $('material-status').textContent=count?countLabel(count,['файл','файла','файлов']):type?'выбери файл':'не добавлен';
   renderAttachments();renderClipEditor();
 }
 function mediaURL(file) {return '/api/games/'+id()+'/media?file='+encodeURIComponent(file);}
@@ -238,8 +241,8 @@ $('media-show-in-question').onchange=()=>{const media=round()?.media;if(!media||
 $('remove-media').onclick=()=>{delete round().media;$('media-type').value='';markDirty();renderMediaFields();renderPreview();};
 for(const [field,key] of [['game-title','title'],['game-description','description']])$(field).oninput=()=>{state.doc[key]=$(field).value;$('editor-title').textContent=state.doc.title||'Без названия';markDirty();};
 
-function addRound(type) {
-  if(state.busy||!stage()||state.doc.rounds.length>=100)return;
+function addRound(type,{duringRequest=false}={}) {
+  if((state.busy&&!duringRequest)||!stage()||state.doc.rounds.length>=100)return;
   const q=type==='event'?{id:roundId(),type,title:'',text:'',effect:{type:'random_buff',target:'random_player',questions:1}}:{id:roundId(),type,text:'',answer:'',accepted_answers:[]};
   q.stage=stage().id;if(stage().type==='binary'&&type==='question')binaryDefaults(q);
   if(stage().type==='grid'&&editorNav.filter?.kind==='category')q.category=gridCategories().find(c=>categoryKey(c)===editorNav.filter.name);
@@ -249,7 +252,7 @@ function addRound(type) {
 }
 $('add-question').onclick=()=>addRound('question');$('add-event').onclick=()=>addRound('event');
 $('round-list').onclick=event=>{const button=event.target.closest('[data-round]');if(!button||state.busy)return;state.index=Number(button.dataset.round);renderRounds();renderRound();};
-function move(delta) {if(state.busy)return;const positions=stageQuestions().map(({i})=>i),target=positions[positions.indexOf(state.index)+delta];if(target===undefined)return;[state.doc.rounds[state.index],state.doc.rounds[target]]=[state.doc.rounds[target],state.doc.rounds[state.index]];state.index=target;markDirty();renderRound();}
+function move(delta) {if(state.busy)return;const positions=visibleStageItems().map(({i})=>i),target=positions[positions.indexOf(state.index)+delta];if(target===undefined)return;[state.doc.rounds[state.index],state.doc.rounds[target]]=[state.doc.rounds[target],state.doc.rounds[state.index]];state.index=target;markDirty();renderRound();}
 $('move-up').onclick=()=>move(-1);$('move-down').onclick=()=>move(1);
 $('duplicate-round').onclick=()=>{if(state.doc.rounds.length>=100)return;const q=structuredClone(round());q.id=roundId();state.doc.rounds.splice(state.index+1,0,q);state.index++;markDirty();renderRound();};
 $('remove-round').onclick=()=>{if(!confirm('Убрать этот вопрос или событие из игры?'))return;state.doc.rounds.splice(state.index,1);state.index=visibleStageItems().find(({i})=>i>=state.index)?.i??visibleStageItems().at(-1)?.i??-1;markDirty();renderRound();};
@@ -269,7 +272,7 @@ $('import-json').onchange=guarded(async()=>{const file=$('import-json').files[0]
 function newGameDialog() {if(!state.busy&&canLeave()){$('new-title').value='';$('create-dialog').showModal();$('new-title').focus();}}
 $('new-game').onclick=newGameDialog;$('empty-create').onclick=newGameDialog;
 $('cancel-create').onclick=()=>$('create-dialog').close();
-$('create-form').onsubmit=guarded(async()=>{const title=$('new-title').value.trim();if(!title)throw new Error('Введите название игры.');const snapshot=await api('/games','POST',{title});$('create-dialog').close();accept(snapshot);await refresh();addRound('question');$('question-text').focus();});
+$('create-form').onsubmit=guarded(async()=>{const title=$('new-title').value.trim();if(!title)throw new Error('Введите название игры.');const snapshot=await api('/games','POST',{title});$('create-dialog').close();accept(snapshot);await refresh();addRound('question',{duringRequest:true});$('question-text').focus();});
 function openDeleteDialog(gameId) {
   if(state.busy)return;
   const game=state.games.find(g=>g.id===gameId);if(!game)return;

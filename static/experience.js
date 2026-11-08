@@ -72,7 +72,7 @@ function renderExperience() {
   if(!$('board-waiting').hidden)show('question',false);
   if(paused||scores||intro){
     for(const id of ['question','question-board','event','ready','stage-banner','board-waiting'])show(id,false);
-    const media=$('media-content').querySelector('audio,video');media?.pause();
+    for(const media of $('media-content').querySelectorAll('audio,video'))media.pause();
   }
   if(endScreen&&(!isHost()||room.display_scene==='round_end')){
     for(const id of ['question','question-board','event','stage-banner','board-waiting'])show(id,false);

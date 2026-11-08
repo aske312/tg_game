@@ -144,3 +144,57 @@ def test_mixed_game_scenarios_survive_pause_and_restart(tmp_path,monkeypatch,ans
     assert final['phase']=='finished' and len(final['round_results'])==4
     for player in final['players'][1:]:
         assert player['score']==sum(next(p['round_points'] for p in r['players'] if p['id']==player['id']) for r in final['round_results'])
+
+
+@pytest.mark.parametrize('mode', ['blitz', 'binary', 'grid-all', 'grid-single'])
+def test_host_commands_never_mutate_rooms_for_other_roles(tmp_path, mode):
+    db = Store(tmp_path/'permissions.sqlite3')
+    host, player = dict(id='host', name='Host'), dict(id='p', name='Player')
+    screen = dict(id='screen', name='Screen', role='display')
+    kind = 'grid' if mode.startswith('grid') else mode
+    stages = stages_from_doc({'stages': [dict(id='s', type=kind, title='Round', categories=['Topic'],
+        answer_mode='single' if mode=='grid-single' else 'all')]})
+    q = dict(id='q', stage='s', type='question', category='Topic', text='?', answer='Yes', value=100, seconds=45)
+    if kind=='binary': q.update(choices=['Yes', 'No'], correct_choice=0)
+    code = db.create(host, stages=stages, questions=[q])
+    db.change(code, player, 'join'); db.change(code, screen, 'watch')
+    db.change(code, host, 'start'); db.change(code, host, 'next')
+    if kind=='grid': db.change(code, host, 'pick', question='q')
+    commands = [('next', {}), ('close', {}), ('correct', dict(player='p')),
+        ('pause', {}), ('finish', {}), ('end_round', {}), ('skip_stage', {}),
+        ('adjust_score', dict(player='p', delta=100)), ('set_effect', dict(player='p', effect=dict(type='shield', questions=1))),
+        ('media_volume', dict(volume=.5)), ('show_scores', {})]
+    for actor in (player, screen, dict(id='stranger', name='Stranger')):
+        for action, kwargs in commands:
+            before = db.read(code)
+            with pytest.raises(ValueError): db.change(code, actor, action, **kwargs)
+            assert db.read(code) == before, (mode, actor['id'], action)
+
+
+def test_expired_question_cannot_accept_late_answers_or_apply_omission_twice(tmp_path, monkeypatch):
+    now = [1000.]
+    monkeypatch.setattr('app.store.time.time', lambda: now[0])
+    db = Store(tmp_path/'late.sqlite3'); host=dict(id='h',name='Host'); player=dict(id='p',name='Player')
+    code=db.create(host, questions=[dict(id='q',text='?',answer='Yes',value=100,seconds=10)])
+    db.change(code,player,'join');db.change(code,host,'start');db.change(code,host,'next')
+    now[0]+=11;db.tick(code)
+    before=db.read(code)
+    with pytest.raises(ValueError):db.change(code,player,'answer',question='q',text='Yes')
+    assert db.read(code)==before
+    db.change(code,host,'close');closed=db.read(code)
+    with pytest.raises(ValueError):db.change(code,host,'close')
+    assert db.read(code)==closed
+    assert closed['players'][1]['score']==-100
+
+
+def test_player_practice_can_control_its_own_media(tmp_path):
+    db=Store(tmp_path/'practice-media.sqlite3');owner=dict(id='p',name='Player')
+    code=db.create(owner,practice=True,questions=[dict(id='audio',text='Listen',answer='Yes',seconds=3600,value=100,
+        media=dict(kind='audio',url='/audio.wav',start=0,end=3))])
+    assert not db.read(code)['media_playback']['playing']
+    db.change(code,owner,'media_play',question='audio')
+    assert db.read(code)['media_playback']['playing']
+    db.change(code,owner,'media_volume',volume=.3)
+    assert db.read(code)['media_volume']==.3
+    db.change(code,owner,'media_pause',question='audio')
+    assert not db.read(code)['media_playback']['playing']

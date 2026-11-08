@@ -56,7 +56,7 @@ function clipProblem(media,duration=null) {
   return '';
 }
 function clipDurationKey(media) {return state.snapshot.id+':'+media.file;}
-function pauseClipEditor() {$('clip-player')?.pause();$('preview-media')?.querySelector('audio,video')?.pause();updateClipActions();}
+function pauseClipEditor() {$('clip-player')?.pause();for(const player of $('preview-media')?.querySelectorAll('audio,video')||[])player.pause();updateClipActions();}
 function updateClipActions() {
   const media=clipMedia();
   for(const id of ['clip-use-start','clip-use-end'])$(id).disabled=state.busy||!media?.file||clipEditor.duration==null;
@@ -155,8 +155,8 @@ function initMediaEditor() {
 }
 
 function renderAttachments() {
-  const files=round()?.attachments||[];
-  $('attachment-list').innerHTML=files.map((m,i)=>`<div class="attachment" data-attachment="${i}"><span>${m.answer?'К ответу':'К вопросу'}: ${esc(m.file.split('/').pop())}</span><label class="quiet">Заменить<input type="file" data-replace-attachment="${i}" accept="image/*,audio/*,video/*" ${state.busy?'disabled':''}></label><button type="button" class="quiet danger-text" data-remove-attachment="${i}" ${state.busy?'disabled':''}>Убрать</button><span class="hint">Для замены можно перетащить файл в эту строку</span></div>`).join('');
+  const files=Array.isArray(round()?.attachments)?round().attachments:[];
+  $('attachment-list').innerHTML=files.map((m,i)=>`<div class="attachment" data-attachment="${i}"><span>${m?.answer?'К ответу':'К вопросу'}: ${esc(typeof m?.file==='string'?m.file.split('/').pop():'Файл не выбран')}</span><label class="quiet">Заменить<input type="file" data-replace-attachment="${i}" accept="image/*,audio/*,video/*" ${state.busy?'disabled':''}></label><button type="button" class="quiet danger-text" data-remove-attachment="${i}" ${state.busy?'disabled':''}>Убрать</button><span class="hint">Для замены можно перетащить файл в эту строку</span></div>`).join('');
 }
 function fileMediaType(file) {
   const ext=file.name?.split('.').pop().toLowerCase();
@@ -168,9 +168,10 @@ function fileMediaType(file) {
 async function uploadFiles(files,{answer=false,replace=null,primary=false}={}) {
   files=Array.from(files||[]);if(!files.length)return;
   const q=round();if(q?.type!=='question')return;
+  const attachments=Array.isArray(q.attachments)?q.attachments:[];
   if(replace!==null&&files.length!==1)throw new Error('Для замены одного вложения выбери один файл.');
   const extra=files.length-(replace!==null||!answer&&(primary||!q.media?.file)?1:0);
-  if((q.attachments?.length||0)+Math.max(0,extra)>20)throw new Error('Можно добавить не больше 20 дополнительных файлов.');
+  if(attachments.length+Math.max(0,extra)>20)throw new Error('Можно добавить не больше 20 дополнительных файлов.');
   const types=files.map(file=>{
     if(file.size>25*1024*1024)throw new Error('Каждый файл должен быть не больше 25 МБ.');
     const type=fileMediaType(file);if(!type)throw new Error('Выбери изображение, аудио или видео.');return type;
@@ -183,9 +184,9 @@ async function uploadFiles(files,{answer=false,replace=null,primary=false}={}) {
       const media={type:result.type,file:result.file,start:0};
       if(answer)media.answer=true;
       if(primary&&index===0)q.media=media;
-      else if(replace!==null){media.answer=q.attachments[replace].answer===true;q.attachments[replace]=media;}
+      else if(replace!==null){media.answer=q.attachments[replace]?.answer===true;q.attachments[replace]=media;}
       else if(!answer&&!q.media?.file)q.media=media;
-      else (q.attachments??=[]).push(media);
+      else {q.attachments=attachments;attachments.push(media);}
       markDirty();
     }
     notice('Файлы загружены. Нажми «Сохранить черновик», чтобы сохранить изменения.');
@@ -209,7 +210,8 @@ function initAttachments() {
 }
 
 function renderAttachmentPreview(q) {
-  for(const media of q.attachments||[]){
+  for(const media of Array.isArray(q.attachments)?q.attachments:[]){
+    if(!media||typeof media.file!=='string'||!media.file||!['image','audio','video'].includes(media.type))continue;
     const label=document.createElement('p');label.textContent=media.answer?'Материал к ответу':'Дополнительный материал к вопросу';
     const player=document.createElement(media.type==='image'?'img':media.type);player.src=mediaURL(media.file);
     if(media.type==='image')player.alt=label.textContent;else {player.controls=true;player.preload='metadata';}

@@ -650,3 +650,29 @@ test('additional question files render together and answer files wait for reveal
   assert.equal(h.node('media-content').children.length,3);
   assert(h.node('media-content').children.some(node=>node.tagName==='VIDEO'&&node.src==='/answer.mp4'));
 });
+
+test('additional media obey game pause, scores, scene visibility and shared volume',()=>{
+  const h=harness({pathname:'/display'}),question={id:'q1',text:'?',attachments:[{kind:'audio',url:'/one.wav'},{kind:'video',url:'/two.mp4'}]};
+  h.apply({display:true,question,media_volume:.25});
+  const players=h.node('media-content').children.filter(n=>['AUDIO','VIDEO'].includes(n.tagName));
+  assert.equal(players.length,2);assert(players.every(p=>p.volume===.25));
+  for(const state of [{paused:true},{scores_visible:true},{display_scene:'board'},{phase:'finished'}]){
+    for(const p of players)p.paused=false;
+    h.apply({display:true,question,...state});assert(players.every(p=>p.paused),JSON.stringify(state));
+  }
+});
+test('answer attachments disappear when the host returns the display to the question',()=>{
+  const h=harness({pathname:'/display'}),question={id:'q1',attachments:[{kind:'image',url:'/answer.png',answer:true}]};
+  h.apply({display:true,phase:'reveal',display_scene:'answer',question});
+  assert.equal(h.node('media-content').children.length,1);
+  h.apply({display:true,phase:'reveal',display_scene:'question',question});
+  assert.equal(h.node('media-content').children.length,0);
+});
+
+test('solo player practice can play media locally while competitive players stay silent',()=>{
+  const h=harness(),question={id:'m',media:{kind:'audio',url:'/audio.wav'}};
+  h.apply({practice:true,owner:'p',question,media_playback:{question:'m',playing:true,position:0,updated_at:1000,revision:0}});
+  assert(!h.node('host-media-controls').hidden);
+  const audio=h.node('media-content').children[0].children[0];audio.emit('loadedmetadata');
+  assert.equal(audio.paused,false);
+});

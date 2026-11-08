@@ -59,6 +59,56 @@ def check_pending_grade(page,url,database):
     page.unroute('**/api/rooms/*/action')
 
 
+def check_additional_media(page,screen,url,database):
+    db=Store(database);host=page.evaluate('auth.user')
+    code=db.create(host,questions=[dict(id='attachments',text='Several files',answer='Yes',value=100,seconds=3600,
+        attachments=[dict(kind='video',url='/static/demo/colors.mp4'),dict(kind='audio',url='/static/demo/signals.wav'),
+                     dict(kind='image',url='/static/demo/triangle.svg',answer=True)])])
+    db.change(code,dict(id='attachment-player',name='Player'),'join')
+    page.goto(url+'/?room='+code);screen.goto(url+'/display?room='+code)
+    page.locator('#start').click();page.locator('#skip-intro').click()
+    expect(screen.locator('#media-content video')).to_have_count(1)
+    expect(screen.locator('#media-content audio')).to_have_count(1)
+    expect(screen.locator('#media-content img')).to_have_count(0)
+    token=db.session(host)
+    def action(action,**extra):
+        response=page.request.post(url+'/api/rooms/'+code+'/action',headers={'Authorization':'Bearer '+token},
+            data=dict(action=action,**extra))
+        assert response.ok,(action,response.status)
+    action('media_volume',volume=.3)
+    screen.wait_for_function("Array.from(document.querySelectorAll('#media-content audio,#media-content video')).every(p=>Math.abs(p.volume-.3)<.01)")
+    # Unsupported codecs still have to obey visibility and room-state rules.
+    playback=screen.locator('#media-content video').evaluate("""async player=>{
+        player.loop=true;try{await player.play();return true;}catch{return false;}
+    }""")
+    page.locator('#pause-game').click()
+    screen.wait_for_function("Array.from(document.querySelectorAll('#media-content audio,#media-content video')).every(p=>p.paused)")
+    page.locator('#continue-game').click();page.locator('#close').click()
+    expect(screen.locator('#media-content img')).to_have_count(1)
+    action('display_question')
+    expect(screen.locator('#media-content img')).to_have_count(0)
+    action('display_answer')
+    expect(screen.locator('#media-content img')).to_have_count(1)
+    page.locator('#end-round').click()
+    screen.wait_for_function("Array.from(document.querySelectorAll('#media-content audio,#media-content video')).every(p=>p.paused)")
+    print('Additional media: volume, pause, answer visibility and round end passed; video playback='+str(playback),flush=True)
+
+
+def check_solo_practice_media(page,url,database):
+    db=Store(database);owner=page.evaluate('auth.user')
+    code=db.create(owner,practice=True,questions=[dict(id='solo-media',text='Listen in practice',answer='Yes',value=100,seconds=3600,
+        media=dict(kind='audio',url='/static/demo/signals.wav',start=0,end=3))])
+    page.goto(url+'/?room='+code)
+    expect(page.locator('#host-media-controls')).to_be_visible()
+    expect(page.locator('#host-media-title')).to_have_text('Медиа в тренировке')
+    expect(page.locator('#media-content audio')).to_have_count(1)
+    page.locator('#display-media-toggle').click()
+    page.wait_for_function('room.media_playback.playing')
+    page.locator('#display-media-toggle').click()
+    page.wait_for_function('!room.media_playback.playing')
+    print('Solo practice: local media and owner play/pause commands passed',flush=True)
+
+
 def check_conflict(first,second,url):
     first.goto(url)
     first.get_by_label('Пароль конструктора',exact=True).fill(PASSWORD)
@@ -67,7 +117,7 @@ def check_conflict(first,second,url):
     first.get_by_label('Название игры',exact=True).fill('Concurrent editing')
     first.get_by_role('button',name='Создать игру →',exact=True).click()
     first.get_by_role('tab',name='Раунды',exact=True).click()
-    first.locator('#add-question').click()
+    expect(first.locator('#round-list button')).to_have_count(1)
     first.locator('#question-text').fill('Original question');first.locator('#answer').fill('Yes')
     first.locator('#save').click();expect(first.locator('#save-status')).to_have_text('Черновик сохранён')
     game=first.evaluate('state.snapshot.id')
@@ -120,6 +170,8 @@ def main():
                     try:
                         check_room(page,screen,game,database)
                         check_pending_grade(page,game,database)
+                        check_additional_media(page,screen,game,database)
+                        check_solo_practice_media(page,game,database)
                         check_conflict(page,second,builder)
                         if name!='webkit':check_hidden_video_preview(page)
                         assert not errors,errors

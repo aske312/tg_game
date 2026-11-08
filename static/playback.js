@@ -1,10 +1,16 @@
 let activeClip=null, mediaNode=null, mediaNotice='', displaySoundEnabled=false;
+let additionalPlayers=[];
+function soloMediaPractice(){return !isDisplay()&&!!room?.practice&&room.owner===auth.user.id&&room.host!==auth.user.id;}
+function mediaPlaybackSurface(){return isDisplay()||soloMediaPractice();}
+function additionalMediaActive(){return room&&!room.paused&&!room.scores_visible&&['question','review','reveal'].includes(room.phase)&&['question','answer'].includes(room.display_scene||'question');}
 
 function mediaError(message){mediaNotice=message;notice(message,'error');}
 function clearMediaError(){if(mediaNotice&&$('notice').textContent===mediaNotice)notice('');mediaNotice='';}
 
 function disposeQuestionMedia(){
   activeClip=null;
+  for(const player of additionalPlayers){player.onplay=player.ontimeupdate=player.onloadedmetadata=player.onerror=null;player.pause();player.removeAttribute('src');player.load();}
+  additionalPlayers=[];
   for(const player of $('media-content').querySelectorAll('audio,video')){player.pause();player.removeAttribute('src');player.load();}
   clearMediaError();
   if(mediaNode){
@@ -17,7 +23,8 @@ function disposeQuestionMedia(){
 
 function renderDisplaySound() {
   const active=['question','review','reveal'].includes(room?.phase)&&!room.paused&&!room.scores_visible&&['question','answer'].includes(room.display_scene||'question');
-  show('display-media-unlock',isDisplay()&&active&&!displaySoundEnabled&&['audio','video'].includes(room?.question?.media?.kind));
+  $('media-unlock-description').textContent=soloMediaPractice()?'Разреши звук, затем запускай и останавливай запись кнопкой воспроизведения.':'Разрешите звук один раз. Аудио и видео запускает ведущий со своего экрана.';
+  show('display-media-unlock',mediaPlaybackSurface()&&active&&!displaySoundEnabled&&['audio','video'].includes(room?.question?.media?.kind));
 }
 async function sendMediaAction(action,position,duration) {
   if(!room?.question)return;
@@ -31,7 +38,8 @@ function mediaTransport() {
     {question:room?.question?.id,playing:false,position:0,updated_at:0,revision:0};
 }
 function syncMediaPlayback() {
-  if(!activeClip?.ready||!isDisplay())return;
+  for(const player of additionalPlayers){player.volume=room?.media_volume??1;if(!additionalMediaActive())player.pause();}
+  if(!activeClip?.ready||!mediaPlaybackSurface())return;
   activeClip.sync();
 }
 function renderHostMediaToggle() {
@@ -41,8 +49,11 @@ function renderHostMediaToggle() {
   button.setAttribute('aria-label',playing?'Поставить запись на паузу на демонстрации':'Воспроизвести запись на демонстрации');
 }
 function renderQuestionMedia(q) {
-  const m=q?.media,av=['audio','video'].includes(m?.kind),host=isHost()&&!!m&&room.phase!=='finished';
+  const m=q?.media,av=['audio','video'].includes(m?.kind),host=hasControls()&&!!m&&room.phase!=='finished';
   show('host-media-controls',host);
+  $('host-media-title').textContent=soloMediaPractice()?'Медиа в тренировке':'Медиа на демонстрации';
+  $('host-media-description').textContent=soloMediaPractice()?'Запусти материал на этом устройстве, затем отправь свой ответ.':'Управление материалом на общем экране.';
+  $('host-media-volume-caption').textContent=soloMediaPractice()?'Громкость':'Громкость на общем экране';
   show('display-media-toggle',host&&av);show('host-media-volume-label',host&&av);
   const volume=$('host-media-volume');
   if(document.activeElement!==volume)volume.value=Math.round((room.media_volume??1)*100);
@@ -51,36 +62,37 @@ function renderQuestionMedia(q) {
   const hiddenPicture=(m?.show_in_question??!m?.audio_only)===false&&!answerVisible;
   const visual=['image','video'].includes(m?.kind)&&!hiddenPicture;
   const canExpand=visual&&['question','review','reveal'].includes(room.phase)&&!room.paused&&!room.scores_visible&&['question','answer'].includes(room.display_scene||'question');
-  show('display-media-expand',host&&!!visual);
+  show('display-media-expand',host&&!!visual&&!soloMediaPractice());
   $('display-media-expand').disabled=!canExpand;
   $('display-media-expand').textContent=room.media_expanded?'Свернуть медиа на общем экране':'Развернуть медиа на весь экран';
   $('display-media-expand').setAttribute('aria-pressed',String(!!room.media_expanded));
   document.body.dataset.mediaExpanded=String(isDisplay()&&!!room.media_expanded&&!!canExpand);
   renderHostMediaToggle();
-  const attachments=(q?.attachments||[]).filter(item=>!item.answer||room.phase==='reveal'||room.phase==='finished');
-  const visible=attachments.some(item=>item.kind==='image'||isDisplay())||!!m&&(!av||isDisplay())&&!(isDisplay()&&m.kind==='image'&&hiddenPicture);
+  const attachments=(q?.attachments||[]).filter(item=>(!item.answer||(mediaPlaybackSurface()?answerVisible:room.phase==='reveal'||room.phase==='finished'))&&!(mediaPlaybackSurface()&&item.kind==='image'&&(item.show_in_question??!item.audio_only)===false&&!answerVisible));
+  const visible=attachments.some(item=>item.kind==='image'||mediaPlaybackSurface())||!!m&&(!av||mediaPlaybackSurface())&&!(mediaPlaybackSurface()&&m.kind==='image'&&hiddenPicture);
   show('media-content',visible);
   const full=mediaTransport().mode==='full';
-  const key=room.code+':'+q?.id+':'+(isDisplay()?'display':isHost()?'host':'player')+':'+full+':'+(isDisplay()&&hiddenPicture)+':'+JSON.stringify([m,attachments]);
+  const key=room.code+':'+q?.id+':'+(isDisplay()?'display':isHost()?'host':'player')+':'+full+':'+(mediaPlaybackSurface()&&hiddenPicture)+':'+JSON.stringify([m,attachments]);
   if(key===mediaKey)return;
   disposeQuestionMedia();
   mediaKey=key;
   if(!visible)return;
   for(const item of attachments){
-    if(item.kind!=='image'&&!isDisplay())continue;
+    if(item.kind!=='image'&&!mediaPlaybackSurface())continue;
     const extra=document.createElement(item.kind==='image'?'img':item.audio_only&&room.phase!=='reveal'?'audio':item.kind);
     extra.src=item.url;
     if(item.kind==='image')extra.alt=item.answer?'Материал к ответу':'Материал к вопросу';
     else {
+      additionalPlayers.push(extra);extra.volume=room.media_volume??1;
       extra.controls=true;extra.preload='metadata';extra.setAttribute('playsinline','');
       const start=item.start||0;
       extra.onloadedmetadata=()=>{extra.currentTime=start;};
-      extra.onplay=()=>{if(room.paused){extra.pause();return;}if(extra.currentTime<start||item.end!=null&&extra.currentTime>=item.end)extra.currentTime=start;};
-      extra.ontimeupdate=()=>{if(room.paused||item.end!=null&&extra.currentTime>=item.end)extra.pause();};
+      extra.onplay=()=>{if(!additionalMediaActive()){extra.pause();return;}if(extra.currentTime<start||item.end!=null&&extra.currentTime>=item.end)extra.currentTime=start;};
+      extra.ontimeupdate=()=>{if(!additionalMediaActive()||item.end!=null&&extra.currentTime>=item.end)extra.pause();};
     }
     $('media-content').append(extra);
   }
-  if(!m||av&&!isDisplay()||isDisplay()&&m.kind==='image'&&hiddenPicture)return;
+  if(!m||av&&!mediaPlaybackSurface()||mediaPlaybackSurface()&&m.kind==='image'&&hiddenPicture)return;
   const audioOnly=m.kind==='video'&&hiddenPicture;
   const node=document.createElement(m.kind==='image'?'img':m.kind);
   mediaNode=node;

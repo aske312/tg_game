@@ -22,7 +22,7 @@ def check(page, url, allow_unsupported=False):
     page.get_by_label('Название игры', exact=True).fill('Media stress check')
     page.get_by_role('button', name='Создать игру →', exact=True).click()
     page.get_by_role('tab', name='Раунды', exact=True).click()
-    page.locator('#add-question').click()
+    expect(page.locator('#round-list button')).to_have_count(1)
     expect(page.locator('#question-text')).to_be_visible()
     page.locator('#material-panel > summary').click()
     page.locator('#media-type').select_option('audio')
