@@ -202,7 +202,7 @@ function renderPreview() {
   if(typeof m?.file!=='string'||!m.file||!['image','audio','video'].includes(m.type))return;
   const container=$('preview-media');container.dataset.mediaKey=key;
   const hiddenPicture=(m.show_in_question??!m.audio_only)===false;
-  if(m.type==='image'&&hiddenPicture){container.textContent='Изображение появится на демонстрации вместе с ответом.';return;}
+  if(m.type==='image'&&hiddenPicture){container.append(Object.assign(document.createElement('p'),{textContent:'Изображение появится на демонстрации вместе с ответом.'}));return;}
   const node=document.createElement(m.type==='image'?'img':m.type);node.src=mediaURL(m.file);
   node.onerror=()=>{if($('preview-media')!==container)return;disposeEditorMedia(container);container.replaceChildren(Object.assign(document.createElement('p'),{textContent:'Материал не найден. Загрузи файл для этого вопроса.'}));};
   if(m.type==='image')node.alt='Материал к вопросу';
