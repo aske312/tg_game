@@ -46,6 +46,7 @@ jobs:
       - run: python tests/browser_media_check.py
       - run: python tests/browser_scenario_check.py
       - run: python tests/browser_web_login_check.py
+      - run: python tests/browser_mobile_check.py
       - uses: actions/upload-artifact@v7
         if: always()
         with:

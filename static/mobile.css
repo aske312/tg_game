@@ -1,0 +1,103 @@
+/* Player layouts for narrow screens and phones in landscape. */
+@media (max-width:760px), (max-height:500px) and (pointer:coarse){
+  body:not([data-role=display]){--radius:18px;min-height:100svh}
+  body:not([data-role=display]) main{padding:calc(12px + env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+  body:not([data-role=display]) .app-header{gap:12px;padding-bottom:12px;margin-bottom:14px}
+  body:not([data-role=display]) .brand{font-size:14px;gap:8px;flex-shrink:0}
+  body:not([data-role=display]) .brand-mark{width:36px;height:36px}
+  body:not([data-role=display]) .brand-mark img{width:32px;height:32px}
+  body:not([data-role=display]) .identity{min-width:0;max-width:52%;padding:7px 9px;font-size:10px}
+  body:not([data-role=display]) #identity{min-width:0}
+  body:not([data-role=display]) .panel{padding:20px;border-radius:18px}
+  body:not([data-role=display]) button,body:not([data-role=display]) .button-link,body:not([data-role=display]) summary{min-height:44px;touch-action:manipulation}
+  body:not([data-role=display]) input,body:not([data-role=display]) select,body:not([data-role=display]) textarea{font-size:16px;min-height:48px}
+  body:not([data-role=display]) .login-panel{margin:16px auto 12px}
+  body:not([data-role=display]) .login-panel h1{font-size:34px;line-height:1.08}
+  body:not([data-role=display]) .login-panel p{font-size:13px}
+  body:not([data-role=display]) #telegram-entry{margin-top:14px}
+  body:not([data-role=display]) #telegram-entry .eyebrow{margin-bottom:10px}
+  body:not([data-role=display]) #telegram-entry h1{font-size:25px;margin:12px 0}
+  body:not([data-role=display]) #telegram-entry h1 br{display:none}
+  body:not([data-role=display]) #open-bot{display:flex;align-items:center;justify-content:center}
+  body:not([data-role=display]) .display-entry-link{margin-top:12px;display:flex;align-items:center;min-height:44px}
+  body:not([data-role=display]) .web-account{font-size:11px;margin-bottom:10px;gap:10px}
+  body:not([data-role=display]) .entry-intro{padding:6px 0 16px}
+  body:not([data-role=display]) .entry-intro h1{font-size:34px;line-height:1.08;margin:10px 0}
+  body:not([data-role=display]) .entry-intro p{font-size:13px}
+  body:not([data-role=display]) .entry-intro .eyebrow{font-size:9px;letter-spacing:1px}
+  body:not([data-role=display]) .role-tabs{margin-bottom:14px;border-radius:14px}
+  body:not([data-role=display]) .role-tabs button{min-height:44px;font-size:13px}
+  body:not([data-role=display]) .join-panel h2{font-size:26px;margin-bottom:8px}
+  body:not([data-role=display]) .join-panel>p{margin-bottom:16px;font-size:13px}
+  body:not([data-role=display]) .join-panel #code{font-size:24px;min-height:56px;padding:12px;letter-spacing:5px;margin-bottom:12px}
+  body:not([data-role=display]) .join-panel label{font-size:12px;margin-bottom:8px}
+  #game[data-role=player] .status-line{position:sticky;top:0;z-index:20;padding:10px 0;margin:0 0 10px;background:var(--bg);gap:12px}
+  #game[data-role=player] #phase{max-width:70%;font-size:12px;line-height:1.4}
+  #game[data-role=player] .question{padding:18px}
+  #game[data-role=player] .question-meta{margin-bottom:16px;align-items:flex-start}
+  #game[data-role=player] .question-meta>span{font-size:10px;min-width:0;overflow-wrap:anywhere}
+  #game[data-role=player] .question #question-text{font-size:clamp(20px,5.4vw,24px);line-height:1.42;letter-spacing:-.35px;margin-bottom:18px}
+  #game[data-role=player] #media-content img,#game[data-role=player] #media-content video{max-height:240px;max-height:min(32svh,240px)}
+  #game[data-role=player] .lobby-panel{min-height:220px;padding:24px 18px}
+  #game[data-role=player] .lobby-panel h2{font-size:30px}
+  #game[data-role=player] .board-values button{min-width:60px;min-height:48px;font-size:15px}
+  #game[data-role=player] .board-row{min-width:0}
+  #game[data-role=player] .board-category{overflow-wrap:anywhere}
+  body:not([data-role=display]) #reaction-buttons{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;width:100%;max-width:340px}
+  body:not([data-role=display]) #reaction-buttons button{width:100%;min-width:0;min-height:44px;font-size:22px;padding:4px}
+  #game[data-role=player] .round-table-scroll{overscroll-behavior-x:contain}
+  #game[data-role=player] .round-score-table th:first-child,#game[data-role=player] .round-score-table td:first-child{position:sticky;left:0;background:var(--panel)}
+  body[data-mobile-answer]:not([data-mobile-answer=none]) main{padding-bottom:calc(var(--answer-dock-height,180px) + 54px)}
+  body[data-mobile-answer=text] #answer-form,body[data-mobile-answer=binary] #binary-options,body[data-mobile-answer=buzz] #buzz-answer,body[data-mobile-answer=sent] #my-answer{
+    position:fixed;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));transform:none;bottom:var(--keyboard-inset,0px);z-index:40;width:auto;max-width:680px;margin:0 auto!important;
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom));background:var(--panel);border:1px solid #587362;border-bottom:0;border-radius:18px 18px 0 0;box-shadow:0 -10px 28px #06120a55;
+  }
+  body[data-mobile-answer=text] #answer-form{display:grid;gap:8px}
+  body[data-mobile-answer=text] #answer-form label{margin:0;font-size:12px;gap:8px}
+  body[data-mobile-answer=text] #answer-form input{margin:0;min-height:48px;font-size:16px}
+  body[data-mobile-answer=text] #answer-form button{min-height:48px;font-size:14px;padding:12px 14px}
+  body[data-mobile-answer=binary] #binary-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:48svh;overflow-y:auto}
+  body[data-mobile-answer=binary] #binary-options button{font-size:15px;min-height:52px;padding:12px 10px;overflow-wrap:anywhere;white-space:normal}
+  body[data-mobile-answer=buzz] #buzz-answer{background:var(--accent);color:var(--bg);font-size:17px;min-height:64px;text-align:center}
+  body[data-mobile-answer=sent] #my-answer{font-size:14px;line-height:1.5;max-height:35svh;overflow:auto;border-color:var(--accent)}
+  body[data-mobile-answer]:not([data-mobile-answer=none]) #game[data-role=player] .answer-status{position:fixed;bottom:calc(var(--keyboard-inset,0px) + var(--answer-dock-height,160px) + 6px);right:max(12px,env(safe-area-inset-right),calc((100vw - 680px)/2));z-index:41;margin:0;padding:6px 10px;background:var(--panel);border:1px solid var(--line);border-radius:20px}
+  body[data-mobile-timer=false] #game[data-role=player] .answer-status{display:none}
+  body[data-mobile-answer]:not([data-mobile-answer=none]) #game[data-role=player] #timer{font-size:13px}
+  body[data-mobile-keyboard-open=true] .reaction-panel,body[data-mobile-keyboard-open=true] .app-version{display:none}
+  body[data-mobile-keyboard-open=true] #answer-form{padding-bottom:10px}
+  body:not([data-role=display]) .room-invites{gap:6px}
+}
+@media(max-width:360px){
+  #home .entry-intro{padding:4px 0 12px}
+  #home .entry-intro h1{font-size:28px;margin:6px 0}
+  #home .entry-intro p,#home .entry-intro .eyebrow{display:none}
+  #home .join-panel{padding:18px}
+}
+@media(max-height:500px) and (pointer:coarse){
+  body:not([data-role=display]) .login-panel{margin:8px auto;padding:16px;max-width:680px}
+  body:not([data-role=display]) .login-panel>.eyebrow{display:none}
+  body:not([data-role=display]) .login-panel h1{font-size:26px;margin:0 0 8px}
+  body:not([data-role=display]) .login-panel>p{font-size:12px;margin-bottom:12px}
+  body:not([data-role=display]) #login-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px}
+  body:not([data-role=display]) #login-form label{grid-column:1/-1;margin:0}
+  body:not([data-role=display]) #login-form input{margin:0}
+  body:not([data-role=display]) #login-form button{width:auto;min-height:48px;padding:10px 14px}
+  body:not([data-role=display]) .login-panel>.footnote{margin:8px 0 0}
+  body[data-mobile-answer=text] #answer-form{grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;padding-top:8px;padding-bottom:8px}
+  body[data-mobile-answer=text] #answer-form label{grid-column:1/-1}
+  body[data-mobile-answer=text] #answer-form button{width:auto}
+  body:not([data-role=display]) .entry-intro h1{font-size:28px}
+}
+@media(min-width:600px) and (max-height:500px) and (pointer:coarse){
+  body:not([data-role=display]) #home{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:12px;max-width:900px}
+  #home .web-account{grid-column:1/-1;margin:0}
+  #home .entry-intro{grid-column:1;grid-row:2;padding:0}
+  #home .role-tabs{grid-column:1;grid-row:3;align-self:start;margin:0}
+  #home .join-panel{grid-column:2;grid-row:2/span 2;padding:16px}
+  #home .join-panel>.eyebrow,#home .join-panel>p,#home .home-footer{display:none}
+  #home .join-panel h2{font-size:24px}
+  #home .join-panel #code{min-height:48px;padding:10px;font-size:22px}
+  #home .join-panel button{min-height:48px;padding:10px 14px}
+  #host-entry{grid-column:1/-1}
+}
+@media(hover:none){button:hover:not(:disabled){transform:none}}

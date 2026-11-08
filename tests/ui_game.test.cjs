@@ -683,3 +683,11 @@ test('web and Telegram invitations use separate URLs',async()=>{
   await h.node('invite').onclick();assert.equal(h.ctx.copied[0],'http://localhost/?room=ABC234');
   await h.node('invite-telegram').onclick();assert.equal(h.ctx.copied[1],'https://t.me/quiz_bot?start=ABC234');
 });
+
+test('players keep their sent answer visible during host review',()=>{
+  const h=harness();h.apply({phase:'review',answers:{p:{text:'Мой ответ',verdict:null}},answered_ids:['p']});
+  assert(!h.node('my-answer').hidden);assert.match(h.node('my-answer').textContent,/Мой ответ.*отправлен/);
+  assert(h.node('answer-form').hidden);
+  h.apply({phase:'reveal',answers:{p:{text:'Мой ответ',verdict:'correct',points:100}},answered_ids:['p']});
+  assert(h.node('my-answer').hidden);
+});

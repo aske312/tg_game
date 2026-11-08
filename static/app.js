@@ -256,8 +256,8 @@ function apply(s){
     $('category').textContent=`Вопрос ${s.question_number}/${s.question_count} · ${q.category}`;$('value').textContent=q.value+' очков';$('question-text').textContent=q.text;
     $('answer-count').textContent=s.stage?.answer_mode==='single'?`Попыток: ${s.answered_ids.length}`:`Ответили ${s.answered_ids.length} из ${s.players.length-1}`;
     const penalty=s.omission_penalties?.[auth.user.id];
-    show('answer-form',canAnswer()&&!q.choices);show('my-answer',isPlayer()&&((!!ownAnswer()&&s.phase==='question')||penalty!==undefined));
-    $('my-answer').textContent=penalty!==undefined?`Ответ не отправлен · ${penalty} очков`:ownAnswer()?.verdict==='wrong'?`Ответ неверный · ${ownAnswer().points} очков. Вопрос продолжается для остальных.`:ownAnswer()?'Твой ответ: '+ownAnswer().text+' · отправлен':'';
+    show('answer-form',canAnswer()&&!q.choices);show('my-answer',isPlayer()&&((!!ownAnswer()&&['question','review'].includes(s.phase))||penalty!==undefined));
+    $('my-answer').textContent=penalty!==undefined?`Ответ не отправлен · ${penalty} очков`:ownAnswer()?.verdict==='wrong'?`Ответ неверный · ${ownAnswer().points} очков.${s.phase==='question'?' Вопрос продолжается для остальных.':''}`:ownAnswer()?'Твой ответ: '+ownAnswer().text+' · отправлен':'';
     show('solution',!!q.answer);$('solution').textContent=q.answer?'Правильный ответ: '+q.answer:'';
     show('close',hasControls()&&s.phase==='question');show('next',hasControls()&&s.phase==='reveal'&&!s.stage_complete);
     const missing=s.players.length-1-s.answered_ids.length,all=s.stage?.type!=='grid'||s.stage.answer_mode!=='single';
@@ -294,6 +294,7 @@ function tick(){
   for(const button of $('binary-options').querySelectorAll('button'))button.disabled=!canAnswer()||n===0;
   if(room.advance_at)$('auto-next').textContent=`Следующий вопрос через ${Math.max(0,Math.ceil((room.advance_at*1000-Date.now()-offset)/1000))} сек.`;
   tickExperience();
+  if(typeof updateMobileClient==='function')updateMobileClient();
 }
 setInterval(tick,250);
 function connect(code){
@@ -424,7 +425,7 @@ $('reaction-buttons').onclick=async event=>{
   try{await command('reaction',{text:button.dataset.reaction});}catch{/* Reactions are optional and never interrupt the game. */}
 };
 $('finish').onclick=guard(async()=>{if(confirm('Завершить квиз и показать итоговый счёт?'))await command('finish');});
-$('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem(displayPage?'displayRoom':'room');sessionStorage.removeItem('roomRole');delete document.body.dataset.role;delete document.body.dataset.mediaExpanded;room=null;resetExperience();disposeQuestionMedia();show('game',false);show('home',!displayPage);show('display-entry',displayPage);if(displayPage)auth=null;else setRole('player');notice('');history.replaceState(null,'',location.pathname);};
+$('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem(displayPage?'displayRoom':'room');sessionStorage.removeItem('roomRole');delete document.body.dataset.role;delete document.body.dataset.mediaExpanded;room=null;resetExperience();disposeQuestionMedia();show('game',false);show('home',!displayPage);show('display-entry',displayPage);if(displayPage)auth=null;else setRole('player');notice('');history.replaceState(null,'',location.pathname);if(typeof updateMobileClient==='function')updateMobileClient();};
 $('q-kind').onchange=()=>{const kind=$('q-kind').value;show('file-fields',!!kind);show('clip-fields',kind==='audio'||kind==='video');$('q-file').accept=kind==='image'?'.png,.jpg,.jpeg,.jfif,.gif,.webp,.avif,.bmp':kind==='audio'?'.mp3,.wav,.ogg,.oga,.opus,.m4a,.aac,.flac':'.mp4,.webm,.mov,.m4v';$('q-file').required=!!kind;};
 function renderQuestionEditor() {
   const selected=room?.stages.find(s=>s.id===$('q-stage').value),binary=selected?.type==='binary',grid=selected?.type==='grid';
