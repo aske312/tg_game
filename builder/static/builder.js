@@ -54,8 +54,9 @@ function updateActions() {
   for(const id of ['duplicate-round','remove-round'])$(id).disabled=state.busy||state.index<0;
   for(const id of ['delete-current-game','confirm-delete-game','cancel-delete-game'])$(id).disabled=state.busy;
   for(const button of $('game-list').querySelectorAll('[data-delete-game]'))button.disabled=state.busy;
-  $('media-file').disabled=state.busy;
+  for(const input of document.querySelectorAll('input[type=file]'))input.disabled=state.busy;
   $('import-json').disabled=state.busy;
+  for(const button of $('attachment-list').querySelectorAll('button'))button.disabled=state.busy;
   // Freeze editable fields while saving so a delayed response cannot replace new typing.
   for(const input of $('editor').querySelectorAll('input:not([type=file]), textarea, select'))input.disabled=state.busy;
   updateCategoryActions();
@@ -164,7 +165,7 @@ function renderRound() {
     $('accepted-answers').value=Array.isArray(q.accepted_answers)?q.accepted_answers.join('\n'):'';$('points').value=q.points??'';$('time-limit').value=q.time_limit??'';
     renderQuestionDefaults();
     $('answer-variants').open=Array.isArray(q.accepted_answers)&&q.accepted_answers.length>0;
-    $('material-panel').open=!!q.media;
+    $('material-panel').open=!!q.media||!!q.attachments?.length;
     $('media-type').value=q.media?.type||'';renderMediaFields();renderCategorySelect();
   }
   renderClipEditor();renderPreview();updateActions();
@@ -177,13 +178,13 @@ function renderMediaFields() {
   $('media-file').value='';$('media-file').accept=type==='image'?'.png,.jpg,.jpeg,.jfif,.gif,.webp,.avif,.bmp':type==='audio'?'.mp3,.wav,.ogg,.oga,.opus,.m4a,.aac,.flac':'.mp4,.webm,.mov,.m4v';
   $('upload-label').textContent=m?.file?'Заменить материал':'Выбрать файл';
   $('material-status').textContent=m?.file?'файл добавлен':type?'выбери файл':'не добавлен';
-  renderClipEditor();
+  renderAttachments();renderClipEditor();
 }
 function mediaURL(file) {return '/api/games/'+id()+'/media?file='+encodeURIComponent(file);}
 function renderPreview() {
   const q=round();if(!q)return;
   const box=$('preview-content'),m=q.media;
-  const key=q.type==='question'&&m?.file?JSON.stringify([state.snapshot.id,q.id,m.type,m.file,m.show_in_question??!m.audio_only]):'';
+  const key=q.type==='question'&&m?.file?JSON.stringify([state.snapshot.id,q.id,m.type,m.file,m.show_in_question??!m.audio_only,q.attachments]):'';
   const previous=$('preview-media');
   const reusable=!!key&&previous?.dataset.mediaKey===key;
   if(reusable)previous.remove();
@@ -197,6 +198,7 @@ function renderPreview() {
   box.innerHTML=`<div class="preview-meta"><span>${esc(stage()?.type==='grid'?q.category||'Категория не выбрана':modeTitles[stage()?.type]||'ВОПРОС')}</span><span>${esc(questionValue(q,'points'))} очков · ${esc(questionValue(q,'time_limit'))} сек.</span></div><h3>${esc(q.text||'Текст вопроса появится здесь.')}</h3><div id="preview-media"></div><div class="preview-answer">Ответ для ведущего: <strong>${esc(q.choices?.[q.correct_choice]||q.answer||'Ещё не указан')}</strong></div>`;
   if(Array.isArray(q.choices)){const choices=document.createElement('div');choices.className='choice-preview';choices.innerHTML=q.choices.map(c=>`<span>${esc(c)}</span>`).join('');box.insertBefore(choices,box.querySelector('.preview-answer'));}
   if(reusable){$('preview-media').replaceWith(previous);return;}
+  renderAttachmentPreview(q);
   if(typeof m?.file!=='string'||!m.file||!['image','audio','video'].includes(m.type))return;
   const container=$('preview-media');container.dataset.mediaKey=key;
   const hiddenPicture=(m.show_in_question??!m.audio_only)===false;
@@ -234,12 +236,6 @@ for(const [field,key] of [['effect-target','target'],['effect-duration','questio
 $('media-type').onchange=()=>{if(!round())return;const type=$('media-type').value;if(type)round().media={type,file:'',start:0};else delete round().media;markDirty();renderMediaFields();renderPreview();};
 $('media-show-in-question').onchange=()=>{const media=round()?.media;if(!media||state.busy)return;media.show_in_question=$('media-show-in-question').checked;delete media.audio_only;markDirty();renderPreview();};
 $('remove-media').onclick=()=>{delete round().media;$('media-type').value='';markDirty();renderMediaFields();renderPreview();};
-$('media-file').onchange=guarded(async()=>{
-  const file=$('media-file').files[0];$('media-file').value='';if(!file)return;if(file.size>25*1024*1024)throw new Error('Файл должен быть не больше 25 МБ.');
-  const q=round(),type=q.media.type;pauseClipEditor();
-  const result=await uploadEditorMedia(file,type);
-  q.media={...q.media,type:result.type,file:result.file};markDirty();renderMediaFields();renderPreview();notice('Материал загружен. Сохрани черновик, чтобы сохранить его в вопросе.');
-});
 for(const [field,key] of [['game-title','title'],['game-description','description']])$(field).oninput=()=>{state.doc[key]=$(field).value;$('editor-title').textContent=state.doc.title||'Без названия';markDirty();};
 
 function addRound(type) {
@@ -248,12 +244,12 @@ function addRound(type) {
   q.stage=stage().id;if(stage().type==='binary'&&type==='question')binaryDefaults(q);
   if(stage().type==='grid'&&editorNav.filter?.kind==='category')q.category=gridCategories().find(c=>categoryKey(c)===editorNav.filter.name);
   editorNav.search='';$('question-search').value='';editorNav.gameTab='rounds';editorNav.stageTab='questions';
-  const insertion=state.index>=0?state.index+1:state.doc.rounds.length;
+  const insertion=(stageQuestions().at(-1)?.i??(state.doc.rounds.length-1))+1;
   state.doc.rounds.splice(insertion,0,q);state.index=insertion;markDirty();renderRound();
 }
 $('add-question').onclick=()=>addRound('question');$('add-event').onclick=()=>addRound('event');
 $('round-list').onclick=event=>{const button=event.target.closest('[data-round]');if(!button||state.busy)return;state.index=Number(button.dataset.round);renderRounds();renderRound();};
-function move(delta) {const positions=stageQuestions().map(({i})=>i),target=positions[positions.indexOf(state.index)+delta];if(target===undefined)return;[state.doc.rounds[state.index],state.doc.rounds[target]]=[state.doc.rounds[target],state.doc.rounds[state.index]];state.index=target;markDirty();renderRound();}
+function move(delta) {if(state.busy)return;const positions=stageQuestions().map(({i})=>i),target=positions[positions.indexOf(state.index)+delta];if(target===undefined)return;[state.doc.rounds[state.index],state.doc.rounds[target]]=[state.doc.rounds[target],state.doc.rounds[state.index]];state.index=target;markDirty();renderRound();}
 $('move-up').onclick=()=>move(-1);$('move-down').onclick=()=>move(1);
 $('duplicate-round').onclick=()=>{if(state.doc.rounds.length>=100)return;const q=structuredClone(round());q.id=roundId();state.doc.rounds.splice(state.index+1,0,q);state.index++;markDirty();renderRound();};
 $('remove-round').onclick=()=>{if(!confirm('Убрать этот вопрос или событие из игры?'))return;state.doc.rounds.splice(state.index,1);state.index=visibleStageItems().find(({i})=>i>=state.index)?.i??visibleStageItems().at(-1)?.i??-1;markDirty();renderRound();};
@@ -311,5 +307,6 @@ initGameSettings();
 initEditorNavigation();
 initEvents();
 initMediaEditor();
+initAttachments();
 window.addEventListener('beforeunload',event=>{if(state.dirty||state.busy){event.preventDefault();event.returnValue='';}});
 guarded(async()=>{try{await api('/me');await entered();}catch(error){loginScreen();if(error.message!=='Войдите в конструктор')notice(error.message,'error');}})();

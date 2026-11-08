@@ -2,7 +2,7 @@ function uploadEditorMedia(file,kind) {
   return new Promise((resolve,reject)=>{
     const request=new XMLHttpRequest();
     const label=$('media-upload-label'),progress=$('media-upload-progress');
-    show('media-upload',true);$('media-fields').setAttribute('aria-busy','true');
+    show('media-upload',true);show('media-fields',true);$('media-fields').setAttribute('aria-busy','true');
     label.textContent='Загружаем файл…';progress.removeAttribute('value');
     request.open('POST','/api/games/'+id()+'/media?kind='+encodeURIComponent(kind));
     request.setRequestHeader('X-Builder-Request','1');
@@ -152,4 +152,67 @@ function initMediaEditor() {
     const start=Number(clipMedia().start)||0,length=Number(button.dataset.clipLength),end=start+length;
     commitClip(start,clipEditor.duration==null?end:Math.min(end,clipEditor.duration));
   };
+}
+
+function renderAttachments() {
+  const files=round()?.attachments||[];
+  $('attachment-list').innerHTML=files.map((m,i)=>`<div class="attachment" data-attachment="${i}"><span>${m.answer?'К ответу':'К вопросу'}: ${esc(m.file.split('/').pop())}</span><label class="quiet">Заменить<input type="file" data-replace-attachment="${i}" accept="image/*,audio/*,video/*" ${state.busy?'disabled':''}></label><button type="button" class="quiet danger-text" data-remove-attachment="${i}" ${state.busy?'disabled':''}>Убрать</button><span class="hint">Для замены можно перетащить файл в эту строку</span></div>`).join('');
+}
+function fileMediaType(file) {
+  const ext=file.name?.split('.').pop().toLowerCase();
+  if(['png','jpg','jpeg','jfif','gif','webp','avif','bmp'].includes(ext))return 'image';
+  if(['mp3','wav','ogg','oga','opus','m4a','aac','flac'].includes(ext))return 'audio';
+  if(['mp4','webm','mov','m4v'].includes(ext))return 'video';
+  return /^(image|audio|video)\//.exec(file.type||'')?.[1]||null;
+}
+async function uploadFiles(files,{answer=false,replace=null,primary=false}={}) {
+  files=Array.from(files||[]);if(!files.length)return;
+  const q=round();if(q?.type!=='question')return;
+  if(replace!==null&&files.length!==1)throw new Error('Для замены одного вложения выбери один файл.');
+  const extra=files.length-(replace!==null||!answer&&(primary||!q.media?.file)?1:0);
+  if((q.attachments?.length||0)+Math.max(0,extra)>20)throw new Error('Можно добавить не больше 20 дополнительных файлов.');
+  const types=files.map(file=>{
+    if(file.size>25*1024*1024)throw new Error('Каждый файл должен быть не больше 25 МБ.');
+    const type=fileMediaType(file);if(!type)throw new Error('Выбери изображение, аудио или видео.');return type;
+  });
+  // Capture the question before awaiting uploads; selection cannot redirect the files.
+  try {
+    for(const [index,file] of files.entries()){
+      pauseClipEditor();
+      const result=await uploadEditorMedia(file,types[index]);
+      const media={type:result.type,file:result.file,start:0};
+      if(answer)media.answer=true;
+      if(primary&&index===0)q.media=media;
+      else if(replace!==null){media.answer=q.attachments[replace].answer===true;q.attachments[replace]=media;}
+      else if(!answer&&!q.media?.file)q.media=media;
+      else (q.attachments??=[]).push(media);
+      markDirty();
+    }
+    notice('Файлы загружены. Нажми «Сохранить черновик», чтобы сохранить изменения.');
+  } finally {renderRound();$('material-panel').open=true;}
+}
+function initAttachments() {
+  function dropZone(node,options) {
+    node.ondragover=e=>{e.preventDefault();e.stopPropagation();if(e.dataTransfer)e.dataTransfer.dropEffect=state.busy?'none':'copy';node.classList.add('drag-over');};
+    node.ondragleave=()=>node.classList.remove('drag-over');
+    node.ondrop=e=>{e.preventDefault();e.stopPropagation();node.classList.remove('drag-over');return guarded(()=>uploadFiles(e.dataTransfer?.files,options(e)))(e);};
+  }
+  for(const [zone,input,options] of [['primary-drop','media-file',{primary:true}],['question-drop','question-files',{}],['answer-drop','answer-files',{answer:true}]]){
+    dropZone($(zone),()=>options);
+    $(input).onchange=guarded(async()=>{const files=Array.from($(input).files||[]);try{await uploadFiles(files,options);}finally{$(input).value='';}});
+  }
+  dropZone($('attachment-list'),e=>{const row=e.target.closest('[data-attachment]');return row?{replace:Number(row.dataset.attachment)}:{};});
+  $('attachment-list').onchange=guarded(e=>{const input=e.target.closest('[data-replace-attachment]');if(input)return uploadFiles(input.files,{replace:Number(input.dataset.replaceAttachment)});});
+  $('attachment-list').onclick=e=>{const button=e.target.closest('[data-remove-attachment]');if(!button||state.busy)return;round().attachments.splice(Number(button.dataset.removeAttachment),1);markDirty();renderMediaFields();renderPreview();};
+  // Prevent the browser from navigating to a dropped file outside a target.
+  for(const name of ['dragover','drop'])window.addEventListener(name,e=>{if(Array.from(e.dataTransfer?.types||[]).includes('Files'))e.preventDefault();});
+}
+
+function renderAttachmentPreview(q) {
+  for(const media of q.attachments||[]){
+    const label=document.createElement('p');label.textContent=media.answer?'Материал к ответу':'Дополнительный материал к вопросу';
+    const player=document.createElement(media.type==='image'?'img':media.type);player.src=mediaURL(media.file);
+    if(media.type==='image')player.alt=label.textContent;else {player.controls=true;player.preload='metadata';}
+    $('preview-media').append(label,player);
+  }
 }

@@ -6,6 +6,7 @@ import secrets
 from pathlib import Path
 
 from app.media import MAX_MEDIA_BYTES, detect_media
+from app.media_items import media_items
 from app.modes import stages_from_doc, binary_fields, grid_category
 from app.events import normalize_effect
 from app.limits import integer, finite_number
@@ -99,8 +100,7 @@ def load_pack(directory):
         q = dict(id=qid, stage=stage_id, type='question', category=category.strip(), text=item['text'].strip(), answer=binary.get('answer', item.get('answer', '')).strip(),
                  accepted_answers=accepted, value=points, seconds=seconds)
         q.update(binary)
-        media = item.get('media')
-        if media is not None:
+        for media_index, media in enumerate(media_items(item)):
             if not isinstance(media, dict) or media.get('type') not in ('image', 'audio', 'video') or not isinstance(media.get('file'), str):
                 raise ValueError(f'Вопрос {i}: media требует type и file')
             relative = Path(media['file'])
@@ -121,13 +121,19 @@ def load_pack(directory):
             audio_only = media.get('audio_only', False)
             if type(audio_only) is not bool or audio_only and media['type'] != 'video':
                 raise ValueError(f'Вопрос {i}: режим «только звук» доступен для видео и должен быть true или false')
-            q['media'] = dict(kind=media['type'], source=str(source), start=start, end=end)
+            loaded = dict(kind=media['type'], source=str(source), start=start, end=end)
             if audio_only:
-                q['media']['audio_only'] = True
+                loaded['audio_only'] = True
             if 'show_in_question' in media:
                 if type(media['show_in_question']) is not bool:
-                    raise ValueError(f'Вопрос {i}: показ медиа в вопросе должен быть true или false')
-                q['media']['show_in_question'] = media['show_in_question']
+                    raise ValueError(f'Вопрос {i}: show_in_question должен быть true или false')
+                loaded['show_in_question'] = media['show_in_question']
+            if media.get('answer'):
+                loaded['answer'] = True
+            if media_index == 0 and item.get('media') is not None:
+                q['media'] = loaded
+            else:
+                q.setdefault('attachments', []).append(loaded)
         questions.append(q)
     if sum(p.stat().st_size for p in paths) > 100 * 1024 * 1024:
         raise ValueError('Общий размер медиа пакета не должен превышать 100 МБ')
@@ -187,27 +193,25 @@ def materialize_pack(pack, media_directory):
     directory.mkdir(parents=True, exist_ok=True)
     assets, cache = [], {}
     for q in pack['questions']:
-        if not q.get('media'):
-            continue
-        media = q['media']
-        source = media.pop('source')
-        key = (source, media['kind'])
-        if key not in cache:
-            data = Path(source).read_bytes()
-            if len(data) > MAX_MEDIA_BYTES:
-                raise ValueError('Материал изменился и превышает 25 МБ')
-            mime, extension = detect_media(data[:128], media['kind'])
-            filename = hashlib.sha256(data).hexdigest()+extension
-            target = directory / filename
-            if not target.exists():
-                temporary = directory / (secrets.token_hex(20)+'.part')
-                try:
-                    temporary.write_bytes(data)
-                    temporary.replace(target)
-                finally:
-                    temporary.unlink(missing_ok=True)
-            asset = secrets.token_hex(20)
-            cache[key] = asset
-            assets.append(dict(id=asset, kind=media['kind'], mime=mime, filename=filename))
-        media['url'] = '/api/media/'+cache[key]
+        for media in media_items(q):
+            source = media.pop('source')
+            key = (source, media['kind'])
+            if key not in cache:
+                data = Path(source).read_bytes()
+                if len(data) > MAX_MEDIA_BYTES:
+                    raise ValueError('Материал изменился и превышает 25 МБ')
+                mime, extension = detect_media(data[:128], media['kind'])
+                filename = hashlib.sha256(data).hexdigest()+extension
+                target = directory / filename
+                if not target.exists():
+                    temporary = directory / (secrets.token_hex(20)+'.part')
+                    try:
+                        temporary.write_bytes(data)
+                        temporary.replace(target)
+                    finally:
+                        temporary.unlink(missing_ok=True)
+                asset = secrets.token_hex(20)
+                cache[key] = asset
+                assets.append(dict(id=asset, kind=media['kind'], mime=mime, filename=filename))
+            media['url'] = '/api/media/'+cache[key]
     return assets

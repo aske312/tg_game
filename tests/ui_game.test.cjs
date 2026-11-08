@@ -640,3 +640,13 @@ test('display sound permission cannot start media before host command',async()=>
   h.apply({display:true,question,media_playback:{question:'m',playing:true,position:0,updated_at:0,revision:1}});
   assert.equal(audio.playCalls,1);assert(!audio.paused);
 });
+
+test('additional question files render together and answer files wait for reveal',()=>{
+  const h=harness();
+  const question={id:'q1',text:'?',media:{kind:'image',url:'/first.png'},attachments:[{kind:'image',url:'/second.png'},{kind:'video',url:'/answer.mp4',answer:true}]};
+  h.apply({display:true,question,phase:'question'});
+  assert.equal(h.node('media-content').children.length,2);
+  h.apply({display:true,question,phase:'reveal',display_scene:'answer'});
+  assert.equal(h.node('media-content').children.length,3);
+  assert(h.node('media-content').children.some(node=>node.tagName==='VIDEO'&&node.src==='/answer.mp4'));
+});

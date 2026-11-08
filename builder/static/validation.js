@@ -1,5 +1,5 @@
 const publicationValidation={checked:false,issues:[],serial:0,timer:null};
-const publicationFields={text:'question-text',answer:'answer',points:'points',time_limit:'time-limit',accepted_answers:'accepted-answers','choices.0':'choice-a','choices.1':'choice-b',correct_choice:'correct-choice',category:'grid-category','effect.type':'effect-type','effect.target':'effect-target','effect.questions':'effect-duration','effect.value':'effect-value','media.type':'media-type','media.audio_only':'media-show-in-question','media.show_in_question':'media-show-in-question','media.file':'media-file','media.start':'clip-start','media.end':'clip-end'};
+const publicationFields={attachments:'question-files','attachments.file':'question-files','attachments.type':'question-files',text:'question-text',answer:'answer',points:'points',time_limit:'time-limit',accepted_answers:'accepted-answers','choices.0':'choice-a','choices.1':'choice-b',correct_choice:'correct-choice',category:'grid-category','effect.type':'effect-type','effect.target':'effect-target','effect.questions':'effect-duration','effect.value':'effect-value','media.type':'media-type','media.audio_only':'media-show-in-question','media.show_in_question':'media-show-in-question','media.file':'media-file','media.start':'clip-start','media.end':'clip-end'};
 
 function resetPublicationValidation() {
   clearTimeout(publicationValidation.timer);publicationValidation.serial++;
@@ -62,7 +62,7 @@ function openPublicationIssue(issue) {
     renderStages();renderStageSettings();renderRounds();renderRound();
   }
   renderEditorNavigation();renderPublicationValidation();
-  if(issue.field.startsWith('media.'))$('material-panel').open=true;
+  if(issue.field.startsWith('media.')||issue.field.startsWith('attachments'))$('material-panel').open=true;
   if(issue.field==='accepted_answers')$('answer-variants').open=true;
   const field=$(issueField(issue));
   setTimeout(()=>{field?.scrollIntoView({block:'center',behavior:'smooth'});field?.focus({preventScroll:true});},0);

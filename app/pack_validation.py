@@ -5,6 +5,7 @@ from app.events import normalize_effect, EVENT_TYPES, EVENT_TARGETS
 from app.limits import integer, finite_number
 from app.modes import LEGACY_STAGE, TITLES
 from app.game_settings import QUESTION_DEFAULTS
+from app.media_items import media_items
 
 
 class PublicationError(ValueError):
@@ -133,35 +134,39 @@ def publication_issues(doc, directory=None):
             category = q.get('category')
             if not isinstance(category, str) or not category.strip() or len(category.strip()) > 100 or not isinstance(categories, list) or not any(isinstance(c, str) and c.strip().casefold() == category.strip().casefold() for c in categories):
                 add('category', 'Выберите категорию из списка категорий этого раунда.', si, qi)
-        media = q.get('media')
-        if media is None:
-            continue
-        if not isinstance(media, dict) or media.get('type') not in ('image', 'audio', 'video'):
-            add('media.type', 'Выберите тип медиаматериала.', si, qi)
-            continue
-        filename = media.get('file')
-        if type(media.get('show_in_question', True)) is not bool:
-            add('media.show_in_question', 'Включите или выключите показ медиаматериала во время вопроса.', si, qi)
-        if type(media.get('audio_only', False)) is not bool or media.get('audio_only') and media['type'] != 'video':
-            add('media.audio_only', 'Режим «только звук» доступен для видео. Включите или выключите переключатель.', si, qi)
-        if not isinstance(filename, str) or not filename.strip():
-            add('media.file', 'Загрузите файл материала или выберите «Без материала».', si, qi)
-        elif directory is not None:
-            root = Path(directory).resolve()
-            file = (root / filename).resolve()
-            if not file.is_relative_to(root) or not file.is_file():
-                add('media.file', 'Файл материала не найден. Загрузите его заново.', si, qi)
-        start, end = media.get('start', 0), media.get('end')
-        valid_start = True
-        for value, field, label in [(start, 'media.start', 'Начало отрывка'), (end, 'media.end', 'Конец отрывка')]:
-            if value is None and field == 'media.end':
+        attachments = q.get('attachments', [])
+        if not isinstance(attachments, list) or len(attachments) > 20:
+            add('attachments', 'Добавьте не больше 20 вложений.', si, qi)
+        for mi, media in enumerate(media_items(q)):
+            media_field = 'media' if mi == 0 and q.get('media') is not None else 'attachments'
+            if isinstance(media, dict) and type(media.get('answer', False)) is not bool:
+                add(media_field, 'Назначение файла должно быть вопросом или ответом.', si, qi)
+            if not isinstance(media, dict) or media.get('type') not in ('image', 'audio', 'video'):
+                add(media_field+'.type', 'Выберите тип медиаматериала.', si, qi)
                 continue
-            try:
-                finite_number(value, label)
-            except ValueError:
-                add(field, f'Поле «{label}»: укажите время не меньше нуля.', si, qi)
-                if field == 'media.start':
-                    valid_start = False
-        if valid_start and type(end) in (int, float) and end <= start:
-            add('media.end', 'Конец отрывка должен быть позже начала.', si, qi)
+            if type(media.get('show_in_question', True)) is not bool:
+                add(media_field+'.show_in_question', 'Укажите, показывать ли медиаматериал во время вопроса.', si, qi)
+            filename = media.get('file')
+            if type(media.get('audio_only', False)) is not bool or media.get('audio_only') and media['type'] != 'video':
+                add(media_field+'.audio_only', 'Режим «только звук» доступен для видео. Включите или выключите переключатель.', si, qi)
+            if not isinstance(filename, str) or not filename.strip():
+                add(media_field+'.file', 'Загрузите файл материала или выберите «Без материала».', si, qi)
+            elif directory is not None:
+                root = Path(directory).resolve()
+                file = (root / filename).resolve()
+                if not file.is_relative_to(root) or not file.is_file():
+                    add(media_field+'.file', 'Файл материала не найден. Загрузите его заново.', si, qi)
+            start, end = media.get('start', 0), media.get('end')
+            valid_start = True
+            for value, field, label in [(start, media_field+'.start', 'Начало отрывка'), (end, media_field+'.end', 'Конец отрывка')]:
+                if value is None and field == media_field+'.end':
+                    continue
+                try:
+                    finite_number(value, label)
+                except ValueError:
+                    add(field, f'Поле «{label}»: укажите время не меньше нуля.', si, qi)
+                    if field == media_field+'.start':
+                        valid_start = False
+            if valid_start and type(end) in (int, float) and end <= start:
+                add(media_field+'.end', 'Конец отрывка должен быть позже начала.', si, qi)
     return issues

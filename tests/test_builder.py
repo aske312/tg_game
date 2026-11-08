@@ -339,3 +339,42 @@ def test_deleted_game_cannot_start_new_rooms_but_existing_rooms_keep_media(tmp_p
         assert client.post('/api/practice',headers=headers,json={'pack':'library-demo-quiz'}).status_code == 400
         assert client.get('/api/rooms/'+code,headers=headers).json()['question_count']==23
         assert [client.get(url).content for url in media] == before
+
+
+def test_multiple_question_and_answer_media_publish_export_and_materialize(catalog, tmp_path):
+    from app.packs import materialize_pack
+    snapshot = catalog.open('example-race')
+    doc = copy.deepcopy(snapshot['document'])
+    sources = [q['media'] for q in doc['rounds'] if q.get('media')]
+    q = doc['rounds'][0]
+    q['media'] = copy.deepcopy(sources[0])
+    q['attachments'] = [copy.deepcopy(sources[1]), dict(copy.deepcopy(sources[2]), answer=True)]
+    saved = catalog.save(snapshot['id'], doc, snapshot['revision'])
+    published = catalog.publish(snapshot['id'], saved['revision'])
+    pack = load_pack(catalog.games/snapshot['id'])
+    assert len(pack['questions'][0]['attachments']) == 2
+    assert pack['questions'][0]['attachments'][1]['answer'] is True
+    assets = materialize_pack(pack, tmp_path/'assets')
+    assert len(assets) == 3
+    assert all('source' not in m and m['url'].startswith('/api/media/')
+               for m in [pack['questions'][0]['media'], *pack['questions'][0]['attachments']])
+    with zipfile.ZipFile(io.BytesIO(catalog.export(snapshot['id']))) as archive:
+        for media in [q['media'], *q['attachments']]:
+            assert media['file'] in archive.namelist()
+    reopened = catalog.reload(snapshot['id'])
+    assert reopened['document']['rounds'][0]['attachments'] == json.loads((catalog.games/snapshot['id']/'game.json').read_text(encoding='utf-8'))['rounds'][0]['attachments']
+
+
+def test_answer_attachments_are_hidden_until_reveal(tmp_path):
+    game = Store(tmp_path/'attachments.sqlite3')
+    host, player = dict(id='h', name='Host'), dict(id='p', name='Player')
+    q = dict(id='q', text='Question', answer='Answer', value=100, seconds=60,
+             attachments=[dict(kind='image', url='/question.png'), dict(kind='video', url='/secret.mp4', answer=True)])
+    code = game.create(host, questions=[q])
+    game.change(code, player, 'join');game.change(code, host, 'start');game.change(code, host, 'next')
+    for display in (False, True):
+        view = game.public(code, player['id'], display=display)
+        assert [m['url'] for m in view['question']['attachments']] == ['/question.png']
+    game.change(code, host, 'close')
+    view = game.public(code, player['id'])
+    assert len(view['question']['attachments']) == 2

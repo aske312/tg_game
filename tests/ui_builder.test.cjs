@@ -130,3 +130,36 @@ test('invalid defaults open game settings and missing rounds open round creation
   h.run('state.doc.stages=[];state.doc.rounds=[];state.index=-1;setPublicationIssues([{field:"stages",stage_index:null,item_index:null,message:"Add round",location:"Game"}],true)');
   assert.equal(h.run('editorNav.gameTab'),'rounds');assert(h.node('add-stage-panel').open);
 });
+
+test('new questions append to their stage regardless of selection and filters',()=>{
+  const h=harness(document());h.run("openCategoryQuestions('Space');state.index=0");
+  h.node('add-question').onclick();
+  assert.deepEqual(h.doc().rounds.slice(0,3).map(q=>q.id),['g1','g2','other']);
+  assert.equal(h.doc().rounds[3].stage,'g');assert.equal(h.run('state.index'),3);
+  assert.equal(h.doc().rounds[4].id,'b1');
+});
+test('question movement swaps neighbors within a stage and preserves selection',()=>{
+  const h=harness(document());h.run('state.index=1;move(1)');
+  assert.deepEqual(h.doc().rounds.map(q=>q.id),['g1','other','g2','b1','e']);
+  assert.equal(h.run('round().id'),'g2');h.run('move(1)');
+  assert.equal(h.run('state.index'),2);h.run('move(-1)');
+  assert.deepEqual(h.doc().rounds.map(q=>q.id),['g1','g2','other','b1','e']);
+});
+test('multi-file upload keeps question and answer files separate and resets replaced clips',async()=>{
+  const h=harness(document());h.run("uploadEditorMedia=async()=>({type:'video',file:'media/'+(++uploadCount)+'.mp4'});uploadCount=0");
+  await h.run("uploadFiles([{name:'one.mp4',size:10},{name:'two.mp4',size:10}])");
+  await h.run("uploadFiles([{name:'answer.mp4',size:10}],{answer:true})");
+  let q=h.doc().rounds[0];assert.equal(q.media.file,'media/1.mp4');assert.equal(q.attachments.length,2);
+  assert(!q.attachments[0].answer);assert(q.attachments[1].answer);
+  h.run('round().media.start=25;round().media.end=30');
+  await h.run("uploadFiles([{name:'replacement.mp4',size:10}],{primary:true})");
+  q=h.doc().rounds[0];assert.equal(q.media.start,0);assert.equal(q.media.end,undefined);assert.equal(q.attachments.length,2);
+  await h.run("uploadFiles([{name:'replacement.mp4',size:10}],{replace:1})");
+  assert(h.doc().rounds[0].attachments[1].answer);
+});
+test('each upload zone accepts drops explicitly for both initial upload and replacement',()=>{
+  const h=harness(document());
+  for(const id of ['primary-drop','question-drop','answer-drop','attachment-list']){
+    assert.equal(typeof h.node(id).ondragover,'function');assert.equal(typeof h.node(id).ondrop,'function');
+  }
+});

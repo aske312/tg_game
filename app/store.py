@@ -737,11 +737,14 @@ class Store:
         s['can_answer'] = available and uid not in s['answers'] and (not single_answer(s) or s.get('responder') == uid)
         s['question'] = None
         if q and q.get('type') != 'event':
-            s['question'] = {k: v for k, v in q.items() if k not in ('answer', 'accepted_answers', 'correct_choice')}
+            s['question'] = {k: v for k, v in q.items() if k not in ('answer', 'accepted_answers', 'correct_choice', 'attachments')}
             if (uid == s['host'] and not display) or s['phase'] in ('reveal', 'finished'):
+                s['question']['attachments'] = q.get('attachments', [])
                 s['question']['answer'] = q['answer']
                 if q.get('choices'):
                     s['question']['correct_choice'] = q['correct_choice']
+        if s['question'] is not None and 'attachments' not in s['question']:
+            s['question']['attachments'] = [m for m in q.get('attachments', []) if not m.get('answer')]
         s['answered_ids'] = list(s['answers'])
         if uid != s['host'] and not display:
             s['omission_penalties'] = {k: v for k, v in s['omission_penalties'].items() if k == uid}

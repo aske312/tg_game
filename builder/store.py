@@ -13,6 +13,7 @@ import zipfile
 from pathlib import Path
 
 from app.media import MAX_MEDIA_BYTES, detect_media
+from app.media_items import media_items
 from app.packs import MAX_PACK_BYTES, load_pack, pack_deleted
 
 
@@ -115,8 +116,8 @@ class Catalog:
         rounds = doc.get('rounds')
         if not isinstance(rounds, list):
             raise ValueError('В rounds должен быть список раундов')
-        return {q['media']['file'] for q in rounds if isinstance(q, dict)
-                and isinstance(q.get('media'), dict) and isinstance(q['media'].get('file'), str)}
+        return {m['file'] for q in rounds if isinstance(q, dict)
+                for m in media_items(q) if isinstance(m, dict) and isinstance(m.get('file'), str)}
 
     def copy_media(self, doc, source, target):
         total = 0
@@ -303,16 +304,14 @@ class Catalog:
             published_doc = copy.deepcopy(doc)
             # Immutable filenames keep an old manifest's media valid during publication.
             for q in published_doc['rounds']:
-                if not q.get('media'):
-                    continue
-                media = q['media']
-                data = self.asset(draft, media['file']).read_bytes()
-                _, extension = detect_media(data[:128], media['type'])
-                name = 'media/' + hashlib.sha256(data).hexdigest() + extension
-                path = self.asset(target, name)
-                if not path.exists():
-                    atomic_write(path, data)
-                media['file'] = name
+                for media in media_items(q):
+                    data = self.asset(draft, media['file']).read_bytes()
+                    _, extension = detect_media(data[:128], media['type'])
+                    name = 'media/' + hashlib.sha256(data).hexdigest() + extension
+                    path = self.asset(target, name)
+                    if not path.exists():
+                        atomic_write(path, data)
+                    media['file'] = name
             published_data = encode(published_doc)
             if len(published_data) > MAX_PACK_BYTES:
                 raise ValueError('Документ после подготовки медиа больше 1 МБ')

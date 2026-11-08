@@ -5,6 +5,7 @@ function clearMediaError(){if(mediaNotice&&$('notice').textContent===mediaNotice
 
 function disposeQuestionMedia(){
   activeClip=null;
+  for(const player of $('media-content').querySelectorAll('audio,video')){player.pause();player.removeAttribute('src');player.load();}
   clearMediaError();
   if(mediaNode){
     mediaNode.onerror=null;
@@ -56,14 +57,30 @@ function renderQuestionMedia(q) {
   $('display-media-expand').setAttribute('aria-pressed',String(!!room.media_expanded));
   document.body.dataset.mediaExpanded=String(isDisplay()&&!!room.media_expanded&&!!canExpand);
   renderHostMediaToggle();
-  const visible=!!m&&(!av||isDisplay())&&!(isDisplay()&&m.kind==='image'&&hiddenPicture);
+  const attachments=(q?.attachments||[]).filter(item=>!item.answer||room.phase==='reveal'||room.phase==='finished');
+  const visible=attachments.some(item=>item.kind==='image'||isDisplay())||!!m&&(!av||isDisplay())&&!(isDisplay()&&m.kind==='image'&&hiddenPicture);
   show('media-content',visible);
   const full=mediaTransport().mode==='full';
-  const key=room.code+':'+q?.id+':'+(isDisplay()?'display':isHost()?'host':'player')+':'+full+':'+(isDisplay()&&hiddenPicture)+':'+JSON.stringify(m);
+  const key=room.code+':'+q?.id+':'+(isDisplay()?'display':isHost()?'host':'player')+':'+full+':'+(isDisplay()&&hiddenPicture)+':'+JSON.stringify([m,attachments]);
   if(key===mediaKey)return;
   disposeQuestionMedia();
   mediaKey=key;
   if(!visible)return;
+  for(const item of attachments){
+    if(item.kind!=='image'&&!isDisplay())continue;
+    const extra=document.createElement(item.kind==='image'?'img':item.audio_only&&room.phase!=='reveal'?'audio':item.kind);
+    extra.src=item.url;
+    if(item.kind==='image')extra.alt=item.answer?'Материал к ответу':'Материал к вопросу';
+    else {
+      extra.controls=true;extra.preload='metadata';extra.setAttribute('playsinline','');
+      const start=item.start||0;
+      extra.onloadedmetadata=()=>{extra.currentTime=start;};
+      extra.onplay=()=>{if(room.paused){extra.pause();return;}if(extra.currentTime<start||item.end!=null&&extra.currentTime>=item.end)extra.currentTime=start;};
+      extra.ontimeupdate=()=>{if(room.paused||item.end!=null&&extra.currentTime>=item.end)extra.pause();};
+    }
+    $('media-content').append(extra);
+  }
+  if(!m||av&&!isDisplay()||isDisplay()&&m.kind==='image'&&hiddenPicture)return;
   const audioOnly=m.kind==='video'&&hiddenPicture;
   const node=document.createElement(m.kind==='image'?'img':m.kind);
   mediaNode=node;

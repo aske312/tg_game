@@ -133,6 +133,49 @@ def check_builder(page, url):
     return next(game['id'] for game in games if game['title'] == 'Проверка UI 0.0.5')
 
 
+def check_builder_media(page, url):
+    """Upload multiple files and exercise real DOM drops, including replacement."""
+    page.get_by_role('button', name='+ Новая игра', exact=True).click()
+    page.locator('#new-title').fill('Media regression')
+    page.get_by_role('button', name='Создать игру →', exact=True).click()
+    page.locator('#add-question').click()
+    page.locator('#question-text').fill('Media question')
+    page.locator('#answer').fill('Answer')
+    page.locator('#material-panel > summary').click()
+    page.locator('#question-files').set_input_files([
+        str(ROOT/'static/demo/colors.mp4'), str(ROOT/'games/example-race/media/red.png')])
+    expect(page.locator('.attachment')).to_have_count(1)
+    expect(page.locator('#question-files')).to_be_enabled()
+
+    def drop(selector, path):
+        payload=dict(name=path.name, data=list(path.read_bytes()))
+        transfer=page.evaluate_handle("""payload=>{
+            const dt=new DataTransfer();dt.items.add(new File([new Uint8Array(payload.data)],payload.name));return dt;
+        }""",payload)
+        page.locator(selector).dispatch_event('dragover',dict(dataTransfer=transfer))
+        page.locator(selector).dispatch_event('drop',dict(dataTransfer=transfer))
+        expect(page.locator('#question-files')).to_be_enabled()
+        transfer.dispose()
+
+    drop('#primary-drop', ROOT/'static/demo/signals.wav')
+    expect(page.locator('#media-type')).to_have_value('audio')
+    drop('#primary-drop', ROOT/'static/demo/colors.mp4')
+    expect(page.locator('#media-type')).to_have_value('video')
+    drop('#answer-drop', ROOT/'static/demo/signals.wav')
+    expect(page.locator('.attachment')).to_have_count(2)
+    drop('[data-attachment="1"]', ROOT/'static/demo/colors.mp4')
+    expect(page.locator('[data-remove-attachment="1"]')).to_be_enabled()
+    page.locator('#save').click()
+    expect(page.locator('#save-status')).to_have_text('Черновик сохранён')
+    page.reload()
+    expect(page.locator('.attachment')).to_have_count(2)
+    expect(page.locator('.attachment').nth(1)).to_contain_text('К ответу')
+    page.set_viewport_size(dict(width=390,height=844))
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), 'Media editor overflows'
+    screenshot(page, 'builder-media-mobile')
+    page.set_viewport_size(dict(width=1440,height=1000))
+
+
 def login(page, url, name):
     page.goto(url)
     page.locator('#name').fill(name)
@@ -408,6 +451,7 @@ def main():
             context = stack.enter_context(browser.new_context(viewport=dict(width=1440, height=1000)))
             page = context.new_page();watch(page)
             game_id = check_builder(page, builder)
+            check_builder_media(page, builder)
             check_display(browser, stack, game, game_id, watch)
             check_display_media(browser, stack, game, folder/'game.sqlite3', watch)
             check_hidden_display_media(browser, stack, game, folder/'game.sqlite3', watch)
