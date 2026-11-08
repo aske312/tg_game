@@ -19,9 +19,10 @@ function updateMobileClient(){
     let mode='none',dock=null;
     const player=typeof room!=='undefined'&&room&&!isDisplay()&&!isHost();
     const active=mobile&&!zoomed&&player&&!room.paused&&!room.scores_visible&&!$('question').hidden;
-    if(active&&['question','review'].includes(room.phase)&&ownAnswer()&&!$('my-answer').hidden){mode='sent';dock=$('my-answer');}
+    if(active&&['question','review'].includes(room.phase)&&!$('my-answer').hidden){mode='sent';dock=$('my-answer');}
     else if(active&&room.phase==='question'){
-      if(room.can_buzz&&!$('buzz-answer').hidden&&!$('buzz-answer').disabled){mode='buzz';dock=$('buzz-answer');}
+      if(!$('timeout-hint').hidden){mode='expired';dock=$('timeout-hint');}
+      else if(room.can_buzz&&!$('buzz-answer').hidden&&!$('buzz-answer').disabled){mode='buzz';dock=$('buzz-answer');}
       else if(canAnswer()&&!$('answer-send').disabled){
         if(!$('answer-form').hidden){mode='text';dock=$('answer-form');}
         else if(!$('binary-options').hidden){mode='binary';dock=$('binary-options');}
@@ -42,6 +43,6 @@ document.addEventListener('focusin',updateMobileClient);
 document.addEventListener('focusout',updateMobileClient);
 if(typeof ResizeObserver!=='undefined'){
   const observer=new ResizeObserver(updateMobileClient);
-  for(const id of ['answer-form','binary-options','buzz-answer','my-answer'])observer.observe($(id));
+  for(const id of ['answer-form','binary-options','buzz-answer','my-answer','timeout-hint'])observer.observe($(id));
 }
 updateMobileClient();

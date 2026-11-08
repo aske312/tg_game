@@ -83,6 +83,12 @@ def check(browser,url,database,width,height,name):
             page.evaluate('ceremonyStart=Date.now()/1000+offset/1000-30;tickExperience()')
             page.locator('#another').click();expect(page.locator('#home')).to_be_visible()
             page.wait_for_function("document.body.dataset.mobileAnswer==='none'")
+        if width==320:
+            code=db.create(host,questions=[dict(id='timeout',type='question',category='Topic',text=long,answer='Да',value=100,seconds=1)])
+            page.goto(url+'/?room='+code);expect(page.locator('#lobby')).to_be_visible()
+            action('start');action('next')
+            page.wait_for_function("document.body.dataset.mobileAnswer==='expired'")
+            fits(page,'#timeout-hint');expect(page.locator('#timeout-hint')).to_contain_text('Время вышло')
         assert not errors,errors
         print(f'{name} {width}x{height}: entry, reachable controls, draft, simulated keyboard and game states passed',flush=True)
 
