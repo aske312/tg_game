@@ -23,6 +23,13 @@ def invitation_url(base, text):
     return urlunsplit((url.scheme, url.netloc, url.path, urlencode(query), url.fragment))
 
 
+def launch_buttons(url):
+    return {'inline_keyboard': [
+        [{'text': 'Играть в Telegram', 'web_app': {'url': url}}],
+        [{'text': 'Открыть веб-версию', 'url': url}],
+    ]}
+
+
 async def configure_bot(call, url):
     menu = await call('getChatMenuButton')
     if menu.get('web_app', {}).get('url', '').rstrip('/') != url.rstrip('/'):
@@ -66,8 +73,8 @@ async def main():
                     if msg.get('chat', {}).get('type') == 'private' and msg.get('text', '').split(' ')[0] in ('/start', '/play'):
                         launch = invitation_url(url, msg.get('text', ''))
                         await call('sendMessage', chat_id=msg['chat']['id'],
-                                   text='Крысиные бега 🐀\nСоздайте комнату или попробуйте тренировку с искусственными игроками. Ответы пишите в чат комнаты.',
-                                   reply_markup={'inline_keyboard': [[{'text': 'Открыть игру', 'web_app': {'url': launch}}]]})
+                                   text='Крысиные бега 🐀\nИграй через Telegram или веб-браузер. Создай комнату, присоединись по приглашению или попробуй тренировку. Отправляй ответы через поле ответа в игре.',
+                                   reply_markup=launch_buttons(launch))
             except RuntimeError as e:
                 print(str(e))
                 await asyncio.sleep(3)

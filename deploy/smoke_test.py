@@ -26,9 +26,9 @@ async def main():
             health = await client.get('/api/health')
             health.raise_for_status()
             print('HTTPS/database health:', health.json())
-            assert (await client.post('/api/login', json={'name': 'Anonymous'})).status_code == 401
+            assert (await client.get('/api/me')).status_code == 401
             assert (await client.post('/api/practice')).status_code == 401
-            print('Anonymous access is blocked.')
+            print('Protected endpoints require a Telegram or web session.')
             headers = {'Authorization': 'Bearer '+token}
             await client.get('/api/me', headers=headers)
             library = await client.get('/api/packs', headers=headers)

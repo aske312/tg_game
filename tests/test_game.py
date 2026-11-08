@@ -45,3 +45,11 @@ def test_bot_profile_rate_limit_does_not_block_startup():
     # This used to abort the bot before it could start receiving messages.
     asyncio.run(configure_bot(limited,'https://example.com'))
 
+
+
+def test_bot_offers_telegram_and_browser_launch_buttons():
+    from app.bot import launch_buttons
+    result=launch_buttons('https://example.com/?room=ABC234')
+    rows=result['inline_keyboard']
+    assert rows[0][0]['web_app']['url']=='https://example.com/?room=ABC234'
+    assert rows[1][0]['url']=='https://example.com/?room=ABC234'

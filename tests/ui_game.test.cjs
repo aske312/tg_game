@@ -676,3 +676,10 @@ test('solo player practice can play media locally while competitive players stay
   const audio=h.node('media-content').children[0].children[0];audio.emit('loadedmetadata');
   assert.equal(audio.paused,false);
 });
+
+test('web and Telegram invitations use separate URLs',async()=>{
+  const h=harness();h.run("auth.user.id='h';config={bot_username:'quiz_bot'};copied=[];navigator={clipboard:{async writeText(text){copied.push(text)}}}");
+  h.apply({});assert(!h.node('invite-telegram').hidden);
+  await h.node('invite').onclick();assert.equal(h.ctx.copied[0],'http://localhost/?room=ABC234');
+  await h.node('invite-telegram').onclick();assert.equal(h.ctx.copied[1],'https://t.me/quiz_bot?start=ABC234');
+});

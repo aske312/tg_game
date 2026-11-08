@@ -227,6 +227,7 @@ function apply(s){
   show('display-entry',false);show('display-fullscreen',displayPage&&isDisplay());
   $('leave').textContent=displayPage?'← Подключить другую комнату':'← На главную';
   show('display-invite',isHost());
+  show('invite-telegram',!!config?.bot_username);
   if(isHost()){
     $('display-url').href=(location.origin||'')+'/display?room='+encodeURIComponent(s.code);
     $('display-address').textContent=(location.origin||'')+'/display';$('display-room-code').textContent=s.code;
@@ -350,7 +351,7 @@ $('skip-stage').onclick=guard(async()=>{
   if(window.confirm(`Пропустить раунд «${room.stage.title}»? Неоценённые ответы и оставшиеся вопросы не принесут очков. Уже начисленные очки сохранятся.`))await command('skip_stage');
 });
 $('enable-sound').onclick=async()=>{if(await unlockSound())fanfare();};
-async function entered(){setRole('player');sessionStorage.setItem('auth',JSON.stringify(auth));$('identity').textContent=auth.user.name;show('login',false);show('home',true);const p=new URLSearchParams(location.search),code=tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam')||p.get('room')||sessionStorage.getItem('room');if(code&&/^[A-Z2-9]{6}$/i.test(code)){try{await join(code);}catch(e){notice(e.message);sessionStorage.removeItem('room');}}}
+async function entered(){setRole('player');sessionStorage.setItem('auth',JSON.stringify(auth));$('identity').textContent=auth.user.name;show('login',false);show('telegram-entry',false);show('home',true);const p=new URLSearchParams(location.search),code=tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam')||p.get('room')||sessionStorage.getItem('room');if(code&&/^[A-Z2-9]{6}$/i.test(code)){try{await join(code);}catch(e){notice(e.message);sessionStorage.removeItem('room');}}}
 $('display-form').onsubmit=guard(()=>connectDisplay($('display-code').value));
 for(const name of ['question','answer','board'])$('scene-'+name).onclick=guard(()=>command('display_'+name));
 $('buzz-answer').onclick=guard(()=>command('buzz',{question:room.question.id}));
@@ -445,7 +446,18 @@ $('question-form').onsubmit=guard(async()=>{
     $('question-form').reset();$('q-kind').onchange();renderQuestionEditor();notice('Вопрос добавлен в конец пакета.');
   }finally{uploading=false;$('add-question').disabled=false;if(room)$('start').disabled=room.players.length<2||!room.question_count;}
 });
-$('invite').onclick=guard(async()=>{const link=config.bot_username?`https://t.me/${config.bot_username}?start=${room.code}`:`${location.origin}/?room=${room.code}`;if(tg?.initData&&config.bot_username)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Крысиные бега! Код: '+room.code)}`);else if(navigator.clipboard){await navigator.clipboard.writeText(link);notice('Ссылка скопирована. Код: '+room.code);}else notice('Код комнаты: '+room.code);});
+function webInviteURL(){return `${location.origin}/?room=${encodeURIComponent(room.code)}`;}
+async function copyInvitation(link){
+  if(navigator.clipboard){await navigator.clipboard.writeText(link);notice('Ссылка скопирована. Код: '+room.code);}
+  else notice('Ссылка на игру: '+link);
+}
+$('invite').onclick=guard(()=>copyInvitation(webInviteURL()));
+$('invite-telegram').onclick=guard(async()=>{
+  if(!room||!config?.bot_username)return;
+  const link=`https://t.me/${config.bot_username}?start=${room.code}`;
+  if(tg?.initData)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Крысиные бега! Код: '+room.code)}`);
+  else await copyInvitation(link);
+});
 window.addEventListener('online',()=>{if(room)connect(room.code);});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&room)connect(room.code);});
 function telegramEntry(){
   show('telegram-entry',true);
@@ -460,8 +472,15 @@ guard(async()=>{
     return;
   }
   tg?.ready();tg?.expand();config=await api('/config');
-  try{auth=JSON.parse(sessionStorage.getItem('auth'));}catch{auth=null;}
-  if(auth){try{auth.user=await api('/me');}catch{auth=null;sessionStorage.removeItem('auth');}}
-  if(!auth&&tg?.initData){try{auth=await api('/login',{init_data:tg.initData});}catch(e){telegramEntry();throw e;}}
-  if(auth)await entered();else if(config.dev_mode)show('login',true);else telegramEntry();
+  if(tg?.initData){
+    auth=null;sessionStorage.removeItem('auth');
+    try{auth=await api('/login',{init_data:tg.initData});}catch(e){telegramEntry();throw e;}
+  }else{
+    try{auth=JSON.parse(sessionStorage.getItem('auth'));}catch{auth=null;}
+    if(auth){try{auth.user=await api('/me');}catch{auth=null;sessionStorage.removeItem('auth');}}
+    if(!auth&&config.web_login){try{auth=await api('/web-session');}catch{auth=null;}}
+  }
+  if(auth)await entered();
+  else if(config.web_login||config.dev_mode){show('login',true);if(config.bot_username)telegramEntry();}
+  else telegramEntry();
 })();

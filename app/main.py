@@ -175,7 +175,7 @@ def favicon():
 
 @app.get('/api/config')
 def config():
-    return {'dev_mode': DEV_MODE, 'bot_username': os.getenv('BOT_USERNAME', '').lstrip('@')}
+    return {'dev_mode': DEV_MODE, 'web_login': True, 'bot_username': os.getenv('BOT_USERNAME', '').lstrip('@')}
 
 
 @app.post('/api/login')
@@ -189,12 +189,43 @@ def login(body: Login, request: Request, response: Response):
                 raise ValueError('Введите имя')
             user = {'id': 'dev-' + secrets.token_hex(12), 'name': name}
         else:
-            raise ValueError('Откройте приложение через Telegram')
+            name = body.name.strip()
+            if not name:
+                raise ValueError('Введите имя')
+            previous = request.cookies.get('ratrace_web_session', '')
+            if previous:
+                try:
+                    candidate = store.user(previous)
+                    if candidate.get('auth_source') == 'web' and candidate.get('name') == name:
+                        set_session_cookie(response, request, previous)
+                        response.headers['Cache-Control'] = 'no-store'
+                        return {'token': previous, 'user': candidate}
+                except ValueError:
+                    pass
+            user = {'id': 'web-' + secrets.token_hex(16), 'name': name, 'auth_source': 'web'}
         token = store.session(user)
         set_session_cookie(response, request, token)
+        if user.get('auth_source') == 'web':
+            response.set_cookie('ratrace_web_session', token, max_age=86400, httponly=True,
+                                secure=request.url.scheme == 'https', samesite='lax')
+        response.headers['Cache-Control'] = 'no-store'
         return {'token': token, 'user': user}
     except (ValueError, TypeError, KeyError) as e:
         raise HTTPException(401, str(e))
+
+
+@app.get('/api/web-session')
+def web_session(request: Request, response: Response):
+    try:
+        token = request.cookies.get('ratrace_web_session', '')
+        user = store.user(token)
+        if user.get('auth_source') != 'web' or not user['id'].startswith('web-'):
+            raise ValueError('Нужен вход по имени')
+        set_session_cookie(response, request, token)
+        response.headers['Cache-Control'] = 'no-store'
+        return dict(token=token, user=user)
+    except ValueError as error:
+        raise HTTPException(401, 'Введите имя для входа в браузере', headers={'Cache-Control':'no-store'}) from error
 
 
 @app.get('/api/me')
