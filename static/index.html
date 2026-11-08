@@ -12,6 +12,7 @@
 <section id="login" hidden class="panel login-panel"><span class="eyebrow">РАЗМИНКА ПЕРЕД ЗАБЕГОМ</span><h1>Как тебя<br>представить?</h1><p>Введи имя, чтобы присоединиться к игре или создать свою комнату.</p><form id="login-form"><label for="name">Имя игрока</label><input id="name" maxlength="64" value="Игрок" required autocomplete="nickname"><button class="button-wide">В игру <span aria-hidden="true">↗</span></button></form><p class="footnote">Веб-версия · вход по имени, без регистрации</p></section>
 <section id="telegram-entry" hidden class="panel login-panel"><span class="eyebrow">ИЛИ ИГРАЙ ЧЕРЕЗ TELEGRAM</span><h1>Открыть<br>в Telegram</h1><p>Бот откроет ту же игру в Telegram и автоматически подставит твоё имя.</p><a id="open-bot" class="button-link button-wide" hidden>Открыть Telegram <span aria-hidden="true">↗</span></a><p class="footnote">В чате с ботом нажми «Открыть игру».</p><a href="/display" class="display-entry-link">Подключить общий экран в браузере →</a></section>
 <section id="home" hidden>
+  <div id="web-account" class="web-account" hidden><span>Вход по имени: <strong id="web-account-name"></strong></span><button id="web-logout" class="secondary small">Выйти</button></div>
   <div class="entry-intro"><span class="eyebrow">КРЫСИНЫЕ БЕГА · КВИЗ ДЛЯ СВОИХ</span><h1>Весь клан.<br>Одна игра.</h1><p>Собираемся, отвечаем, забираем сыр.</p></div>
   <div class="role-tabs" role="group" aria-label="Режим запуска">
     <button data-role="player" aria-pressed="true">Игрок</button><button data-role="host" aria-pressed="false">Ведущий</button>

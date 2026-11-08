@@ -120,3 +120,16 @@ def test_browser_host_can_access_materials_in_production(production):
     assert response.status_code==200
     url=response.json()['question_list'][0]['media']['url']
     assert client.get(url,headers={'Range':'bytes=0-7'}).status_code==206
+
+
+def test_web_logout_revokes_only_its_session(production):
+    client,db,_=production
+    web=client.post('/api/login',json={'name':'Web'}).json()
+    tg=client.post('/api/login',json={'init_data':telegram_data()}).json()
+    assert client.post('/api/web-logout').status_code==401
+    assert client.post('/api/web-logout',headers={'Authorization':'Bearer '+tg['token']}).status_code==403
+    assert client.post('/api/web-logout',headers={'Authorization':'Bearer '+web['token']}).status_code==200
+    assert client.get('/api/web-session').status_code==401
+    assert client.get('/api/me',headers={'Authorization':'Bearer '+web['token']}).status_code==401
+    assert client.get('/api/me',headers={'Authorization':'Bearer '+tg['token']}).status_code==200
+    assert client.cookies.get('ratrace_session')==tg['token']

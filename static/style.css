@@ -26,3 +26,5 @@ h1,h2,h3,p{margin:0}h1{font-size:clamp(38px,5vw,62px);line-height:1.02;font-weig
 .app-version{display:block;padding:8px 16px calc(12px + env(safe-area-inset-bottom));color:var(--muted);font-size:10px;line-height:1.4;text-align:right;font-variant-numeric:tabular-nums}
 
 .room-invites{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}.room-invites button{min-width:0}
+
+.web-account{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;font-size:12px;color:var(--muted)}.web-account>span{min-width:0;overflow-wrap:anywhere}

@@ -228,6 +228,21 @@ def web_session(request: Request, response: Response):
         raise HTTPException(401, 'Введите имя для входа в браузере', headers={'Cache-Control':'no-store'}) from error
 
 
+@app.post('/api/web-logout')
+def web_logout(request: Request, response: Response, authorization: str = Header(default='')):
+    user = current_user(authorization)
+    if user.get('auth_source') != 'web':
+        raise HTTPException(403, 'Это действие доступно для веб-сессии')
+    token = authorization[7:]
+    with store.connect() as db:
+        db.execute('DELETE FROM sessions WHERE token=?', (token,))
+    for cookie in ('ratrace_web_session', 'ratrace_session'):
+        if request.cookies.get(cookie) == token:
+            response.delete_cookie(cookie)
+    response.headers['Cache-Control'] = 'no-store'
+    return dict(ok=True)
+
+
 @app.get('/api/me')
 def me(request: Request, response: Response, authorization: str = Header(default='')):
     user = current_user(authorization)

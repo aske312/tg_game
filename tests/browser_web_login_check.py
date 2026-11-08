@@ -64,6 +64,9 @@ def check(browser,url):
         another=web_context.new_page();another.goto(url+'/?room='+code);another.wait_for_function('room?.phase==="reveal"')
         assert another.evaluate('auth.user.id')==web_id and another.evaluate('room.players.length')==3
         assert web.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
+        web.locator('#leave').click();web.locator('#web-logout').click()
+        expect(web.locator('#login')).to_be_visible()
+        web.reload();expect(web.locator('#login')).to_be_visible()
         assert not errors,errors
         print('Production web + Telegram: shared room, answers, grading, both invitations, cookie recovery and mobile layout passed.',flush=True)
 

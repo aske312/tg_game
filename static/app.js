@@ -351,7 +351,7 @@ $('skip-stage').onclick=guard(async()=>{
   if(window.confirm(`Пропустить раунд «${room.stage.title}»? Неоценённые ответы и оставшиеся вопросы не принесут очков. Уже начисленные очки сохранятся.`))await command('skip_stage');
 });
 $('enable-sound').onclick=async()=>{if(await unlockSound())fanfare();};
-async function entered(){setRole('player');sessionStorage.setItem('auth',JSON.stringify(auth));$('identity').textContent=auth.user.name;show('login',false);show('telegram-entry',false);show('home',true);const p=new URLSearchParams(location.search),code=tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam')||p.get('room')||sessionStorage.getItem('room');if(code&&/^[A-Z2-9]{6}$/i.test(code)){try{await join(code);}catch(e){notice(e.message);sessionStorage.removeItem('room');}}}
+async function entered(){setRole('player');sessionStorage.setItem('auth',JSON.stringify(auth));$('identity').textContent=auth.user.name;show('web-account',auth.user.auth_source==='web');$('web-account-name').textContent=auth.user.name;show('login',false);show('telegram-entry',false);show('home',true);const p=new URLSearchParams(location.search),code=tg?.initDataUnsafe?.start_param||p.get('tgWebAppStartParam')||p.get('room')||sessionStorage.getItem('room');if(code&&/^[A-Z2-9]{6}$/i.test(code)){try{await join(code);}catch(e){notice(e.message);sessionStorage.removeItem('room');}}}
 $('display-form').onsubmit=guard(()=>connectDisplay($('display-code').value));
 for(const name of ['question','answer','board'])$('scene-'+name).onclick=guard(()=>command('display_'+name));
 $('buzz-answer').onclick=guard(()=>command('buzz',{question:room.question.id}));
@@ -393,6 +393,13 @@ $('display-fullscreen').onclick=guard(async()=>{
   if(document.fullscreenElement)await document.exitFullscreen();
   else if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();
   else notice('Используй полноэкранный режим браузера.');
+});
+$('web-logout').onclick=guard(async()=>{
+  if(room||auth?.user.auth_source!=='web')return;
+  await api('/web-logout',{});
+  auth=null;sessionStorage.removeItem('auth');sessionStorage.removeItem('room');
+  $('identity').textContent='Квиз для своих';show('home',false);show('login',true);
+  if(config.bot_username)telegramEntry();
 });
 $('login-form').onsubmit=guard(async()=>{auth=await api('/login',{name:$('name').value});await entered();});
 $('join-form').onsubmit=guard(()=>join($('code').value));$('create').onclick=guard(create);$('practice').onclick=guard(()=>practice('host'));$('player-practice').onclick=guard(()=>practice('player'));$('another').onclick=guard(()=>room?.practice?practice(room.host_practice?'host':'player',room.pack_id):isHost()?create():$('leave').click());
