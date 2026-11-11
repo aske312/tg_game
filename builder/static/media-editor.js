@@ -173,7 +173,7 @@ async function uploadFiles(files,{answer=false,replace=null,primary=false}={}) {
   const extra=files.length-(replace!==null||!answer&&(primary||!q.media?.file)?1:0);
   if(attachments.length+Math.max(0,extra)>20)throw new Error('Можно добавить не больше 20 дополнительных файлов.');
   const types=files.map(file=>{
-    if(file.size>25*1024*1024)throw new Error('Каждый файл должен быть не больше 25 МБ.');
+    if(file.size>10*1024**3)throw new Error('Каждый файл должен быть не больше 10 ГБ.');
     const type=fileMediaType(file);if(!type)throw new Error('Выбери изображение, аудио или видео.');return type;
   });
   // Capture the question before awaiting uploads; selection cannot redirect the files.

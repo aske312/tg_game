@@ -128,7 +128,7 @@ CADDY
     tls /etc/rat-race/tls/fullchain.pem /etc/rat-race/tls/privkey.pem
     encode gzip
     request_body {
-        max_size 26MB
+        max_size 10737418240
     }
     reverse_proxy 127.0.0.1:8010
 }

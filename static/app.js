@@ -443,7 +443,7 @@ $('question-form').onsubmit=guard(async()=>{
   if(room.stages.find(s=>s.id===body.stage)?.type==='grid')body.category=$('q-category').value;
   if(room.stages.find(s=>s.id===body.stage)?.type==='binary'){body.choices=[$('q-choice-a').value,$('q-choice-b').value];body.correct_choice=Number($('q-correct-choice').value);body.answer=body.choices[body.correct_choice];}
   const kind=$('q-kind').value,file=$('q-file').files[0];
-  if(kind&&(!file||file.size>25*1024*1024))throw new Error('Выберите файл размером до 25 МБ');
+  if(kind&&(!file||file.size>10*1024**3))throw new Error('Выберите файл размером до 10 ГБ');
   if(body.clip_end!=null&&body.clip_end<=body.clip_start)throw new Error('Конец отрывка должен быть позже начала');
   uploading=true;$('add-question').disabled=true;$('start').disabled=true;
   try{

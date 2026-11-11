@@ -1,11 +1,10 @@
 """Validated game.json folders containing questions and events."""
-import hashlib
 import json
 import re
 import secrets
 from pathlib import Path
 
-from app.media import MAX_MEDIA_BYTES, detect_media
+from app.media import MAX_MEDIA_BYTES, MAX_GAME_MEDIA_BYTES, detect_media, inspect_media, copy_media_file
 from app.media_items import media_items
 from app.modes import stages_from_doc, binary_fields, grid_category
 from app.events import normalize_effect
@@ -108,7 +107,7 @@ def load_pack(directory):
             if relative.is_absolute() or not source.is_relative_to(directory) or not source.is_file():
                 raise ValueError(f'Вопрос {i}: файл должен существовать внутри папки пакета')
             if source.stat().st_size > MAX_MEDIA_BYTES:
-                raise ValueError(f'Вопрос {i}: файл больше 25 МБ')
+                raise ValueError(f'Вопрос {i}: файл больше 10 ГБ')
             paths.add(source)
             with source.open('rb') as f:
                 detect_media(f.read(128), media['type'])
@@ -135,8 +134,8 @@ def load_pack(directory):
             else:
                 q.setdefault('attachments', []).append(loaded)
         questions.append(q)
-    if sum(p.stat().st_size for p in paths) > 100 * 1024 * 1024:
-        raise ValueError('Общий размер медиа пакета не должен превышать 100 МБ')
+    if sum(p.stat().st_size for p in paths) > MAX_GAME_MEDIA_BYTES:
+        raise ValueError('Общий размер медиа пакета не должен превышать 10 ГБ')
     if not any(q.get('type') == 'question' for q in questions):
         raise ValueError('В пакете нужен хотя бы один question')
     for stage in stages:
@@ -197,19 +196,11 @@ def materialize_pack(pack, media_directory):
             source = media.pop('source')
             key = (source, media['kind'])
             if key not in cache:
-                data = Path(source).read_bytes()
-                if len(data) > MAX_MEDIA_BYTES:
-                    raise ValueError('Материал изменился и превышает 25 МБ')
-                mime, extension = detect_media(data[:128], media['kind'])
-                filename = hashlib.sha256(data).hexdigest()+extension
+                mime, extension, digest, _ = inspect_media(Path(source), media['kind'])
+                filename = digest + extension
                 target = directory / filename
                 if not target.exists():
-                    temporary = directory / (secrets.token_hex(20)+'.part')
-                    try:
-                        temporary.write_bytes(data)
-                        temporary.replace(target)
-                    finally:
-                        temporary.unlink(missing_ok=True)
+                    copy_media_file(Path(source), target)
                 asset = secrets.token_hex(20)
                 cache[key] = asset
                 assets.append(dict(id=asset, kind=media['kind'], mime=mime, filename=filename))

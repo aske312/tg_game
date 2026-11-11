@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from app.media import MAX_MEDIA_BYTES, MEDIA_EXTENSIONS, detect_media
 from starlette.concurrency import run_in_threadpool
+from starlette.background import BackgroundTask
 from app.pack_validation import PublicationError
 from builder.auth import check_password
 from builder.store import Catalog, Conflict
@@ -165,6 +166,11 @@ def create_app(catalog, password_hash):
 
     @app.post('/api/games/{game_id}/media', dependencies=[Depends(author)])
     async def upload(game_id: str, request: Request, kind: Literal['image', 'audio', 'video']):
+        folder = invoke(catalog.folder, catalog.drafts, game_id)
+        length = request.headers.get('content-length')
+        if length and length.isdigit() and int(length) > MAX_MEDIA_BYTES:
+            raise HTTPException(413, 'Максимальный размер файла — 10 ГБ')
+        await run_in_threadpool(invoke, catalog.read_doc, folder)
         directory = catalog.data / 'uploads'
         directory.mkdir(parents=True, exist_ok=True)
         temporary = directory / (secrets.token_hex(20) + '.part')
@@ -174,8 +180,8 @@ def create_app(catalog, password_hash):
                 async for chunk in request.stream():
                     total += len(chunk)
                     if total > MAX_MEDIA_BYTES:
-                        raise HTTPException(413, 'Максимальный размер файла — 25 МБ')
-                    output.write(chunk)
+                        raise HTTPException(413, 'Максимальный размер файла — 10 ГБ')
+                    await run_in_threadpool(output.write, chunk)
             return await run_in_threadpool(invoke, catalog.upload, game_id, temporary, kind)
         finally:
             temporary.unlink(missing_ok=True)
@@ -193,8 +199,9 @@ def create_app(catalog, password_hash):
 
     @app.get('/api/games/{game_id}/export', dependencies=[Depends(author)])
     def export(game_id: str):
-        data = invoke(catalog.export, game_id)
-        return Response(data, media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="{game_id}.zip"'})
+        path = invoke(catalog.export_file, game_id)
+        return FileResponse(path, media_type='application/zip', filename=f'{game_id}.zip',
+                            background=BackgroundTask(path.unlink, missing_ok=True))
 
     return app
 

@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect, Request, Response, Cookie
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, StrictInt
 
 from app.auth import validate_telegram
@@ -347,9 +348,9 @@ async def upload_media(code: str, request: Request, kind: Literal['image', 'audi
             async for chunk in request.stream():
                 total += len(chunk)
                 if total > MAX_MEDIA_BYTES:
-                    raise HTTPException(413, 'Максимальный размер файла — 25 МБ')
+                    raise HTTPException(413, 'Максимальный размер файла — 10 ГБ')
                 prefix = (prefix+chunk)[:128] if len(prefix) < 128 else prefix
-                f.write(chunk)
+                await run_in_threadpool(f.write, chunk)
         mime, extension = detect_media(prefix, kind)
         filename = asset+extension
         path = path.rename(directory / filename)

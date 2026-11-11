@@ -10,9 +10,10 @@ import sqlite3
 import threading
 import time
 import zipfile
+import tempfile
 from pathlib import Path
 
-from app.media import MAX_MEDIA_BYTES, detect_media
+from app.media import MAX_MEDIA_BYTES, MAX_GAME_MEDIA_BYTES, inspect_media, copy_media_file
 from app.media_items import media_items
 from app.packs import MAX_PACK_BYTES, load_pack, pack_deleted
 
@@ -127,8 +128,8 @@ class Catalog:
                 continue  # A missing material can be repaired in the editor.
             size = src.stat().st_size
             total += size
-            if size > MAX_MEDIA_BYTES or total > 100 * 1024 * 1024:
-                raise ValueError('Материал больше 25 МБ или медиа игры больше 100 МБ')
+            if size > MAX_MEDIA_BYTES or total > MAX_GAME_MEDIA_BYTES:
+                raise ValueError('Размер файла или медиа игры превышает 10 ГБ')
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
 
@@ -266,20 +267,23 @@ class Catalog:
             return self.snapshot(game_id)
 
     def upload(self, game_id, temporary, kind):
+        # Hashing a large upload must not hold the library lock for other authors.
+        with self.lock:
+            self.ensure_active(game_id)
+            self.read_doc(self.folder(self.drafts, game_id))
+        mime, extension, digest, size = inspect_media(temporary, kind)
         with self.lock:
             self.ensure_active(game_id)
             folder = self.folder(self.drafts, game_id)
             self.read_doc(folder)
-            data = temporary.read_bytes()
-            mime, extension = detect_media(data[:128], kind)
-            name = 'media/' + hashlib.sha256(data).hexdigest() + extension
+            name = 'media/' + digest + extension
             path = self.asset(folder, name)
             existing = sum(p.stat().st_size for p in (folder / 'media').rglob('*') if p.is_file()) if (folder / 'media').exists() else 0
-            if not path.exists() and existing + len(data) > 100 * 1024 * 1024:
-                raise ValueError('Материалы черновика занимают больше 100 МБ')
+            if not path.exists() and existing + size > MAX_GAME_MEDIA_BYTES:
+                raise ValueError('Материалы черновика занимают больше 10 ГБ')
             if not path.exists():
-                atomic_write(path, data)
-            return dict(file=name, type=kind, size=len(data), mime=mime)
+                copy_media_file(temporary, path)
+            return dict(file=name, type=kind, size=size, mime=mime)
 
     def validate(self, game_id, doc):
         from app.pack_validation import publication_issues
@@ -302,15 +306,20 @@ class Catalog:
                 raise Conflict('Опубликованная игра изменилась вне конструктора. Сначала загрузи её свежую версию.')
             target = self.folder(self.games, game_id)
             published_doc = copy.deepcopy(doc)
+            prepared = {}
             # Immutable filenames keep an old manifest's media valid during publication.
             for q in published_doc['rounds']:
                 for media in media_items(q):
-                    data = self.asset(draft, media['file']).read_bytes()
-                    _, extension = detect_media(data[:128], media['type'])
-                    name = 'media/' + hashlib.sha256(data).hexdigest() + extension
-                    path = self.asset(target, name)
-                    if not path.exists():
-                        atomic_write(path, data)
+                    source_file = self.asset(draft, media['file'])
+                    key = (source_file, media['type'])
+                    if key not in prepared:
+                        _, extension, digest, _ = inspect_media(source_file, media['type'])
+                        name = 'media/' + digest + extension
+                        path = self.asset(target, name)
+                        if not path.exists():
+                            copy_media_file(source_file, path)
+                        prepared[key] = name
+                    name = prepared[key]
                     media['file'] = name
             published_data = encode(published_doc)
             if len(published_data) > MAX_PACK_BYTES:
@@ -338,15 +347,28 @@ class Catalog:
             atomic_write(draft / '.meta.json', encode(dict(base=revision(doc), published_revision=revision(doc))))
             return self.snapshot(game_id)
 
-    def export(self, game_id):
+    def export(self, game_id, destination=None):
         with self.lock:
             self.ensure_active(game_id)
             folder = self.folder(self.drafts, game_id)
             load_pack(folder)
             doc = self.read_doc(folder)
-            buffer = io.BytesIO()
+            buffer = destination if destination is not None else io.BytesIO()
             with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
                 archive.writestr('game.json', encode(doc))
                 for name in self.media_files(doc):
                     archive.write(self.asset(folder, name), name)
-            return buffer.getvalue()
+            return buffer.getvalue() if destination is None else destination
+
+
+    def export_file(self, game_id):
+        directory = self.data / 'exports'
+        directory.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=directory, suffix='.zip', delete=False) as output:
+            path = Path(output.name)
+        try:
+            self.export(game_id, path)
+            return path
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
