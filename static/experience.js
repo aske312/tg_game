@@ -164,7 +164,7 @@ function confetti(count) {
   const layer=$('confetti-layer');layer.replaceChildren();
   for(let i=0;i<count;i++){
     const piece=document.createElement('i');
-    piece.style.left=Math.random()*100+'%';piece.style.background=['#d9b85f','#8fb69a','#e2ebe4','#c29b91'][i%4];
+    piece.style.left=Math.random()*100+'%';piece.style.background=['var(--amber)','var(--green)','var(--cyan)','var(--violet)'][i%4];
     piece.style.animationDelay=Math.random()*.6+'s';piece.style.animationDuration=2+Math.random()*2+'s';piece.style.setProperty('--drift',(Math.random()-.5)*240+'px');
     layer.append(piece);setTimeout(()=>piece.remove(),5000);
   }

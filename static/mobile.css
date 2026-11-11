@@ -50,7 +50,7 @@
   body[data-mobile-answer]:not([data-mobile-answer=none]) main{padding-bottom:calc(var(--answer-dock-height,180px) + 54px)}
   body[data-mobile-answer=text] #answer-form,body[data-mobile-answer=binary] #binary-options,body[data-mobile-answer=buzz] #buzz-answer,body[data-mobile-answer=sent] #my-answer,body[data-mobile-answer=expired] #timeout-hint{
     position:fixed;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));transform:none;bottom:var(--keyboard-inset,0px);z-index:40;width:auto;max-width:680px;margin:0 auto!important;
-    padding:12px 14px calc(12px + env(safe-area-inset-bottom));background:var(--panel);border:1px solid #587362;border-bottom:0;border-radius:18px 18px 0 0;box-shadow:0 -10px 28px #06120a55;
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom));background:var(--panel);border:1px solid var(--line-strong);border-bottom:0;border-radius:18px 18px 0 0;box-shadow:0 -10px 28px var(--shadow-color);
   }
   body[data-mobile-answer=text] #answer-form{display:grid;gap:8px}
   body[data-mobile-answer=text] #answer-form label{margin:0;font-size:12px;gap:8px}

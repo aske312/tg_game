@@ -95,6 +95,11 @@ def create_app(catalog, password_hash):
     def app_version():
         return version_info()
 
+    @app.get('/static/ui-theme.css')
+    def shared_theme():
+        return FileResponse(ROOT / 'static/ui-theme.css', media_type='text/css')
+
+    app.mount('/static/fonts', StaticFiles(directory=ROOT / 'static/fonts'), name='fonts')
     app.mount('/static', StaticFiles(directory=ROOT / 'builder/static'), name='static')
 
     @app.get('/api/health')
