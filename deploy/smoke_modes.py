@@ -53,6 +53,9 @@ async def main():
                     if state['phase']=='intro':
                         state=await action(0,'next')
                     if state['phase'] in ('board','reveal') and mode=='grid' and not state['stage_complete']:
+                        if state['phase']=='reveal':
+                            await action(0,'display_answer')
+                            state=await action(0,'display_board')
                         cell=next(q for q in state['board'] if not q['used'])
                         await action(2,'pick',expected=400,question=cell['id'])
                         assert all(set(c)=={'id','category','value','used'} for c in state['board'])
@@ -63,6 +66,8 @@ async def main():
                         if mode=='binary':
                             await action(1,'answer',choice=question['correct_choice'])
                             state=await action(2,'answer',choice=1-question['correct_choice'])
+                            assert state['phase']=='question'
+                            state=await action(0,'close')
                             assert state['phase']=='reveal'
                         else:
                             await action(1,'answer',text=question['answer'])
@@ -72,6 +77,7 @@ async def main():
                             state=await action(0,'correct',player=users[1]['id'])
                             if mode=='grid':assert state['chooser']==users[1]['id']
                     if state['phase']=='reveal' and (mode!='grid' or state['stage_complete']):
+                        await action(0,'display_answer')
                         state=await action(0,'next')
                 assert seen==['blitz','grid','binary']
                 assert len(state['used'])==8 and state['stage_count']==3

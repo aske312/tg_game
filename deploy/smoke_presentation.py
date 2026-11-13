@@ -78,6 +78,7 @@ async def main():
                 await action(0,'next')
                 state,_=await action(0,'pick',question='g1')
                 deadline=state['deadline']
+                assert deadline is None
                 state,_=await action(0,'pause')
                 assert state['paused']
                 await denied(1,'answer',text='4')
@@ -93,11 +94,14 @@ async def main():
                 assert len(state['reactions'])==2
                 assert state['paused'] and state['phase']=='question' and state['deadline']==deadline
                 state,_=await action(0,'unpause')
-                assert state['deadline']>=deadline+1
+                assert state['deadline'] is None
                 _,shadows=await action(1,'answer',text='4')
                 assert shadows[0]['answers']=={} and 'answer' not in shadows[0]['question']
                 state,_=await action(0,'correct',player=users[1]['id'])
                 assert state['chooser']==users[1]['id'] and state['can_pick']
+                _,shadows=await action(0,'display_answer')
+                assert shadows[0]['question']['text']=='' and shadows[0]['question']['answer']=='4'
+                await action(0,'display_board')
                 await action(1,'pick',question='g2')
                 await action(1,'answer',text='4')
                 state,_=await action(0,'correct',player=users[1]['id'])
@@ -119,7 +123,7 @@ async def main():
                 state,shadows=await action(0,'next')
                 assert all(s['phase']=='finished' and s['finished_at']==state['finished_at'] for s in shadows)
                 assert next(p for p in state['players'] if p['id']==users[1]['id'])['score']==300
-                print('Public WebSocket: intro, silent reaction limit, pause, preserved deadline, grid choice, round scores and synchronized finish verified.',flush=True)
+                print('Public WebSocket: intro, reaction limit, pause, manual timing, explicit answer, grid choice, round scores and synchronized finish verified.',flush=True)
             response=await client.post('/api/practice',headers=headers[0],json={'role':'host','pack':'custom'})
             response.raise_for_status()
             host_code=response.json()['code']
