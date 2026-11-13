@@ -21,7 +21,7 @@
   body:not([data-role=display]) #open-bot{display:flex;align-items:center;justify-content:center}
   body:not([data-role=display]) .display-entry-link{margin-top:12px;display:flex;align-items:center;min-height:44px}
   body:not([data-role=display]) .web-account{font-size:11px;margin-bottom:10px;gap:10px}
-  body:not([data-role=display]) .entry-intro{padding:6px 0 16px}
+  body:not([data-role=display]) .entry-intro{padding:6px 0 8px}
   body:not([data-role=display]) .entry-intro h1{font-size:34px;line-height:1.08;margin:10px 0}
   body:not([data-role=display]) .entry-intro p{font-size:13px}
   body:not([data-role=display]) .entry-intro .eyebrow{font-size:9px;letter-spacing:1px}

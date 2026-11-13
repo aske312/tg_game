@@ -26,6 +26,7 @@ def check(browser,url,database,width,height,name):
         fits(page,'#login-form button')
         page.locator('#name').fill('ИгрокОченьДлинноеИмяБезПробелов');page.locator('#name').press('Enter')
         expect(page.locator('#home')).to_be_visible()
+        page.evaluate('document.fonts.ready')
         fits(page,'#join-submit')
         if width==320:page.screenshot(path=ARTIFACTS/('mobile-'+name+'-home.png'))
         db=Store(database);host=dict(id='mobile-host-'+os.urandom(6).hex(),name='Host');player=page.evaluate('auth.user')
