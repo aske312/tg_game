@@ -42,11 +42,11 @@ jobs:
           pactl load-module module-null-sink sink_name=ci_audio
           pactl set-default-sink ci_audio
           pactl info
+      - run: python tests/browser_mobile_check.py
       - run: python tests/browser_check.py
       - run: python tests/browser_media_check.py
       - run: python tests/browser_scenario_check.py
       - run: python tests/browser_web_login_check.py
-      - run: python tests/browser_mobile_check.py
       - run: python tests/browser_logic_audit.py
       - run: python tests/browser_grid_answer_check.py
       - uses: actions/upload-artifact@v7

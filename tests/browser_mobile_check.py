@@ -14,6 +14,8 @@ def geometry(page,selector):
 
 def fits(page,selector):
     box=geometry(page,selector)
+    if box['top'] < -1 or box['bottom'] > page.evaluate('innerHeight')+1:
+        page.screenshot(path=ARTIFACTS/'mobile-geometry-failure.png',full_page=True)
     assert box['top']>=-1 and box['bottom']<=page.evaluate('innerHeight')+1,(selector,box)
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'),'Horizontal page overflow'
 
