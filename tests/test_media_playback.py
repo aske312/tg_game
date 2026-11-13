@@ -147,12 +147,13 @@ def test_only_host_can_expand_visual_media_and_new_scenes_reset_it(media_game):
 def test_hidden_question_media_can_expand_only_with_answer(media_game,kind):
     db,_,host,player,now=media_game
     code=db.create(host,questions=[
-        dict(id='hidden',text='?',answer='Yes',value=100,media=dict(kind=kind,url='/file',show_in_question=False)),
+        dict(id='hidden',text='?',answer='Yes',value=100,media=dict(kind=kind,url='/file',show_in_question=False,answer=True)),
         dict(id='next',text='?',answer='Yes',value=100),
     ])
     db.change(code,player,'join');db.change(code,host,'start');db.change(code,host,'next')
     with pytest.raises(ValueError):db.change(code,host,'media_expand',question='hidden')
     db.change(code,host,'close')
+    db.change(code,host,'display_answer')
     db.change(code,host,'media_expand',question='hidden')
     assert db.read(code)['media_expanded']
     db.change(code,host,'display_question')

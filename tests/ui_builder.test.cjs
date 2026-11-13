@@ -6,6 +6,14 @@ const vm=require('node:vm');
 const {randomUUID}=require('node:crypto');
 const root=path.resolve(__dirname,'..');
 
+test('media preload setting defaults on, persists in the document and respects busy state',()=>{
+  const h=harness(document());
+  assert.equal(h.node('game-preload-media').value,'on');
+  h.input('game-preload-media','off');assert.equal(h.doc().settings.preload_media,false);
+  h.run('renderGameSettings()');assert.equal(h.node('game-preload-media').value,'off');
+  h.run('state.busy=true');h.input('game-preload-media','on');assert.equal(h.doc().settings.preload_media,false);
+});
+
 function harness(doc){
   const nodes=new Map(),prompts=[];
   let approve=true;
@@ -104,11 +112,11 @@ test('game defaults affect inherited questions and preview while retaining excep
   const h=harness(doc);
   assert.equal(h.node('time-limit').value,'');assert.match(h.node('time-limit').placeholder,/30/);
   h.input('game-time-limit','50');h.input('game-points','300');
-  assert.match(h.node('preview-content').innerHTML,/300.*50/);assert.equal(h.doc().rounds[1].time_limit,75);
+  assert.match(h.node('preview-content').innerHTML,/300/);assert.equal(h.doc().rounds[1].time_limit,75);
   h.run('state.index=1;renderRound()');assert.equal(h.node('time-limit').value,'75');assert.equal(h.node('points').value,'0');
   h.input('time-limit','');h.input('points','');
   assert(!('time_limit' in h.doc().rounds[1]));assert(!('points' in h.doc().rounds[1]));
-  assert.match(h.node('preview-content').innerHTML,/300.*50/);
+  assert.match(h.node('preview-content').innerHTML,/300/);
   h.node('add-question').onclick();assert(!('time_limit' in h.doc().rounds[2]));
 });
 test('reset all question times confirms and keeps grid prices',()=>{

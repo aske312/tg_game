@@ -377,4 +377,6 @@ def test_answer_attachments_are_hidden_until_reveal(tmp_path):
         assert [m['url'] for m in view['question']['attachments']] == ['/question.png']
     game.change(code, host, 'close')
     view = game.public(code, player['id'])
-    assert len(view['question']['attachments']) == 2
+    assert len(view['question']['attachments']) == 1
+    game.change(code, host, 'display_answer')
+    assert len(game.public(code, player['id'])['question']['attachments']) == 2

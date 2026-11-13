@@ -59,6 +59,8 @@ def publication_issues(doc, directory=None):
         number(settings.get(key, default), 'settings.' + key,
                'Очки за вопрос' if key == 'points' else 'Время ответа', None, None,
                minimum=0 if key == 'points' else 1)
+    if type(settings.get('preload_media', True)) is not bool:
+        add('settings.preload_media', 'Выберите включённое или выключенное состояние предзагрузки.')
     stage_map = {s.get('id'): i for i, s in enumerate(stages) if isinstance(s, dict) and isinstance(s.get('id'), str)}
     for si, s in enumerate(stages):
         if not isinstance(s, dict):

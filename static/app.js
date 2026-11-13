@@ -10,6 +10,7 @@ let entryRole = 'player', reactionRoom = '', lastReaction = 0, reactionSentAt = 
 const isDisplay = () => room?.display === true;
 const isPlayer = () => !isHost() && !isDisplay();
 const modeTitles={blitz:'Блиц',grid:'Сетка вопросов',binary:'Выбор из двух'};
+function displayScene(state=room){return state?.display_scene||(state?.phase==='board'?'board':state?.phase==='reveal'?'answer':'question');}
 
 function renderModes() {
   const stage=room.stage;
@@ -59,7 +60,8 @@ function hasControls() {return !isDisplay() && (isHost() || (room?.practice && r
 function canAnswer() {return room?.phase==='question' && !room.paused && isPlayer() && !ownAnswer() && room.can_answer!==false;}
 
 function renderPresentation() {
-  const scene=room.paused?(room.pause_view==='scores'?'scores':'pause'):room.display_scene||(room.phase==='board'?'board':room.phase==='reveal'?'answer':'question');
+  const scene=room.paused?(room.pause_view==='scores'?'scores':'pause'):displayScene();
+  show('question-text',isHost()||scene==='question');
   $('game').dataset.scene=scene;
   const active=!['lobby','intro','finished'].includes(room.phase);
   show('presentation-controls',hasControls()&&active);
@@ -67,7 +69,7 @@ function renderPresentation() {
   for(const name of ['question','answer','board']){
     const button=$('scene-'+name);
     button.setAttribute('aria-pressed',scene===name?'true':'false');
-    button.disabled=!!room.paused||!!room.scores_visible||(name==='answer'&&room.phase!=='reveal')||
+    button.disabled=!!room.paused||!!room.scores_visible||(name==='answer'&&!['question','review','reveal'].includes(room.phase))||
       (['question','answer'].includes(name)&&!room.question)||
       (name==='board'&&(room.stage?.type!=='grid'||!['board','reveal'].includes(room.phase)||room.stage_complete));
   }
@@ -78,7 +80,7 @@ function renderPresentation() {
   const responder=room.players.find(p=>p.id===room.responder);
   $('responder-status').textContent=responder?(responder.id===auth.user.id?'Ты нажал первым. Ответь голосом или отправь текст. Ведущий проверит ответ.':`Право ответа: ${responder.name}.`):ownAnswer()?.verdict?'Попытка использована. Остальные игроки продолжают отвечать.':'Первый нажавший «Ответить» получит право ответа.';
   if(isPlayer()&&room.display_scene){
-    show('question-board',!!room.practice&&!!room.can_pick&&scene==='board');
+    show('question-board',!!room.can_pick&&scene==='board'&&!room.paused&&!room.scores_visible);
     const waiting=room.stage?.type==='grid'&&(room.phase==='board'||(room.phase==='reveal'&&scene==='board'))&&!room.paused&&!room.scores_visible;
     show('board-waiting',waiting&&$('question-board').hidden);
     if(waiting)show('question',false);
@@ -92,6 +94,8 @@ function renderPresentation() {
   }
   if(isDisplay()&&active&&!room.paused&&!room.scores_visible){
     show('question',!!room.question&&['question','answer'].includes(scene));
+    show('question-text',scene==='question');
+    show('binary-options',scene==='question'&&Array.isArray(room.question?.choices));
     show('question-board',scene==='board');
     show('solution',scene==='answer'&&!!room.question?.answer);
     show('event',scene==='question'&&room.phase==='event');
@@ -164,8 +168,8 @@ function renderHostLayout() {
   show('question-board',board);
   if(board)show('question',false);
   show('presentation-controls',active&&room.phase!=='intro'&&!room.paused&&!room.scores_visible);
-  show('scene-question',!!room.question&&room.phase==='reveal');
-  show('scene-answer',room.phase==='reveal');
+  show('scene-question',!!room.question&&['question','review','reveal'].includes(room.phase));
+  show('scene-answer',!!room.question&&['question','review','reveal'].includes(room.phase));
   show('scene-board',room.stage?.type==='grid'&&!room.stage_complete&&['board','reveal'].includes(room.phase));
 }
 
@@ -173,8 +177,8 @@ function renderHostAnswers() {
   const visible=isHost()&&(room.phase==='question'||!!room.question?.choices&&['review','reveal'].includes(room.phase));
   const single=room.stage?.type==='grid'&&room.stage.answer_mode==='single';
   show('host-hint',visible);show('host-answers',visible&&!single&&(Object.keys(room.answers).length>0||room.phase==='reveal'));
-  $('host-hint').textContent=single?(room.responder?'Таймер остановлен. Оцените устный или письменный ответ.':room.answered_ids.length>=room.players.length-1?'Все игроки использовали попытку. Завершите вопрос.':'Ждём нажатия «Ответить». После ошибки вопрос продолжается.'):(Object.keys(room.answers).length?'Ответы поступили · проверка после закрытия приёма':'Ждём ответы игроков…');
-  if(visible&&room.phase==='reveal')$('host-hint').textContent=room.stage_complete?'Ответы проверены автоматически · завершите раунд, когда будете готовы':room.stage.auto_advance?'Ответы проверены автоматически · следующий вопрос откроется автоматически':'Ответы проверены автоматически · следующий вопрос открывает ведущий';
+  $('host-hint').textContent=single?(room.responder?'Оцените устный или письменный ответ.':room.answered_ids.length>=room.players.length-1?'Все игроки использовали попытку. Завершите вопрос.':'Ждём нажатия «Ответить». После ошибки вопрос продолжается.'):(Object.keys(room.answers).length?'Ответы поступили · проверка после закрытия приёма':'Ждём ответы игроков…');
+  if(visible&&room.phase==='reveal')$('host-hint').textContent=room.stage_complete?'Ответы проверены · завершите раунд, когда будете готовы':'Ответы проверены · следующий вопрос открывает ведущий';
   $('host-answers').innerHTML=visible&&!single?room.players.filter(p=>p.id!==room.host&&(room.answers[p.id]||room.phase==='reveal')).map(p=>{const a=room.answers[p.id];return `<div class="host-answer"><strong>${esc(p.name)}</strong><span>${esc(a?.text||'Ответ не отправлен')}${a?.verdict?` · ${a.verdict==='correct'?'✓ Верно':'✕ Неверно'} (${a.points>0?'+':''}${a.points})`:''}</span></div>`;}).join(''):'';
 }
 
@@ -221,6 +225,7 @@ function apply(s){
   const oldQuestion=room?.code+':'+room?.active;
   room=s;offset=s.server_time*1000-Date.now();sessionStorage.setItem(displayPage?'displayRoom':'room',s.code);
   if(unchanged){renderReactions();tick();return;}
+  syncMediaPreload();
   $('game').dataset.phase=s.phase;
   $('game').dataset.role=isDisplay()?'display':isHost()?'host':'player';
   document.body.dataset.role=$('game').dataset.role;
@@ -253,12 +258,12 @@ function apply(s){
   const q=s.question;
   if(!q||s.phase==='finished')renderMedia(null);show('question',!!q&&s.phase!=='finished');
   if(q){
-    $('category').textContent=`Вопрос ${s.question_number}/${s.question_count} · ${q.category}`;$('value').textContent=q.value+' очков';$('question-text').textContent=q.text;
+    $('category').textContent=`Вопрос ${s.question_number}/${s.question_count} · ${q.category}`;$('value').textContent=q.value+' очков';$('question-text').textContent=!isHost()&&displayScene(s)==='answer'?'':q.text;
     $('answer-count').textContent=s.stage?.answer_mode==='single'?`Попыток: ${s.answered_ids.length}`:`Ответили ${s.answered_ids.length} из ${s.players.length-1}`;
     const penalty=s.omission_penalties?.[auth.user.id];
     show('answer-form',canAnswer()&&!q.choices);show('my-answer',isPlayer()&&((!!ownAnswer()&&['question','review'].includes(s.phase))||penalty!==undefined));
     $('my-answer').textContent=penalty!==undefined?`Ответ не отправлен · ${penalty} очков`:ownAnswer()?.verdict==='wrong'?`Ответ неверный · ${ownAnswer().points} очков.${s.phase==='question'?' Вопрос продолжается для остальных.':''}`:ownAnswer()?'Твой ответ: '+ownAnswer().text+' · отправлен':'';
-    show('solution',!!q.answer);$('solution').textContent=q.answer?'Правильный ответ: '+q.answer:'';
+    show('solution',!!q.answer&&(isHost()||displayScene(s)==='answer'));$('solution').textContent=q.answer?'Правильный ответ: '+q.answer:'';
     show('close',hasControls()&&s.phase==='question');show('next',hasControls()&&s.phase==='reveal'&&!s.stage_complete);
     const missing=s.players.length-1-s.answered_ids.length,all=s.stage?.type!=='grid'||s.stage.answer_mode!=='single';
     $('close').textContent=all&&missing>0?`Завершить вопрос · без ответа: ${missing}`:'Завершить вопрос';
@@ -279,19 +284,10 @@ function apply(s){
 }
 function tick(){
   if(!room)return;
-  const now=room.paused?room.paused_at*1000:Date.now()+offset;
-  const held=room.stage?.answer_mode==='single'&&room.responder&&!room.single_closed&&room.buzz_remaining!=null;
-  const left=held?room.buzz_remaining*1000:room.deadline?Math.max(0,room.deadline*1000-now):null;
-  const n=left===null?null:Math.ceil(left/1000),urgent=n!==null&&n<=10;
-  show('timeout-hint',room.phase==='question'&&n===0&&!room.paused);
-  $('timeout-hint').textContent=hasControls()?'Время вышло. Завершите вопрос, чтобы перейти к проверке и результатам.':'Время вышло. Дождитесь завершения вопроса ведущим.';
-  $('timer').textContent=n===null?'':n===0?'Время вышло':`${n} сек.${held?' · ответ игрока':''}`;
-  $('timer').dataset.urgent=urgent;$('timer-track').dataset.urgent=urgent;
-  show('timer-track',n!==null);
-  $('timer-bar').style.width=(left===null?0:Math.min(100,left/(room.question?.seconds||45)/10))+'%';
-  $('answer-send').disabled=n===0||room.paused;
-  $('buzz-answer').disabled=n===0||room.paused||!room.can_buzz;
-  for(const button of $('binary-options').querySelectorAll('button'))button.disabled=!canAnswer()||n===0;
+  show('timeout-hint',false);show('timer-track',false);$('timer').textContent='';
+  $('answer-send').disabled=room.paused;
+  $('buzz-answer').disabled=room.paused||!room.can_buzz;
+  for(const button of $('binary-options').querySelectorAll('button'))button.disabled=!canAnswer();
   if(room.advance_at)$('auto-next').textContent=`Следующий вопрос через ${Math.max(0,Math.ceil((room.advance_at*1000-Date.now()-offset)/1000))} сек.`;
   tickExperience();
   if(typeof updateMobileClient==='function')updateMobileClient();
@@ -319,7 +315,11 @@ async function roomRequest(path,body){
   try{const snapshot=await api(path,body);if(room?.code===code)apply(snapshot);}
   catch(error){if(room?.code===code)throw error;}
 }
-async function command(action,extra={}){if(room)await roomRequest('/rooms/'+room.code+'/action',{action,...extra});}
+async function command(action,extra={}){
+  if(!room)return;
+  const scoped=['close','display_question','display_answer','display_board','end_round','next','finish'].includes(action);
+  await roomRequest('/rooms/'+room.code+'/action',{action,...(scoped&&room.active?{question:room.active}:{}),...extra});
+}
 async function refreshPacks(){
   const data=await api('/packs'),selected=$('pack').value;libraryPacks=data.packs;
   $('pack').querySelectorAll('[data-library],[value=demo]').forEach(n=>n.remove());
@@ -384,6 +384,7 @@ $('host-media-volume').oninput=()=>{
 $('enable-display-media').onclick=guard(async()=>{
   displaySoundEnabled=true;void unlockSound();renderDisplaySound();
   if(activeClip?.ready)await activeClip.localPlay();
+  syncMediaPlayback();
 });
 $('copy-display-url').onclick=guard(async()=>{
   const link=$('display-url').href;
@@ -425,7 +426,7 @@ $('reaction-buttons').onclick=async event=>{
   try{await command('reaction',{text:button.dataset.reaction});}catch{/* Reactions are optional and never interrupt the game. */}
 };
 $('finish').onclick=guard(async()=>{if(confirm('Завершить квиз и показать итоговый счёт?'))await command('finish');});
-$('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem(displayPage?'displayRoom':'room');sessionStorage.removeItem('roomRole');delete document.body.dataset.role;delete document.body.dataset.mediaExpanded;room=null;resetExperience();disposeQuestionMedia();show('game',false);show('home',!displayPage);show('display-entry',displayPage);if(displayPage)auth=null;else setRole('player');notice('');history.replaceState(null,'',location.pathname);if(typeof updateMobileClient==='function')updateMobileClient();};
+$('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem(displayPage?'displayRoom':'room');sessionStorage.removeItem('roomRole');delete document.body.dataset.role;delete document.body.dataset.mediaExpanded;room=null;resetExperience();disposeQuestionMedia();clearMediaPreload();show('game',false);show('home',!displayPage);show('display-entry',displayPage);if(displayPage)auth=null;else setRole('player');notice('');history.replaceState(null,'',location.pathname);if(typeof updateMobileClient==='function')updateMobileClient();};
 $('q-kind').onchange=()=>{const kind=$('q-kind').value;show('file-fields',!!kind);show('clip-fields',kind==='audio'||kind==='video');$('q-file').accept=kind==='image'?'.png,.jpg,.jpeg,.jfif,.gif,.webp,.avif,.bmp':kind==='audio'?'.mp3,.wav,.ogg,.oga,.opus,.m4a,.aac,.flac':'.mp4,.webm,.mov,.m4v';$('q-file').required=!!kind;};
 function renderQuestionEditor() {
   const selected=room?.stages.find(s=>s.id===$('q-stage').value),binary=selected?.type==='binary',grid=selected?.type==='grid';

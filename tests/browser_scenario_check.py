@@ -83,7 +83,7 @@ def check_additional_media(page,screen,url,database):
     }""")
     page.locator('#pause-game').click()
     screen.wait_for_function("Array.from(document.querySelectorAll('#media-content audio,#media-content video')).every(p=>p.paused)")
-    page.locator('#continue-game').click();page.locator('#close').click()
+    page.locator('#continue-game').click();page.locator('#close').click();page.locator('#scene-answer').click()
     expect(screen.locator('#media-content img')).to_have_count(1)
     action('display_question')
     expect(screen.locator('#media-content img')).to_have_count(0)

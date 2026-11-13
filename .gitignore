@@ -6,4 +6,5 @@ __pycache__/
 data/
 *.sqlite3*
 tools/*.exe
+# Private server and web editor credentials
 /server.txt

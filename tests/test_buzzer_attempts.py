@@ -25,7 +25,7 @@ def test_wrong_answer_reopens_buzzer_until_first_correct_answer(game,written):
     now[0]+=5
     db.change(code,a,'buzz')
     with pytest.raises(ValueError):db.change(code,host,'correct',player='a',question='stale-question')
-    assert db.read(code)['buzz_remaining']==40 and db.read(code)['deadline'] is None
+    assert db.read(code)['buzz_remaining'] is None and db.read(code)['deadline'] is None
     now[0]+=100
     assert not db.tick(code)
     assert db.public(code,'a')['can_answer'] and not db.public(code,'b')['can_buzz']
@@ -35,7 +35,7 @@ def test_wrong_answer_reopens_buzzer_until_first_correct_answer(game,written):
     db.change(code,host,'wrong',player='a')
     s=db.read(code)
     assert s['phase']=='question' and s['active']=='q1' and s['responder'] is None
-    assert s['deadline']==now[0]+40 and s['used']==[]
+    assert s['deadline'] is None and s['used']==[]
     assert s['media_playback']['mode']=='excerpt' and not s['scores_visible']
     assert s['answers']['a']['points']==-100 and s['answers']['a']['verdict']=='wrong'
     assert not db.public(code,'a')['can_buzz'] and db.public(code,'b')['can_buzz']
@@ -46,7 +46,7 @@ def test_wrong_answer_reopens_buzzer_until_first_correct_answer(game,written):
     db.change(code,host,'correct',player='b')
     s=db.read(code)
     assert s['phase']=='reveal' and s['used']==['q1'] and s['chooser']=='b'
-    assert s['media_playback']['mode']=='full'
+    assert s['media_playback']['mode']=='excerpt'
     assert [p['score'] for p in s['players']]==[0,-100,100]
     assert s['answers']['b'].get('oral',False)==(not written)
     display=db.public(code,'screen',display=True)
@@ -64,7 +64,7 @@ def test_host_can_only_grade_current_buzzer_winner_and_only_once(game):
     db.change(code,host,'pause');now[0]+=200
     with pytest.raises(ValueError):db.change(code,host,'correct',player='a')
     db.change(code,host,'unpause')
-    assert db.read(code)['buzz_remaining']==45
+    assert db.read(code)['buzz_remaining'] is None
     db.change(code,host,'correct',player='a')
     with pytest.raises(ValueError):db.change(code,host,'correct',player='a')
     assert db.read(code)['players'][1]['score']==100
@@ -77,8 +77,8 @@ def test_all_wrong_attempts_wait_for_host_and_effects_expire_once_per_question(g
     assert db.read(code)['modifiers']['a']['remaining']==2
     db.change(code,b,'buzz');db.change(code,b,'answer',text='Wrong');db.change(code,host,'wrong',player='b')
     assert not db.public(code,'a')['can_buzz'] and not db.public(code,'b')['can_buzz']
-    now[0]=db.read(code)['deadline']+1
-    assert db.tick(code) and db.read(code)['phase']=='question'
+    now[0]+=100000
+    assert not db.tick(code) and db.read(code)['phase']=='question'
     db.change(code,host,'close')
     s=db.read(code)
     assert s['used']==['q1'] and s['phase']=='reveal' and s['omission_penalties']=={}

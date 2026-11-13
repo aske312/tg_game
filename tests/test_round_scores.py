@@ -15,7 +15,7 @@ def round_game(tmp_path, mode='blitz', media=None):
     ]))
     first = dict(id='q1', stage='s1', text='Question', category='Topic', answer='Yes', value=100, seconds=45)
     if mode == 'binary': first.update(choices=['Yes', 'No'], correct_choice=0)
-    if media: first['media'] = dict(kind=media, url='/recording', start=20, end=30)
+    if media: first['attachments'] = [dict(kind=media, url='/recording', answer=True)]
     code = db.create(host, stages=stages, questions=[first, dict(id='q2', stage='s2', text='Next', answer='Yes', value=100)])
     for p in (a, b): db.change(code, p, 'join')
     db.change(code, host, 'start')
@@ -38,6 +38,9 @@ def test_completed_round_waits_for_host_to_choose_scores_or_progression(tmp_path
         db.change(code, host, 'correct', player='a')
         assert not db.read(code)['scores_visible']
         db.change(code, host, 'correct', player='b')
+    if mode == 'binary': db.change(code, host, 'close')
+    assert db.read(code)['display_scene'] == 'question'
+    db.change(code, host, 'display_answer')
     state = db.read(code)
     assert not state['scores_visible'] and state['phase'] == 'reveal' and state['display_scene'] == 'answer'
     assert len(state['round_results']) == 1
@@ -59,7 +62,8 @@ def test_completed_round_waits_for_host_to_choose_scores_or_progression(tmp_path
     db.change(code, host, 'next')
     assert db.read(code)['active'] == 'q2'
     db.change(code, host, 'close')
-    assert db.read(code)['display_scene']=='answer'
+    assert db.read(code)['display_scene']=='question'
+    db.change(code, host, 'display_answer')
     db.change(code,host,'end_round')
     assert not db.read(code)['scores_visible'] and db.read(code)['display_scene'] == 'round_end'
     results = db.read(code)['round_results']
@@ -81,6 +85,7 @@ def test_last_media_question_plays_in_full_then_waits_for_host(tmp_path, media):
     db, code, host, a, b = round_game(tmp_path, media=media)
     for p in (a, b): db.change(code, p, 'answer', text='Yes')
     for p in (a, b): db.change(code, host, 'correct', player=p['id'])
+    db.change(code, host, 'display_answer')
     assert db.read(code)['media_playback']['mode'] == 'full'
     assert not db.read(code)['scores_visible'] and db.read(code)['advance_at'] is None
     screen = dict(id='screen', name='Display', role='display', room=code)
@@ -109,8 +114,8 @@ def test_legacy_scheduled_transition_waits_at_round_end(tmp_path, monkeypatch):
     with db.connect() as conn:
         conn.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(state), code))
     monkeypatch.setattr('app.store.time.time', lambda: 1001)
-    assert db.tick(code)
-    assert db.read(code)['stage_index'] == 0 and db.read(code)['display_scene'] == 'answer'
+    assert not db.tick(code)
+    assert db.read(code)['stage_index'] == 0 and db.read(code)['display_scene'] == 'question'
     assert not db.read(code)['scores_visible']
 
 

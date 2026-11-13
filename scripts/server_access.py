@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def settings(root=ROOT):
-    for path in (root / 'data/builder-server-access.txt', root / 'server.txt'):
+    for path in (root / 'server.txt', root / 'data/builder-server-access.txt'):
         if not path.is_file():
             continue
         result = {}
@@ -27,7 +27,7 @@ def settings(root=ROOT):
             raise ValueError('SSH PORT must be an integer from 1 to 65535')
         result['PORT'] = port
         return result
-    raise FileNotFoundError('Add IP, PORT, USER and PSW to data/builder-server-access.txt')
+    raise FileNotFoundError('Add IP, PORT, USER and PSW to server.txt')
 
 
 def save_builder_access(path, site, password):

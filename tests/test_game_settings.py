@@ -12,7 +12,7 @@ from builder.store import Catalog
 
 
 def document():
-    return dict(title='Game', settings=dict(time_limit=25, points=200),
+    return dict(title='Game', settings=dict(time_limit=25, points=200, preload_media=False),
                 rounds=[dict(id='inherit', type='question', text='?', answer='Yes'),
                         dict(id='own', type='question', text='?', answer='Yes', time_limit=60, points=0)])
 
@@ -21,6 +21,7 @@ def test_defaults_and_exceptions_are_used_by_live_room(tmp_path, monkeypatch):
     doc = document()
     (tmp_path/'game.json').write_text(json.dumps(doc), encoding='utf-8')
     pack = load_pack(tmp_path)
+    assert pack['settings']['preload_media'] is False
     assert [(q['seconds'], q['value']) for q in pack['questions']] == [(25, 200), (60, 0)]
     db = Store(tmp_path/'room.sqlite3')
     host, player = dict(id='h', name='Host'), dict(id='p', name='Player')
@@ -30,7 +31,7 @@ def test_defaults_and_exceptions_are_used_by_live_room(tmp_path, monkeypatch):
     db.change(code, host, 'start')
     if db.read(code)['phase'] == 'intro':
         db.change(code, host, 'next')
-    assert db.read(code)['deadline'] == 1025
+    assert db.read(code)['deadline'] is None
     db.change(code, player, 'answer', text='Yes')
     db.change(code, host, 'correct', player='p')
     assert next(p for p in db.read(code)['players'] if p['id'] == 'p')['score'] == 200

@@ -42,7 +42,7 @@ def test_configured_effect_scoring_expiration_and_binary_answers(tmp_path,kind,p
     assert db.read(code)['modifiers']['a']['remaining']==1
     # The persisted second question uses exactly the same effect with automatic grading.
     db=Store(db.path);db.change(code,host,'next')
-    db.change(code,a,'answer',choice=0);db.change(code,b,'answer',choice=1)
+    db.change(code,a,'answer',choice=0);db.change(code,b,'answer',choice=1);db.change(code,host,'close')
     assert db.read(code)['answers']['a']['points']==correct
     assert db.read(code)['answers']['b']['points']==wrong
     assert db.read(code)['modifiers']=={}

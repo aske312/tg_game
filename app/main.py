@@ -49,6 +49,7 @@ class Login(BaseModel):
 
 
 class Command(BaseModel):
+    media_revision: Optional[StrictInt] = Field(default=None, ge=0, le=MAX_SAFE_INTEGER)
     volume: Optional[float] = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     media_mode: Optional[Literal['excerpt', 'full']] = None
     action: str = Field(max_length=20)
@@ -63,6 +64,7 @@ class Command(BaseModel):
 
 
 class MediaCommand(BaseModel):
+    media_revision: Optional[StrictInt] = Field(default=None, ge=0, le=MAX_SAFE_INTEGER)
     media_mode: Optional[Literal['excerpt', 'full']] = None
     action: Literal['media_pause']
     question: str = Field(min_length=1, max_length=64)
@@ -259,7 +261,7 @@ def create(body: CreateRoom = CreateRoom(), authorization: str = Header(default=
     try:
         pack = find_pack(pack_roots(), 'library-demo-quiz' if body.pack == 'demo' else body.pack)
         assets = materialize_pack(pack, Path(store.path).parent / 'media')
-        return {'code': store.create(user, pack=body.pack, questions=pack['questions'], assets=assets, title=pack['title'], stages=pack['stages'])}
+        return {'code': store.create(user, pack=body.pack, questions=pack['questions'], assets=assets, title=pack['title'], stages=pack['stages'], settings=pack['settings'])}
     except (ValueError, OSError) as e:
         raise HTTPException(400, str(e))
 
@@ -286,7 +288,7 @@ def practice(body: PracticeRoom = PracticeRoom(), authorization: str = Header(de
         try:
             pack = find_pack(pack_roots(), 'library-demo-quiz' if body.pack == 'demo' else body.pack)
             assets = materialize_pack(pack, Path(store.path).parent / 'media')
-            code = store.create(user, practice=True, host_practice=body.role == 'host', pack=body.pack, questions=pack['questions'], assets=assets, title=pack['title'], stages=pack['stages'])
+            code = store.create(user, practice=True, host_practice=body.role == 'host', pack=body.pack, questions=pack['questions'], assets=assets, title=pack['title'], stages=pack['stages'], settings=pack['settings'])
         except (ValueError, OSError) as e:
             raise HTTPException(400, str(e))
     return store.public(code, user['id'])
@@ -433,7 +435,7 @@ async def watch(code: str, authorization: str = Header(default='')):
 async def action(code: str, body: Command, authorization: str = Header(default='')):
     user = current_user(authorization)
     try:
-        changed = store.change(code.upper(), user, body.action, body.question, body.text, body.player, body.choice, body.delta, body.effect, body.position, body.duration, body.media_mode, volume=body.volume)
+        changed = store.change(code.upper(), user, body.action, body.question, body.text, body.player, body.choice, body.delta, body.effect, body.position, body.duration, body.media_mode, volume=body.volume, media_revision=body.media_revision)
         if changed:
             await publish(code.upper())
         return store.public(code.upper(), user['id'])
@@ -451,7 +453,7 @@ async def display_media(body: MediaCommand, authorization: str = Header(default=
         raise HTTPException(401, 'Подключите демонстрационный экран')
     try:
         code = user['room']
-        store.change(code, user, body.action, question=body.question, position=body.position, duration=body.duration, media_mode=body.media_mode)
+        store.change(code, user, body.action, question=body.question, position=body.position, duration=body.duration, media_mode=body.media_mode, media_revision=body.media_revision)
         await publish(code)
         return store.public(code, user['id'], display=True)
     except ValueError as e:

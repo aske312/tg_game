@@ -141,7 +141,7 @@ def load_pack(directory):
     for stage in stages:
         if not any(q.get('stage') == stage['id'] and q.get('type') == 'question' for q in questions):
             raise ValueError(f'Раунд «{stage["title"]}»: добавьте хотя бы один вопрос')
-    return dict(title=title.strip(), description=str(doc.get('description', ''))[:500], questions=questions, stages=stages)
+    return dict(title=title.strip(), description=str(doc.get('description', ''))[:500], questions=questions, stages=stages, settings=dict(preload_media=doc.get('settings', {}).get('preload_media', True)))
 
 
 def pack_deleted(roots, name):

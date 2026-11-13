@@ -63,7 +63,8 @@ def check_builder(page, url):
     page.get_by_role('button', name='Создать игру →', exact=True).click()
     expect(page.locator('#editor-title')).to_have_text('Проверка UI 0.0.5')
     page.get_by_role('tab', name='Настройки игры', exact=True).click()
-    page.locator('#game-time-limit').fill('120')
+    expect(page.locator('#game-time-limit')).to_be_hidden()
+    page.locator('#game-preload-media').select_option('on')
     page.locator('#game-points').fill('200')
     expect(page.locator('#app-version')).to_contain_text(f'{APP_VERSION} build ')
     screenshot(page, 'builder-settings-desktop')
@@ -84,7 +85,7 @@ def check_builder(page, url):
     page.locator('#clip-end').fill('00:02')
     page.locator('#media-show-in-question').uncheck()
     page.locator('#preview-panel > summary').click()
-    expect(page.locator('#preview-content')).to_contain_text('200 очков · 120 сек.')
+    expect(page.locator('#preview-content')).to_contain_text('200 очков · без таймера')
     page.locator('#add-question').click()
     page.locator('#question-text').fill('Сколько будет 3 + 3?')
     page.locator('#answer').fill('6')
@@ -234,6 +235,7 @@ def check_display(browser, stack, app_url, game_id, watch):
     player.locator('#answer-text').fill('4')
     player.locator('#answer-send').click()
     host.locator('button[data-verdict="correct"]').click()
+    host.locator('#scene-answer').click()
     expect(screen.locator('#solution')).to_contain_text('4')
     screenshot(screen, 'display-answer')
     host.locator('#next').click()
@@ -241,6 +243,7 @@ def check_display(browser, stack, app_url, game_id, watch):
     player.locator('#answer-text').fill('6')
     player.locator('#answer-send').click()
     host.locator('button[data-verdict="correct"]').click()
+    host.locator('#scene-answer').click()
     expect(screen.locator('#solution')).to_contain_text('6')
     expect(screen.locator('#round-end')).to_be_hidden()
     host.locator('#end-round').click()
@@ -255,6 +258,7 @@ def check_display(browser, stack, app_url, game_id, watch):
     player.locator('#answer-text').fill('Рим')
     player.locator('#answer-send').click()
     host.locator('button[data-verdict="correct"]').click()
+    host.locator('#scene-answer').click()
     expect(screen.locator('#solution')).to_contain_text('Рим')
     host.locator('#end-round').click()
     host.locator('#round-results-button').click()
@@ -284,7 +288,8 @@ def check_display_media(browser, stack, app_url, database, watch):
     db = Store(database)
     code = db.create(host.evaluate('auth.user'), questions=[
         dict(id='video', text='Video question', answer='Yes', value=100, seconds=3600,
-             media=dict(kind='video', url='/static/demo/colors.mp4')),
+             media=dict(kind='video', url='/static/demo/colors.mp4'),
+             attachments=[dict(kind='video', url='/static/demo/colors.mp4', answer=True)]),
         dict(id='image', text='Image question', answer='Yes', value=100, seconds=3600,
              media=dict(kind='image', url='/static/demo/triangle.svg')),
     ])
@@ -323,8 +328,9 @@ def check_display_media(browser, stack, app_url, database, watch):
     screen.wait_for_function("document.body.dataset.mediaExpanded === 'false'")
     host.locator('#close').click()
     expect(host.locator('#next')).to_be_visible()
+    host.locator('#scene-answer').click()
     screen.wait_for_function("document.querySelector('#media-content video')?.readyState >= 1")
-    assert screen.evaluate("document.querySelector('#media-content video').paused"), 'Answer media started automatically'
+    screen.wait_for_function("!document.querySelector('#media-content video').paused")
     assert screen.evaluate("!mediaRef.hasAttribute('src') && mediaRef.paused"), 'Old question decoder remains attached'
     # The full recording shown with the answer must also fill the viewport.
     host.locator('#display-media-expand').click()
@@ -355,7 +361,8 @@ def check_hidden_display_media(browser, stack, app_url, database, watch):
     db=Store(database)
     code=db.create(host.evaluate('auth.user'),questions=[
         dict(id='video',text='Listen to the recording',answer='Yes',value=100,seconds=3600,
-             media=dict(kind='video',url='/static/demo/colors.mp4',show_in_question=False)),
+             media=dict(kind='video',url='/static/demo/colors.mp4',show_in_question=False),
+             attachments=[dict(kind='video',url='/static/demo/colors.mp4',answer=True)]),
         dict(id='image',text='Hidden picture question',answer='Yes',value=100,seconds=3600,
              media=dict(kind='image',url='/static/demo/triangle.svg',show_in_question=False)),
         dict(id='next',text='Next question',answer='Yes',value=100,seconds=3600),
@@ -369,6 +376,7 @@ def check_hidden_display_media(browser, stack, app_url, database, watch):
     expect(screen.locator('#media-caption')).to_have_count(0)
     expect(host.locator('#display-media-expand')).to_be_hidden()
     host.locator('#close').click()
+    host.locator('#scene-answer').click()
     expect(screen.locator('#media-content video')).to_be_visible()
     host.locator('#scene-question').click()
     expect(screen.locator('#media-content video')).to_be_hidden()
@@ -379,6 +387,7 @@ def check_hidden_display_media(browser, stack, app_url, database, watch):
     expect(screen.locator('#media-content img')).to_have_count(0)
     screenshot(screen,'hidden-picture-question')
     host.locator('#close').click()
+    host.locator('#scene-answer').click()
     expect(screen.locator('#media-content img')).to_be_visible()
     screenshot(screen,'hidden-picture-answer')
 

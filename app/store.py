@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from app.questions import QUESTIONS
+from app.media_items import media_items, scene_media, playback_media
 from app.events import apply_event, snapshot_modifiers, consume_modifiers, score_delta, normalize_effect, describe_effect
 from app.limits import MAX_SAFE_INTEGER, finite_number
 from app.modes import LEGACY_STAGE, binary_fields, grid_category
@@ -40,6 +41,12 @@ def current_question(s):
 
 
 def migrate(s):
+    # Old rooms also adopt manual question timing after an application update.
+    s['deadline'] = None
+    s['time_expired'] = False
+    s['buzz_remaining'] = None
+    if not player_practice(s):
+        s['advance_at'] = None
     s.setdefault('media_volume', 1)
     s.setdefault('media_expanded', False)
     s.setdefault('stages', [dict(LEGACY_STAGE)])
@@ -50,6 +57,8 @@ def migrate(s):
     s.setdefault('paused', False)
     s.setdefault('pause_view', 'break')
     s.setdefault('scores_visible', False)
+    if not s.get('display_scene'):
+        s['display_scene'] = 'answer' if s['phase'] == 'reveal' else 'board' if s['phase'] == 'board' else 'question'
     s.setdefault('omission_penalties', {})
     s.setdefault('round_results', [])
     introduced = s.setdefault('introduced_stages', [])
@@ -70,7 +79,7 @@ def migrate(s):
     if s['phase'] in ('board', 'answer'):
         s['phase'] = 'question' if s.get('active') else 'ready'
         if s.get('active'):
-            s['deadline'] = time.time()+30
+            s['deadline'] = None
     s.pop('buzzer', None)
     s.pop('attempted', None)
     s['bot_due'] = {}
@@ -93,25 +102,32 @@ def can_pick(s, uid):
     return (current_stage(s)['type'] == 'grid' and s['phase'] in ('board', 'reveal')
             and not s.get('paused') and not s.get('scores_visible')
             and bool(remaining_stage(s))
+            and (uid == s['host'] or player_practice(s) or s.get('display_scene') == 'board')
             and (uid in (s['host'], s['chooser']) or (s['practice'] and uid == s['owner'])))
+
+
+def set_display_scene(s, scene):
+    """A new scene owns a fresh transport; late commands must not affect it."""
+    previous = s.get('media_playback') or {}
+    revision = max(s.get('media_revision', 0), previous.get('revision', 0))+1
+    s.update(display_scene=scene, media_expanded=False, advance_at=None, media_revision=revision)
+    media = playback_media(current_question(s) or {}, scene)
+    s['media_playback'] = dict(question=s['active'], mode='full' if scene == 'answer' else 'excerpt',
+                               playing=scene == 'answer', position=0, updated_at=time.time(), revision=revision) if media else None
 
 
 def finish_reveal(s):
     s['media_expanded'] = False
     s['phase'] = 'reveal'
-    s['display_scene'] = 'answer'
+    if player_practice(s):
+        set_display_scene(s, 'answer')
     correct = [(a['time'], uid) for uid, a in s['answers'].items() if a['verdict'] == 'correct']
     s['chooser'] = min(correct)[1] if correct and current_stage(s)['chooser'] == 'winner' else s['host']
-    s['advance_at'] = time.time()+3 if current_stage(s)['type'] != 'grid' and current_stage(s)['auto_advance'] and remaining_stage(s) else None
-    q = current_question(s)
-    if q and q.get('media', {}).get('kind') in ('audio', 'video'):
-        previous = s.get('media_playback') or {}
-        s['media_playback'] = dict(question=q['id'], mode='full', playing=False, position=0,
-                                   updated_at=time.time(), revision=previous.get('revision', 0)+1)
-        s['advance_at'] = None  # The host decides when the full recording ends.
-        if not remaining_stage(s):
-            complete_round(s, show_end=False)
-    elif not remaining_stage(s):
+    s['advance_at'] = None
+    if s.get('media_playback') and s.get('display_scene') != 'answer':
+        s['media_playback'].update(playing=False, position=0, updated_at=time.time(),
+                                   revision=s['media_playback']['revision']+1)
+    if not remaining_stage(s):
         complete_round(s, show_end=False)
 
 
@@ -169,7 +185,7 @@ def all_answered(s):
 
 
 def claim_answer(s, uid):
-    s.update(responder=uid, buzz_remaining=max(0, s['deadline']-time.time()), deadline=None)
+    s.update(responder=uid, buzz_remaining=None, deadline=None)
 
 
 def review_single_answer(s):
@@ -190,8 +206,9 @@ def media_position(s, now):
     position = playback['position']
     if playback['playing'] and not s.get('paused'):
         position += max(0, now-playback['updated_at'])
-    media = (current_question(s) or {}).get('media', {})
-    if playback.get('mode') != 'full' and media.get('end') is not None:
+    files = [m for m in scene_media(current_question(s) or {}, s.get('display_scene', 'question')) if m['kind'] in ('audio', 'video')]
+    media = files[0] if files else {}
+    if len(files) == 1 and media.get('end') is not None:
         position = min(position, max(0, media['end']-media.get('start', 0)))
     if playback.get('duration') is not None:
         position = min(position, playback['duration'])
@@ -235,15 +252,15 @@ def start_question(s, selected=None):
     if q.get('type') == 'event':
         s.update(phase='event', active=q['id'], answers={}, deadline=None, event=apply_event(s, q))
         s['used'].append(q['id'])
-        if current_stage(s)['auto_advance'] and remaining_stage(s):
+        if player_practice(s) and current_stage(s)['auto_advance'] and remaining_stage(s):
             s['advance_at'] = time.time()+3
         if not remaining_stage(s):
             complete_round(s, show_end=False)
         message(s, 'Ведущий', s['event']['title']+' · '+s['event']['description']+' Участники: '+', '.join(s['event']['targets']), 'system')
         return
     now = time.time()
-    s.update(phase='question', active=q['id'], answers={}, deadline=now+q.get('seconds', 45), auto_at=None, event=None)
-    if q.get('media', {}).get('kind') in ('audio', 'video'):
+    s.update(phase='question', active=q['id'], answers={}, deadline=None, auto_at=None, event=None)
+    if playback_media(q, 'question'):
         s['media_playback'] = dict(question=q['id'], mode='excerpt', playing=False, position=0, updated_at=now, revision=0)
     snapshot_modifiers(s)
     s['bot_due'] = {p['id']: now+5+i*3 for i, p in enumerate([p for p in s['players'] if p.get('synthetic') and p['id'] != s['host']])}
@@ -301,10 +318,7 @@ def grade(s, uid, correct):
         if correct:
             close_question(s)
         else:
-            remaining = s.get('buzz_remaining')
-            if remaining is None:
-                remaining = max(0, (s.get('deadline') or time.time())-time.time())
-            s.update(phase='question', responder=None, deadline=time.time()+remaining,
+            s.update(phase='question', responder=None, deadline=None,
                      buzz_remaining=None, auto_at=None, time_expired=False)
     elif all(a['verdict'] is not None for a in s['answers'].values()):
         finish_reveal(s)
@@ -351,7 +365,7 @@ class Store:
             raise ValueError('Сессия истекла. Перезагрузите приложение')
         return json.loads(row[0])
 
-    def create(self, user, practice=False, pack='demo', questions=None, assets=None, title=None, stages=None, host_practice=False):
+    def create(self, user, practice=False, pack='demo', questions=None, assets=None, title=None, stages=None, host_practice=False, settings=None):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             while True:
@@ -363,7 +377,7 @@ class Store:
                      pack_id=pack, pack_title=title or ('Демоквиз' if pack == 'demo' else 'Ваш квиз'), active=None, used=[], answers={},
                      deadline=None, version=0, practice=practice, messages=[], auto_at=None, bot_due={}, event=None, modifiers={}, round_modifiers={},
                      stages=copy.deepcopy(stages or [LEGACY_STAGE]), stage_index=0, chooser=user['id'], advance_at=None,
-                     host_practice=bool(practice and host_practice))
+                     host_practice=bool(practice and host_practice), settings=copy.deepcopy(settings or {}))
             for stage in s['stages']:
                 if stage['type'] != 'grid' and stage.get('order') == 'random':
                     positions = [i for i, q in enumerate(s['pack']) if q.get('stage', 'legacy') == stage['id'] and q.get('type') != 'event']
@@ -449,7 +463,7 @@ class Store:
             s['ui_version'] += 1
             db.execute('UPDATE rooms SET state=? WHERE code=?', (json.dumps(s), code))
 
-    def change(self, code, user, action, question=None, text='', player='', choice=None, delta=None, effect=None, position=None, duration=None, media_mode=None, volume=None):
+    def change(self, code, user, action, question=None, text='', player='', choice=None, delta=None, effect=None, position=None, duration=None, media_mode=None, volume=None, media_revision=None):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT state FROM rooms WHERE code=?', (code,)).fetchone()
@@ -479,7 +493,7 @@ class Store:
                     raise ValueError('Это действие доступно только ведущему')
                 if s['paused'] and action not in ('reaction', 'pause', 'display_scores', 'unpause', 'show_scores', 'hide_scores', 'adjust_score', 'set_effect', 'clear_effect', 'skip_stage', 'media_volume', 'media_collapse'):
                     raise ValueError('Игра на паузе')
-                if action in ('buzz', 'answer', 'correct', 'wrong') and question and question != s['active']:
+                if action in ('buzz', 'answer', 'correct', 'wrong', 'close', 'display_question', 'display_answer', 'display_board', 'end_round', 'next', 'finish') and question and question != s['active']:
                     raise ValueError('Этот вопрос уже завершён. Дождитесь обновления экрана')
                 if action == 'media_volume':
                     finite_number(volume, 'Громкость', maximum=1)
@@ -489,7 +503,9 @@ class Store:
                     if not q or q['id'] != question:
                         raise ValueError('Медиаматериал этого вопроса уже недоступен')
                     if action == 'media_expand':
-                        media = q.get('media', {})
+                        media = next((m for m in scene_media(q, s.get('display_scene', 'question'))
+                                      if m['kind'] in ('image', 'video') and (s.get('display_scene') == 'answer'
+                                      or m.get('show_in_question', not m.get('audio_only', False)))), {})
                         hidden_picture = not media.get('show_in_question', not media.get('audio_only', False)) and s.get('display_scene', 'question') != 'answer'
                         if (s['phase'] not in ('question', 'review', 'reveal') or s.get('scores_visible')
                                 or s.get('display_scene', 'question') not in ('question', 'answer')
@@ -498,26 +514,32 @@ class Store:
                     s['media_expanded'] = action == 'media_expand'
                 elif action in ('media_play', 'media_pause', 'media_seek'):
                     q = current_question(s)
-                    if s['phase'] not in ('question', 'review', 'reveal') or not q or q['id'] != question or q.get('media', {}).get('kind') not in ('audio', 'video'):
+                    if s['phase'] not in ('question', 'review', 'reveal') or not q or q['id'] != question:
                         raise ValueError('Медиаматериал этого вопроса уже недоступен')
                     now = time.time()
                     playback = s.get('media_playback') or dict(question=q['id'], playing=False, position=0, updated_at=now, revision=0)
+                    if media_revision is not None and media_revision != playback['revision']:
+                        return False
                     if media_mode is not None and media_mode != playback.get('mode', 'excerpt'):
                         return False  # Ignore delayed commands from the previous excerpt player.
                     if s.get('display_scene', 'question') not in ('question', 'answer'):
                         if action == 'media_pause':
                             return False  # A display may finish reporting after its scene was hidden.
                         raise ValueError('Сначала покажите вопрос или ответ на демонстрации')
+                    if not playback_media(q, s.get('display_scene', 'question')):
+                        if action == 'media_pause' and media_mode is not None:
+                            return False
+                        raise ValueError('На этом экране нет аудио или видео')
                     if action == 'media_seek' and position is None:
                         raise ValueError('Укажите позицию в отрывке')
                     if position is not None:
                         finite_number(position, 'Позиция в отрывке')
                     position = media_position(s, now) if position is None else position
-                    media = q['media']
+                    media = playback_media(q, s.get('display_scene', 'question'))
                     if duration is not None:
                         finite_number(duration, 'Длительность отрывка', minimum=.001)
                     duration = duration or playback.get('duration')
-                    if playback.get('mode') != 'full' and media.get('end') is not None:
+                    if len([m for m in scene_media(q, s.get('display_scene', 'question')) if m['kind'] in ('audio', 'video')]) == 1 and media.get('end') is not None:
                         configured = media['end']-media.get('start', 0)
                         duration = min(configured, duration) if duration is not None else configured
                     if duration is not None:
@@ -540,15 +562,19 @@ class Store:
                         raise ValueError('Переключение экрана доступно после начала вопросов')
                     if scene in ('question', 'answer') and not current_question(s):
                         raise ValueError('Сначала выберите вопрос')
-                    if scene == 'answer' and s['phase'] != 'reveal':
-                        raise ValueError('Сначала проверьте все ответы')
+                    if scene == 'answer' and (s['phase'] == 'question' or single_question_open(s)):
+                        close_question(s, penalize_missing=True)
+                    if scene == 'answer' and s['phase'] not in ('review', 'reveal'):
+                        raise ValueError('Сначала выберите вопрос')
                     if scene == 'board' and (current_stage(s)['type'] != 'grid' or s['phase'] not in ('board', 'reveal') or not remaining_stage(s)):
                         raise ValueError('Сетка доступна после проверки ответов, пока в ней есть вопросы')
                     if scene == 'board' and s.get('media_playback'):
                         now = time.time()
                         playback = s['media_playback']
                         playback.update(position=media_position(s, now), playing=False, updated_at=now, revision=playback['revision']+1)
-                    s['display_scene'] = scene
+                    changed_scene = s.get('display_scene') != scene
+                    if changed_scene:
+                        set_display_scene(s, scene)
                     s['media_expanded'] = False
                     s['advance_at'] = None
                 elif action in ('adjust_score', 'set_effect', 'clear_effect'):
@@ -615,14 +641,10 @@ class Store:
                         if s['responder'] == uid:
                             return False
                         raise ValueError('Другой игрок нажал раньше. Дождитесь проверки ответа')
-                    if s['deadline'] is None or time.time() >= s['deadline']:
-                        raise ValueError('Время ответа вышло')
                     claim_answer(s, uid)
                 elif action == 'answer':
                     if uid == s['host'] or s['phase'] != 'question' or uid in s['answers']:
                         raise ValueError('Ответ уже отправлен или приём ответов закрыт')
-                    if s['deadline'] is not None and time.time() >= s['deadline']:
-                        raise ValueError('Время ответа вышло')
                     if single_answer(s) and s.get('responder') != uid:
                         raise ValueError('Сначала получите право ответа кнопкой «Ответить»')
                     q = current_question(s)
@@ -638,7 +660,7 @@ class Store:
                     s['answers'][uid] = dict(text=text, time=time.time(), verdict=None)
                     if q.get('choices'):
                         s['answers'][uid]['choice'] = choice
-                    if all_answered(s):
+                    if all_answered(s) and (not q.get('choices') or player_practice(s)):
                         if single_answer(s):
                             review_single_answer(s)
                         else:
@@ -695,6 +717,8 @@ class Store:
                     message(s, member['name'], text, uid=uid)
                 elif action == 'close':
                     if s['phase'] != 'question':
+                        if question == s['active'] and s['phase'] in ('review', 'reveal'):
+                            return False  # A concurrent last answer or repeated click already closed this question.
                         raise ValueError('Приём ответов уже закрыт')
                     close_question(s, penalize_missing=True)
                 elif action in ('correct', 'wrong'):
@@ -724,27 +748,37 @@ class Store:
         q = current_question(s)
         stage = current_stage(s)
         s['stage'] = stage
+        s['media_manifest'] = list(dict.fromkeys(m['url'] for item in s['pack'] for m in media_items(item) if m.get('url'))) if display and s.get('settings', {}).get('preload_media', True) else []
         s['stage_number'] = s['stage_index']+1
         s['stage_count'] = len(s['stages'])
         s['can_pick'] = not display and can_pick(s, uid)
         s['board'] = [dict(id=q['id'], category=q['category'], value=q['value'], used=q['id'] in s['used'])
                       for q in s['pack'] if q.get('stage', 'legacy') == stage['id'] and q.get('type') != 'event'] if stage['type'] == 'grid' else []
         s['stage_complete'] = not remaining_stage(s)
-        time_available = ((single_answer(s) and s.get('responder') is not None and s['deadline'] is None)
-                          or (s['deadline'] is not None and time.time() < s['deadline']))
-        available = s['phase'] == 'question' and not s['paused'] and uid != s['host'] and not display and time_available
+        available = s['phase'] == 'question' and not s['paused'] and uid != s['host'] and not display
         s['can_buzz'] = available and single_answer(s) and not s.get('responder') and uid not in s['answers']
         s['can_answer'] = available and uid not in s['answers'] and (not single_answer(s) or s.get('responder') == uid)
         s['question'] = None
         if q and q.get('type') != 'event':
             s['question'] = {k: v for k, v in q.items() if k not in ('answer', 'accepted_answers', 'correct_choice', 'attachments')}
-            if (uid == s['host'] and not display) or s['phase'] in ('reveal', 'finished'):
+            if ((uid == s['host'] and not display)
+                    or s['phase'] == 'finished'
+                    or (s.get('display_scene') == 'answer' and s['phase'] in ('review', 'reveal'))):
                 s['question']['attachments'] = q.get('attachments', [])
                 s['question']['answer'] = q['answer']
                 if q.get('choices'):
                     s['question']['correct_choice'] = q['correct_choice']
+        if s['question'] is not None and uid != s['host'] and s.get('display_scene') != 'answer' and s['phase'] != 'finished' and q.get('media', {}).get('answer'):
+            s['question'].pop('media', None)
         if s['question'] is not None and 'attachments' not in s['question']:
             s['question']['attachments'] = [m for m in q.get('attachments', []) if not m.get('answer')]
+        if display and s['question'] is not None:
+            if s['display_scene'] == 'answer':
+                s['question']['text'] = ''
+            visible = scene_media(q, s.get('display_scene', 'question'))
+            if q.get('media') not in visible:
+                s['question'].pop('media', None)
+            s['question']['attachments'] = [m for m in visible if m is not q.get('media')]
         s['answered_ids'] = list(s['answers'])
         if uid != s['host'] and not display:
             s['omission_penalties'] = {k: v for k, v in s['omission_penalties'].items() if k == uid}
@@ -794,11 +828,7 @@ class Store:
                 start_question(s)
                 changed = True
             elif s['phase'] == 'question':
-                if s['deadline'] is not None and now >= s['deadline']:
-                    if not s.get('time_expired'):
-                        s['time_expired'] = True
-                        changed = True
-                elif s['practice']:
+                if s['practice']:
                     for i, p in enumerate(s['players']):
                         if p.get('synthetic') and p['id'] != s['host'] and p['id'] not in s['answers'] and now >= s['bot_due'].get(p['id'], float('inf')):
                             if single_answer(s):
@@ -816,7 +846,7 @@ class Store:
                             changed = True
                             if single_answer(s):
                                 break
-                    if all_answered(s):
+                    if all_answered(s) and (not current_question(s).get('choices') or player_practice(s)):
                         if single_answer(s):
                             review_single_answer(s)
                         else:

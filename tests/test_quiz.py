@@ -55,11 +55,10 @@ def test_concurrent_answers(game):
 def test_timeout_and_skipped_answer(game, monkeypatch):
     db, code, host, a, b = game
     db.change(code, a, 'answer', text='4')
-    now = db.read(code)['deadline']+1
+    now = 10000000000
     monkeypatch.setattr('app.store.time.time', lambda: now)
-    with pytest.raises(ValueError):
-        db.change(code, b, 'answer', text='4')
-    assert db.tick(code)
+    assert db.public(code, b['id'])['can_answer']
+    assert not db.tick(code)
     assert db.read(code)['phase'] == 'question'
     db.change(code, host, 'close')
     db.change(code, host, 'correct', player=a['id'])

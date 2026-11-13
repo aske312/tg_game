@@ -133,9 +133,10 @@ def test_mixed_game_scenarios_survive_pause_and_restart(tmp_path,monkeypatch,ans
             assert set(db.public(code,players[0]['id'])['answers'])<={players[0]['id']}
             assert db.public(code,screen['id'],display=True)['answers']=={}
             if i==0:
-                if auto and stage['type']!='grid':now[0]+=4;assert db.tick(code)
-                else:db.change(code,host,'next')
-        assert db.read(code)['display_scene']=='answer'
+                now[0]+=4;assert not db.tick(code)
+                db.change(code,host,'next')
+        assert db.read(code)['display_scene']=='question'
+        db.change(code,host,'display_answer')
         assert db.read(code)['advance_at'] is None
         db.change(code,host,'end_round');db.change(code,host,'show_scores')
         assert db.public(code,screen['id'],display=True)['scores_visible']
@@ -179,7 +180,7 @@ def test_expired_question_cannot_accept_late_answers_or_apply_omission_twice(tmp
     db.change(code,player,'join');db.change(code,host,'start');db.change(code,host,'next')
     now[0]+=11;db.tick(code)
     before=db.read(code)
-    with pytest.raises(ValueError):db.change(code,player,'answer',question='q',text='Yes')
+    assert db.public(code,'p')['can_answer']
     assert db.read(code)==before
     db.change(code,host,'close');closed=db.read(code)
     with pytest.raises(ValueError):db.change(code,host,'close')

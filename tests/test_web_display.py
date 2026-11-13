@@ -89,6 +89,9 @@ def test_websocket_forces_display_role_and_hides_pending_answers(web_screen):
         assert 'answer' not in state['question']
         client.post(path, headers=host_headers, json=dict(action='correct', player=player['id'])).raise_for_status()
         state = ws.receive_json()
+        assert 'answer' not in state['question']
+        client.post(path, headers=host_headers, json=dict(action='display_answer')).raise_for_status()
+        state = ws.receive_json()
         assert state['question']['answer'] == 'Signals'
         assert state['players'][1]['score'] == 100
 

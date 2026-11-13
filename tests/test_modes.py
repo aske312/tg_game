@@ -46,6 +46,8 @@ def test_binary_manual_steps_and_final_round_results(tmp_path):
          question('q2', 's', choices=['Yes', 'No'], correct_choice=0)])
     db.change(code, a, 'answer', choice=0)
     db.change(code, b, 'answer', choice=1)
+    assert db.read(code)['phase'] == 'question'
+    db.change(code, host, 'close')
     state = db.public(code, host['id'])
     assert state['phase'] == 'reveal' and state['advance_at'] is None
     assert state['answers']['a']['text'] == 'Yes'
@@ -114,6 +116,8 @@ def test_six_mixed_rounds_share_score_and_persist(tmp_path):
         if s['type']=='binary':
             db.change(code,a,'answer',choice=0)
             db.change(code,b,'answer',choice=1)
+            assert db.read(code)['phase']=='question'
+            db.change(code,host,'close')
             assert db.read(code)['phase']=='reveal'
         else:
             answer_and_grade(db,code,host,a,b)
@@ -135,6 +139,8 @@ def test_grid_first_correct_answer_gets_choice_after_all_grades(tmp_path,monkeyp
     db.change(code,host,'correct',player='a')
     assert not db.public(code,'a')['can_pick']
     db.change(code,host,'correct',player='b')
+    assert not db.public(code,'b')['can_pick']
+    db.change(code,host,'display_board')
     assert db.public(code,'b')['can_pick'] and not db.public(code,'a')['can_pick']
     with pytest.raises(ValueError):db.change(code,a,'pick',question='q1')
     with pytest.raises(ValueError):db.change(code,b,'pick',question='q2')
@@ -167,6 +173,8 @@ def test_binary_has_only_two_choices_and_no_early_solution(tmp_path):
     assert state['answers']=={} and state['question']['choices']==['Бан','Пропан']
     assert 'correct_choice' not in state['question'] and 'answer' not in state['question']
     db.change(code,b,'answer',choice=0)
+    assert db.read(code)['phase']=='question'
+    db.change(code,host,'close')
     state=db.read(code)
     assert state['phase']=='reveal' and state['answers']['a']['text']=='Пропан'
     assert state['answers']['a']['points']==100 and state['answers']['b']['points']==-100
@@ -188,9 +196,12 @@ def test_auto_blitz_waits_for_grading_then_moves_once(tmp_path,monkeypatch):
     db.change(code,host,'correct',player='a')
     assert not db.tick(code) and db.read(code)['advance_at'] is None
     db.change(code,host,'correct',player='b')
-    now=db.read(code)['advance_at']+.1
+    assert db.read(code)['advance_at'] is None
+    now=1000000
     monkeypatch.setattr('app.store.time.time',lambda:now)
-    assert Store(db.path).tick(code)
+    assert not Store(db.path).tick(code)
+    assert db.read(code)['active']=='q1'
+    db.change(code,host,'next')
     assert db.read(code)['active']=='q2' and db.read(code)['advance_at'] is None
     assert not db.tick(code)
 
@@ -198,11 +209,13 @@ def test_auto_blitz_waits_for_grading_then_moves_once(tmp_path,monkeypatch):
 def test_auto_event_then_timeout_waits_for_host_and_penalizes_skips(tmp_path,monkeypatch):
     event=dict(id='e',stage='b',type='event',title='Event',text='',effect=dict(type='double_reward',target='all_players',questions=1))
     db,code,host,a,b=room(tmp_path,[stage('b','blitz',auto_advance=True)],[event,question('q','b')])
-    now=[db.read(code)['advance_at']+.1]
+    now=[1000000]
     monkeypatch.setattr('app.store.time.time',lambda:now[0])
-    assert db.tick(code) and db.read(code)['phase']=='question'
-    now[0]=db.read(code)['deadline']+.1
-    assert db.tick(code) and db.read(code)['phase']=='question'
+    assert not db.tick(code)
+    db.change(code,host,'next')
+    assert db.read(code)['phase']=='question'
+    now[0]+=100000
+    assert not db.tick(code) and db.read(code)['phase']=='question'
     db.change(code,host,'close')
     assert db.read(code)['advance_at'] is None
     db.change(code,host,'next')
@@ -250,7 +263,9 @@ def test_http_choice_and_full_length_grid_id(tmp_path,monkeypatch):
         assert client.post(path+'/action',headers=hh,json={'action':'next'}).json()['phase']=='intro'
         client.post(path+'/action',headers=hh,json={'action':'next'})
         response=client.post(path+'/action',headers=ph,json={'action':'answer','choice':0})
-        assert response.status_code==200 and response.json()['phase']=='reveal'
+        assert response.status_code==200 and response.json()['phase']=='question'
+        response=client.post(path+'/action',headers=hh,json={'action':'close'})
+        assert response.json()['phase']=='reveal'
         assert response.json()['answers'][users[1]['user']['id']]['points']==100
 
 

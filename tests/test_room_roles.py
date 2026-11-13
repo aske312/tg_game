@@ -44,6 +44,8 @@ def test_display_hides_host_solution_and_pending_answers(room):
     assert state['answers'] == {} and state['messages'] == []
     assert 'answer' not in state['question']
     store.change(code, host, 'correct', player=player['id'])
+    assert 'answer' not in store.public(code, screen['id'], display=True)['question']
+    store.change(code, host, 'display_answer')
     assert store.public(code, screen['id'], display=True)['question']['answer'] == '4'
 
 

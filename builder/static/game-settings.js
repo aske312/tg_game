@@ -2,6 +2,8 @@ const questionDefaults={time_limit:45,points:100};
 function defaultQuestionValue(key) {return state.doc?.settings?.[key]??questionDefaults[key];}
 function questionValue(q,key) {return q[key]??defaultQuestionValue(key);}
 function renderGameSettings() {
+  $('game-preload-media').value=state.doc?.settings?.preload_media===false?'off':'on';
+  $('game-preload-media').disabled=state.busy;
   for(const [key,id] of [['time_limit','game-time-limit'],['points','game-points']]){
     $(id).value=defaultQuestionValue(key);$(id).disabled=state.busy;
   }
@@ -13,6 +15,11 @@ function renderQuestionDefaults() {
   }
 }
 function initGameSettings() {
+  $('game-preload-media').oninput=()=>{
+    if(!state.doc||state.busy)return;
+    if(!state.doc.settings||typeof state.doc.settings!=='object'||Array.isArray(state.doc.settings))state.doc.settings={};
+    state.doc.settings.preload_media=$('game-preload-media').value==='on';markDirty();
+  };
   for(const [key,id] of [['time_limit','game-time-limit'],['points','game-points']]){
     $(id).oninput=()=>{
       if(!state.doc||state.busy)return;

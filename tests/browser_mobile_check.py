@@ -70,7 +70,9 @@ def check(browser,url,database,width,height,name):
             action('end_round');action('next');action('next')
             page.wait_for_function("document.body.dataset.mobileAnswer==='binary'");fits(page,'#binary-options')
             assert geometry(page,'[data-choice="0"]')['height']>=44
-            page.locator('[data-choice="0"]').click();page.wait_for_function('room.phase==="reveal"')
+            page.locator('[data-choice="0"]').click();page.wait_for_function('room.answered_ids.length===1')
+            assert page.evaluate('room.phase') == 'question'
+            action('close');page.wait_for_function('room.phase==="reveal"')
             action('end_round');action('next');action('next');action('pick',question='buzz')
             page.wait_for_function("document.body.dataset.mobileAnswer==='buzz'");fits(page,'#buzz-answer')
             page.locator('#buzz-answer').click();page.wait_for_function("document.body.dataset.mobileAnswer==='text'")
@@ -87,8 +89,10 @@ def check(browser,url,database,width,height,name):
             code=db.create(host,questions=[dict(id='timeout',type='question',category='Topic',text=long,answer='Да',value=100,seconds=1)])
             page.goto(url+'/?room='+code);expect(page.locator('#lobby')).to_be_visible()
             action('start');action('next')
-            page.wait_for_function("document.body.dataset.mobileAnswer==='expired'")
-            fits(page,'#timeout-hint');expect(page.locator('#timeout-hint')).to_contain_text('Время вышло')
+            page.wait_for_function("document.body.dataset.mobileAnswer==='text'")
+            expect(page.locator('#timeout-hint')).to_be_hidden()
+            expect(page.locator('#timer')).to_be_empty()
+            fits(page,'#answer-form');assert db.read(code)['deadline'] is None
         assert not errors,errors
         print(f'{name} {width}x{height}: entry, reachable controls, draft, simulated keyboard and game states passed',flush=True)
 

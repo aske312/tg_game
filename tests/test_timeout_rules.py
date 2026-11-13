@@ -25,12 +25,12 @@ def game(tmp_path, mode='blitz', single=False, media=False):
 def test_timeout_waits_for_host_without_reveal_grading_or_penalties(tmp_path, monkeypatch, mode):
     db, code, host, a, b = game(tmp_path, mode, media=True)
     db.change(code, a, 'answer', **(dict(choice=0) if mode == 'binary' else dict(text='Yes')))
-    now = db.read(code)['deadline']+1
+    now = 1000000
     monkeypatch.setattr('app.store.time.time', lambda: now)
-    assert db.tick(code)
+    assert not db.tick(code)
     assert not Store(db.path).tick(code)
     state = db.read(code)
-    assert state['phase'] == 'question' and state['time_expired']
+    assert state['phase'] == 'question' and not state['time_expired']
     assert state['used'] == [] and state['omission_penalties'] == {}
     assert state['media_playback']['mode'] == 'excerpt'
     assert not state['scores_visible'] and state['advance_at'] is None
@@ -38,13 +38,13 @@ def test_timeout_waits_for_host_without_reveal_grading_or_penalties(tmp_path, mo
     for uid, display in [('a', False), ('b', False), ('screen', True)]:
         public = db.public(code, uid, display=display)
         assert 'answer' not in public['question'] and 'correct_choice' not in public['question']
-        assert not public['can_answer']
-    with pytest.raises(ValueError): db.change(code, b, 'answer', text='Yes')
+        assert public['can_answer'] == (uid == 'b')
     with pytest.raises(ValueError): db.change(code, host, 'correct', player='a')
     db.change(code, host, 'close')
     if mode != 'binary': db.change(code, host, 'correct', player='a')
     assert [p['score'] for p in db.read(code)['players']] == [0, 100, -100]
-    assert db.read(code)['media_playback']['mode'] == 'full'
+    assert db.read(code)['media_playback']['mode'] == 'excerpt'
+    assert db.read(code)['display_scene'] == 'question'
 
 
 @pytest.mark.parametrize('effect,points', [(None, -100),
@@ -71,7 +71,7 @@ def test_manual_close_penalizes_only_missing_answers_with_current_effect(tmp_pat
 
 def test_single_responder_timeout_does_not_penalize_other_players(tmp_path, monkeypatch):
     db, code, host, a, b = game(tmp_path, 'grid', single=True)
-    now = db.read(code)['deadline']+1
+    now = 1000000
     db.change(code, a, 'buzz')
     monkeypatch.setattr('app.store.time.time', lambda: now)
     assert not db.tick(code) and db.read(code)['phase'] == 'question'
@@ -82,9 +82,9 @@ def test_single_responder_timeout_does_not_penalize_other_players(tmp_path, monk
 
 def test_no_answers_at_timeout_still_requires_manual_close(tmp_path, monkeypatch):
     db, code, host, a, b = game(tmp_path)
-    now = db.read(code)['deadline']+1
+    now = 1000000
     monkeypatch.setattr('app.store.time.time', lambda: now)
-    assert db.tick(code) and db.read(code)['phase'] == 'question'
+    assert not db.tick(code) and db.read(code)['phase'] == 'question'
     assert all(p['score'] == 0 for p in db.read(code)['players'])
     db.change(code, host, 'close')
     assert db.read(code)['phase'] == 'reveal' and db.read(code)['answers'] == {}

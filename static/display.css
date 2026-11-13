@@ -6,7 +6,7 @@
 #game[data-role=display] #presentation-results .result-name{font-size:inherit}
 #game[data-role=display][data-scene=answer] #question{display:flex;flex-direction:column}
 #game[data-role=display][data-scene=answer] #stage-banner{display:none}
-#game[data-role=display][data-scene=answer] #question-text{order:1;font-size:clamp(26px,2.6vw,40px);margin:20px 0}
+#game[data-role=display][data-scene=answer] #question-text{display:none!important}
 #game[data-role=display][data-scene=answer] #solution{order:2;margin:0 0 20px}
 #game[data-role=display][data-scene=answer] #media-content{order:3}
 #game[data-role=display][data-scene=answer] .answer-status{order:5}

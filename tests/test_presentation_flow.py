@@ -23,43 +23,36 @@ def game(tmp_path, mode='all'):
     return db, code, host, a, b
 
 
-def test_full_recording_starts_only_after_last_grade_and_survives_scene_switch(tmp_path):
+def test_answer_recording_starts_only_on_host_command_and_resets_between_scenes(tmp_path):
     db, code, host, a, b = game(tmp_path)
-    for p in (a, b): db.change(code, p, 'answer', text='Yes')
-    assert db.read(code)['phase'] == 'review'
-    assert 'answer' not in db.public(code, a['id'])['question']
-    assert db.public(code, a['id'])['answers'].keys() == {a['id']}
-    assert 'display_answers' not in db.public(code, 'screen', display=True)
-    with pytest.raises(ValueError): db.change(code, host, 'display_answer')
-    db.change(code, host, 'correct', player=a['id'])
-    assert db.read(code)['media_playback']['mode'] == 'excerpt'
-    db.change(code, host, 'wrong', player=b['id'])
-    s = db.read(code)
-    assert s['display_scene'] == 'answer'
-    assert s['media_playback']['mode'] == 'full' and not s['media_playback']['playing']
-    assert s['media_playback']['position'] == 0 and s['advance_at'] is None
-    assert media_position(s, s['media_playback']['updated_at']+60) == 0
-    db.change(code,host,'media_play',question='q1')
-    playing=db.read(code)
-    assert media_position(playing,playing['media_playback']['updated_at']+60)==60
-    display = db.public(code, 'screen', display=True)
-    assert 'display_answers' not in display and display['answers'] == {}
-    assert display['question']['answer'] == 'Yes'
-    # A delayed end-of-excerpt notification must not stop the full recording.
-    assert not db.change(code, host, 'media_pause', question='q1', position=10, duration=10, media_mode='excerpt')
-    db.change(code, host, 'media_pause', question='q1', position=55, duration=120, media_mode='full')
-    assert db.read(code)['media_playback']['position'] == 55
-    db.change(code, host, 'display_board')
-    assert db.read(code)['active'] == 'q1' and db.read(code)['answers'] == s['answers']
+    import json
+    state=db.read(code)
+    state['pack'][0]['attachments']=[dict(kind='audio',url='/answer.wav',start=5,end=125,answer=True)]
+    with db.connect() as connection:
+        connection.execute('UPDATE rooms SET state=? WHERE code=?',(json.dumps(state),code))
+    for p in (a,b):db.change(code,p,'answer',text='Yes')
+    assert db.read(code)['phase']=='review'
+    assert 'answer' not in db.public(code,'a')['question']
+    db.change(code,host,'correct',player='a');db.change(code,host,'wrong',player='b')
+    assert db.read(code)['display_scene']=='question'
+    assert 'answer' not in db.public(code,'screen',display=True)['question']
+    db.change(code,host,'display_answer')
+    s=db.read(code)
+    assert s['media_playback']['playing'] and s['media_playback']['mode']=='full'
+    assert media_position(s,s['media_playback']['updated_at']+60)==60
+    display=db.public(code,'screen',display=True)
+    assert 'media' not in display['question']
+    assert display['question']['attachments'][0]['url']=='/answer.wav'
+    assert display['question']['answer']=='Yes'
+    assert not db.change(code,host,'media_pause',question='q1',position=10,media_mode='excerpt')
+    db.change(code,host,'display_board')
+    assert db.read(code)['media_playback'] is None
+    db.change(code,host,'display_answer')
+    assert db.read(code)['media_playback']['playing'] and db.read(code)['media_playback']['position']==0
+    db.change(code,host,'display_question')
     assert not db.read(code)['media_playback']['playing']
-    db.change(code, host, 'display_scores')
-    assert db.read(code)['paused'] and db.read(code)['display_scene'] == 'board'
-    db.change(code, host, 'unpause')
-    db.change(code, host, 'display_answer')
-    assert db.read(code)['media_playback']['position'] == 55
-    db.change(code, host, 'pick', question='q2')
-    assert db.read(code)['display_scene'] == 'question'
-    assert db.read(code)['media_playback']['mode'] == 'excerpt'
+    assert db.read(code)['media_playback']['mode']=='excerpt'
+    assert db.read(code)['answers']==s['answers']
 
 
 def test_buzzer_is_atomic_and_only_winner_can_answer(tmp_path):
@@ -111,7 +104,7 @@ def test_score_screen_pauses_and_resumes_question_without_losing_time(tmp_path, 
     paused = db.read(code)
     assert paused['paused'] and paused['display_scene'] == 'question' and paused['pause_view'] == 'scores'
     assert media_position(paused, now[0]) == 5
-    remaining = paused['deadline']-now[0]
+    assert paused['deadline'] is None
     now[0] += 100
     assert not db.tick(code)
     assert not db.change(code, host, 'display_scores')
@@ -119,7 +112,7 @@ def test_score_screen_pauses_and_resumes_question_without_losing_time(tmp_path, 
     with pytest.raises(ValueError): db.change(code, a, 'answer', text='Yes')
     db.change(code, host, 'unpause')
     resumed = db.read(code)
-    assert resumed['deadline']-now[0] == remaining
+    assert resumed['deadline'] is None
     assert resumed['display_scene'] == 'question' and not resumed['paused']
     assert resumed['media_playback']['playing'] and media_position(resumed, now[0]) == 5
 
@@ -133,7 +126,7 @@ def test_pause_and_score_views_switch_without_changing_saved_time(tmp_path, monk
     db.change(code, host, 'pause')
     paused = db.read(code)
     assert paused['pause_view'] == 'break'
-    remaining = paused['deadline']-now[0]
+    assert paused['deadline'] is None
     now[0] += 100
     db.change(code, host, 'display_scores')
     assert db.read(code)['pause_view'] == 'scores'
@@ -148,7 +141,7 @@ def test_pause_and_score_views_switch_without_changing_saved_time(tmp_path, monk
     assert not db.tick(code)
     db.change(code, host, 'unpause')
     resumed = db.read(code)
-    assert resumed['deadline']-now[0] == remaining
+    assert resumed['deadline'] is None
     assert media_position(resumed, now[0]) == 7 and resumed['pause_view'] == 'break'
 
 
@@ -165,9 +158,9 @@ def test_full_media_prevents_three_second_auto_advance(tmp_path, kind):
     db.change(code, player, 'answer', text='Yes')
     db.change(code, host, 'correct', player='p')
     s = db.read(code)
-    assert s['media_playback']['mode'] == 'full' and not s['media_playback']['playing']
+    assert s['media_playback']['mode'] == 'excerpt' and not s['media_playback']['playing']
     assert s['advance_at'] is None and not db.tick(code)
     assert media_position(s, s['media_playback']['updated_at']+20) == 0
     db.change(code,host,'media_play',question='0')
     s=db.read(code)
-    assert media_position(s,s['media_playback']['updated_at']+20)==20
+    assert media_position(s,s['media_playback']['updated_at']+20)==2

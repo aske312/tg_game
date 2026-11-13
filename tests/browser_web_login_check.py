@@ -56,6 +56,7 @@ def check(browser,url):
         for page in (web,tg):page.locator('#answer-text').fill(answer);page.locator('#answer-send').click()
         expect(host.locator('[data-verdict="correct"]')).to_have_count(2)
         host.locator('[data-verdict="correct"]').first.click();host.locator('[data-verdict="correct"]').first.click()
+        host.locator('#scene-answer').click()
         expect(web.locator('#solution')).to_contain_text(answer);expect(tg.locator('#solution')).to_contain_text(answer)
         # Drop tab storage, then recover the guest identity through its HTTP-only cookie.
         web.evaluate('sessionStorage.clear()');web.goto(url+'/?room='+code)

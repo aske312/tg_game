@@ -64,7 +64,7 @@ sudo rat-race update
 .\.venv\Scripts\python.exe -m pip install -r requirements-admin.txt
 ```
 
-Доступы находятся в приватном `data/builder-server-access.txt`. Для SSH в нём нужны поля ниже; адрес и пароль веб-редактора оставьте в том же файле:
+Доступы находятся в приватном `server.txt`. Для SSH в нём нужны поля ниже; адрес и пароль веб-редактора оставьте в том же файле:
 
 ```text
 IP: адрес сервера

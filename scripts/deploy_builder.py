@@ -18,7 +18,7 @@ from server_access import save_builder_access
 
 
 def main():
-    access = ROOT / 'data/builder-server-access.txt'
+    access = ROOT / 'server.txt'
     with connect() as client:
         with client.open_sftp() as sftp:
             try:
@@ -42,7 +42,7 @@ def main():
                     stream.write(text)
                 sftp.chmod('/etc/rat-race/builder.env.part',0o600)
                 sftp.rename('/etc/rat-race/builder.env.part','/etc/rat-race/builder.env')
-                print('Пароль сохранён локально в data/builder-server-access.txt',flush=True)
+                print('Пароль сохранён локально в server.txt',flush=True)
         return run_remote(client, 'bash -s', update_script('builder'))
 
 

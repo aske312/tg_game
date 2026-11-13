@@ -49,7 +49,7 @@ def test_pause_freezes_question_and_restores_remaining_time_after_restart(game):
     now[0]+=10
     db.change(code,host,'pause')
     state=db.public(code,player['id'])
-    assert state['deadline']-state['paused_at']==35
+    assert state['deadline'] is None
     now[0]+=100
     db=Store(db.path)
     assert not db.tick(code) and db.read(code)['phase']=='question'
@@ -57,7 +57,7 @@ def test_pause_freezes_question_and_restores_remaining_time_after_restart(game):
     with pytest.raises(ValueError):db.change(code,player,'unpause')
     assert db.change(code,player,'reaction',text='🔥')
     db.change(code,host,'unpause')
-    assert db.read(code)['deadline']-now[0]==35
+    assert db.read(code)['deadline'] is None
     db.change(code,player,'answer',text='4')
     db.change(code,host,'correct',player=player['id'])
     assert db.read(code)['phase']=='reveal'
@@ -98,8 +98,10 @@ def test_round_scores_wait_for_host_even_with_auto_advance(game):
     db.change(code,host,'next')
     assert not db.read(code)['scores_visible'] and db.read(code)['active']=='b1'
     db.change(code,host,'close')
-    now[0]=db.read(code)['advance_at']+.1
-    db.tick(code)
+    assert db.read(code)['advance_at'] is None
+    now[0]+=1000
+    assert not db.tick(code)
+    db.change(code,host,'next')
     assert db.read(code)['active']=='b2'
     with pytest.raises(ValueError):db.change(code,host,'show_scores')
     db.change(code,host,'close')
@@ -148,7 +150,7 @@ def test_every_round_has_preview_before_questions_timers_events_or_media(tmp_pat
         assert not db.tick(code)
         db.change(code,host,'next')
         if mode=='grid':db.change(code,host,'pick',question=stages[index]['id'])
-        assert db.read(code)['deadline']==now[0]+45
+        assert db.read(code)['deadline'] is None
         assert not db.read(code)['media_playback']['playing']
         db.change(code,host,'close');db.change(code,host,'next')
     assert db.read(code)['phase']=='finished'

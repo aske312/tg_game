@@ -22,6 +22,8 @@ def test_colon_keys_and_legacy_fallback(tmp_path):
     (tmp_path / 'server.txt').write_text('IP: example.com\nUSER: root\nPSW: secret\n')
     assert settings(tmp_path)['PORT'] == 22
     access_file(tmp_path, 'ip: other.example.com\nuser: root\npsw: new-secret\n')
+    assert settings(tmp_path)['IP'] == 'example.com'
+    (tmp_path / 'server.txt').unlink()
     assert settings(tmp_path)['IP'] == 'other.example.com'
 
 

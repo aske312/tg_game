@@ -6,6 +6,47 @@ const vm=require('node:vm');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 
+test('remote volume updates even when the browser has not decoded media metadata',()=>{
+  const h=harness({pathname:'/display'}),question={id:'q1',media:{kind:'video',url:'/unsupported'}};
+  h.apply({display:true,question,media_volume:1});
+  const node=h.node('media-content').children[0].children[0];
+  assert.equal(h.run('activeClip.ready'),false);
+  h.apply({display:true,question,media_volume:.3});assert.equal(node.volume,.3);
+});
+
+test('the competitive grid winner sees an enabled board only when the host displays it',()=>{
+  const h=harness();
+  h.apply({phase:'reveal',display_scene:'answer',question:{id:'q1',text:'Question',answer:'Yes'},can_pick:false});
+  assert(h.node('question-board').hidden);assert(!h.node('solution').hidden);
+  h.apply({phase:'reveal',display_scene:'board',can_pick:true,chooser:'p'});
+  assert(!h.node('question-board').hidden);assert(h.node('question').hidden);assert(h.node('board-waiting').hidden);
+  assert.match(h.node('board-cells').innerHTML,/data-pick="q2"/);
+  h.apply({phase:'reveal',display_scene:'board',can_pick:false,chooser:'someone-else'});
+  assert(h.node('question-board').hidden);assert(!h.node('board-waiting').hidden);
+});
+
+test('question-scoped host commands include the question they were issued for',async()=>{
+  const h=harness();h.run("auth.user.id='h';calls=[];roomRequest=async(path,body)=>calls.push(body)");
+  h.apply({active:'q1'});
+  await h.run("command('close');command('display_answer');command('next')");
+  assert(h.ctx.calls.every(body=>body.question==='q1'));
+});
+
+test('grid answer scenes contain only the answer for text and media, including legacy room states',()=>{
+  for(const display of [true,false])for(const explicit of [true,false])for(const kind of [null,'image','audio','video']){
+    const h=harness(),question={id:'q1',text:'Question must disappear',answer:'Only answer',
+      media:{kind:'image',url:'/question.png'},attachments:kind?[{kind,url:'/answer-file',answer:true}]:[]};
+    h.apply({display,phase:'reveal',question,...(explicit?{display_scene:'answer'}:{})});
+    assert(h.node('question-text').hidden);assert.equal(h.node('question-text').textContent,'');
+    assert(!h.node('solution').hidden);assert.match(h.node('solution').textContent,/Only answer/);
+    const files=Array.from(h.run('currentSceneMedia()'));
+    assert.deepEqual(files.map(m=>m.url),kind?['/answer-file']:[]);
+    h.apply({display,phase:'reveal',question,display_scene:'question'});
+    assert(!h.node('question-text').hidden);assert.equal(h.node('question-text').textContent,question.text);
+    assert(h.node('solution').hidden);assert.equal(h.run('currentSceneMedia()[0].url'),'/question.png');
+  }
+});
+
 test('delayed room commands cannot reopen a room after leaving or switching',async()=>{
   for(const leave of [true,false]){
     const h=harness();const original=h.apply({});
@@ -114,8 +155,8 @@ test('host can grade an oral buzzer answer before any text is submitted',()=>{
   h.apply(state);
   assert.equal(h.node('phase').textContent,'Игрок отвечает');
   assert.match(h.node('review-list').innerHTML,/Player.*голосом.*data-player="p".*Верно.*Неверно/s);
-  assert(h.node('host-answers').hidden);assert.match(h.node('timer').textContent,/38 сек/);
-  h.advance(120000);assert.match(h.node('timer').textContent,/38 сек/);
+  assert(h.node('host-answers').hidden);assert.equal(h.node('timer').textContent,'');
+  h.advance(120000);assert.equal(h.node('timer').textContent,'');
   h.run("auth.user.id='p'");
   h.apply({...state,responder:null,buzz_remaining:null,deadline:1160,can_buzz:false,can_answer:false,
     answers:{p:{text:'',oral:true,verdict:'wrong',points:-100}},answered_ids:['p']});
@@ -126,7 +167,7 @@ test('host can grade an oral buzzer answer before any text is submitted',()=>{
   assert(!h.node('buzz-answer').hidden);
 });
 
-test('video can play as audio for the question and reveal the full video after grading',()=>{
+test('question video stays separate from an explicitly attached answer video',()=>{
   const h=harness();
   const question={id:'q1',text:'Song?',answer:'Yes',media:{kind:'video',url:'/clip.webm',start:20,end:30,audio_only:true}};
   h.apply({display:true,question,media_playback:{question:'q1',mode:'excerpt',playing:true,position:0,updated_at:1000,revision:0}});
@@ -134,6 +175,9 @@ test('video can play as audio for the question and reveal the full video after g
   assert.equal(audio.tagName,'VIDEO');assert(audio.hidden);
   audio.emit('loadedmetadata');assert(h.run('activeClip.ready'));
   h.apply({display:true,phase:'reveal',question,display_scene:'answer',media_playback:{question:'q1',mode:'full',playing:true,position:0,updated_at:1000,revision:1}});
+  assert.equal(h.node('media-content').children.length,0);
+  question.attachments=[{kind:'video',url:'/answer.webm',answer:true}];
+  h.apply({display:true,phase:'reveal',question,display_scene:'answer'});
   const video=h.node('media-content').children[0].children[0];
   assert.equal(video.tagName,'VIDEO');assert(!video.hidden);
   video.emit('loadedmetadata');assert(h.run('activeClip.ready'));
@@ -147,12 +191,12 @@ test('score pause shows completed round points and live points for the current r
   assert.match(h.node('presentation-results').innerHTML,/First.*Second.*\+100.*\+25.*125 очков/s);
 });
 
-test('host scenes preserve answers and full media uses the whole file timeline',()=>{
+test('host scenes preserve answer clips and authored clip boundaries',()=>{
   const h=harness();
-  const question={id:'q1',text:'Song?',category:'Music',value:100,answer:'Artist',media:{kind:'audio',url:'/song.wav',start:20,end:30}};
+  const question={id:'q1',text:'Song?',category:'Music',value:100,answer:'Artist',media:{kind:'audio',url:'/song.wav',start:20,end:30,answer:true}};
   h.apply({display:true,phase:'reveal',question,display_scene:'answer',media_playback:{question:'q1',mode:'full',playing:true,position:0,updated_at:1000,revision:1}});
   const clip=h.node('media-content').children[0];clip.children[0].emit('loadedmetadata');
-  assert.equal(clip.children.length,1);assert.equal(clip.children[0].currentTime,0);
+  assert.equal(clip.children.length,1);assert.equal(clip.children[0].currentTime,20);
   assert(!h.node('solution').hidden);assert(!h.node('question').hidden);assert(h.node('question-board').hidden);
   h.apply({display:true,phase:'reveal',question,display_scene:'board'});
   assert(h.node('question').hidden);assert(!h.node('question-board').hidden);
@@ -213,9 +257,9 @@ function harness(options={}) {
   const storage=new Map(Object.entries(options.storage||{}));
   const ctx={document:{getElementById(id){assert(nodes.has(id),'Missing DOM ID: '+id);return nodes.get(id);},querySelectorAll(){return [];},createElement(name){return {...element(),tagName:name.toUpperCase()};},addEventListener(){},body:{dataset:{}}},
     window:{addEventListener(){},matchMedia(){return {matches:false};}},sessionStorage:{getItem(key){return storage.get(key)??null;},setItem(key,value){storage.set(key,value);},removeItem(key){storage.delete(key);}},location:{search:'',pathname:options.pathname||'/',origin:'http://localhost'},history:{replaceState(){}},URLSearchParams,
-    fetch:()=>new Promise(()=>{}),setInterval(){},setTimeout(){},clearTimeout(){},Date:Clock,console};
+    fetch:()=>new Promise(()=>{}),setInterval(){},setTimeout(){},clearTimeout(){},Date:Clock,console,URL,AbortController};
   vm.createContext(ctx);
-  for(const file of ['experience.js','playback.js','app.js'])vm.runInContext(fs.readFileSync(path.join(root,'static',file),'utf8'),ctx);
+  for(const file of ['experience.js','preload.js','playback.js','app.js'])vm.runInContext(fs.readFileSync(path.join(root,'static',file),'utf8'),ctx);
   vm.runInContext("auth={user:{id:'p',name:'Player'}}",ctx);
   let version=0;
   const base={code:'ABC234',host:'h',players:[{id:'h',name:'Host',score:0},{id:'p',name:'Player',score:0}],phase:'question',stage:{id:'g',title:'Grid',type:'grid',categories:['Space']},stages:[{id:'g',type:'grid'}],stage_count:1,stage_number:1,question_count:2,question_number:1,round_count:2,used:[],answered_ids:[],answers:{},question:{id:'q1',category:'Space',text:'Question',value:100,seconds:45},active:'q1',deadline:1045,chooser:'h',board:[{id:'q2',category:'Space',value:200,used:false}],can_pick:false};
@@ -261,13 +305,13 @@ test('pause keeps countdown frozen and round scores replace the question',()=>{
 test('expired questions keep waiting for host and show skipped-answer penalties privately',()=>{
   const host=harness();host.run("auth.user.id='h'");
   host.apply({deadline:999,can_answer:false,time_expired:true});
-  assert(!host.node('question').hidden);assert(!host.node('timeout-hint').hidden);
+  assert(!host.node('question').hidden);assert(host.node('timeout-hint').hidden);
   assert.match(host.node('close').textContent,/Завершить вопрос.*1/);
   assert(!host.node('close-hint').hidden);assert(host.node('review-list').innerHTML==='');
   const screen=harness();screen.apply({display:true,deadline:999,time_expired:true});
-  assert(!screen.node('question').hidden);assert(screen.node('solution').hidden);assert(!screen.node('timeout-hint').hidden);
+  assert(!screen.node('question').hidden);assert(screen.node('solution').hidden);assert(screen.node('timeout-hint').hidden);
   const player=harness();player.apply({deadline:999,can_answer:false,time_expired:true});
-  assert(player.node('answer-form').hidden);assert(player.node('answer-send').disabled);
+  assert(player.node('answer-form').hidden);assert(!player.node('answer-send').disabled);
   player.apply({phase:'review',omission_penalties:{p:-100}});
   assert(!player.node('my-answer').hidden);assert.match(player.node('my-answer').textContent,/-100/);
   player.apply({phase:'review',omission_penalties:{p:0}});
@@ -606,7 +650,8 @@ test('hidden question images appear with the answer while hidden video retains a
     }
     assert(h.node('display-media-expand').hidden);
     h.apply({display:true,phase:'reveal',question,display_scene:'answer',media_playback:{question:'q1',mode:'full',playing:false,position:0}});
-    const media=kind==='image'?h.node('media-content').children[0]:h.node('media-content').children[0].children[0];
+    if(kind==='video'){assert.equal(h.node('media-content').children.length,0);continue;}
+    const media=h.node('media-content').children[0];
     assert.equal(media.tagName,kind==='image'?'IMG':'VIDEO');assert(!media.hidden);
     h.apply({display:true,phase:'reveal',question,display_scene:'question',media_playback:{question:'q1',mode:'full',playing:false,position:0}});
     if(kind==='image')assert(h.node('media-content').hidden);
@@ -647,18 +692,20 @@ test('additional question files render together and answer files wait for reveal
   h.apply({display:true,question,phase:'question'});
   assert.equal(h.node('media-content').children.length,2);
   h.apply({display:true,question,phase:'reveal',display_scene:'answer'});
-  assert.equal(h.node('media-content').children.length,3);
-  assert(h.node('media-content').children.some(node=>node.tagName==='VIDEO'&&node.src==='/answer.mp4'));
+  assert.equal(h.node('media-content').children.length,1);
+  assert.equal(h.node('media-content').children[0].children[0].src,'/answer.mp4');
 });
 
 test('additional media obey game pause, scores, scene visibility and shared volume',()=>{
   const h=harness({pathname:'/display'}),question={id:'q1',text:'?',attachments:[{kind:'audio',url:'/one.wav'},{kind:'video',url:'/two.mp4'}]};
   h.apply({display:true,question,media_volume:.25});
-  const players=h.node('media-content').children.filter(n=>['AUDIO','VIDEO'].includes(n.tagName));
+  const players=h.node('media-content').children.flatMap(n=>['AUDIO','VIDEO'].includes(n.tagName)?[n]:n.children.filter(c=>['AUDIO','VIDEO'].includes(c.tagName)));
   assert.equal(players.length,2);assert(players.every(p=>p.volume===.25));
   for(const state of [{paused:true},{scores_visible:true},{display_scene:'board'},{phase:'finished'}]){
-    for(const p of players)p.paused=false;
-    h.apply({display:true,question,...state});assert(players.every(p=>p.paused),JSON.stringify(state));
+    h.apply({display:true,question,media_volume:.25});
+    const currentPlayers=h.node('media-content').children.flatMap(n=>['AUDIO','VIDEO'].includes(n.tagName)?[n]:n.children.filter(c=>['AUDIO','VIDEO'].includes(c.tagName)));
+    for(const p of currentPlayers)p.paused=false;
+    h.apply({display:true,question,...state});assert(currentPlayers.every(p=>p.paused),JSON.stringify(state));
   }
 });
 test('answer attachments disappear when the host returns the display to the question',()=>{
@@ -690,4 +737,54 @@ test('players keep their sent answer visible during host review',()=>{
   assert(h.node('answer-form').hidden);
   h.apply({phase:'reveal',answers:{p:{text:'Мой ответ',verdict:'correct',points:100}},answered_ids:['p']});
   assert(h.node('my-answer').hidden);
+});
+
+test('preload downloads complete files once and scenes reuse local blobs after media network loss',async()=>{
+  const h=harness({pathname:'/display'}),requests=[];
+  h.ctx.fetch=async url=>{requests.push(url);return {ok:true,async blob(){return new Blob(['complete-file']);}};};
+  h.apply({display:true,phase:'lobby',question:null,media_manifest:['/question.png','/answer.wav']});
+  await new Promise(setImmediate);
+  assert.equal(requests.length,2);assert.equal(h.run('mediaCache.urls.size'),2);
+  assert.equal(h.run('mediaCache.pending.size'),0);
+  const question={id:'q1',media:{kind:'image',url:'/question.png'},attachments:[{kind:'audio',url:'/answer.wav',answer:true}]};
+  h.ctx.fetch=async()=>{throw new Error('Network unavailable');};
+  h.apply({display:true,question,display_scene:'question',media_manifest:['/question.png','/answer.wav']});
+  assert.match(h.node('media-content').children[0].src,/^blob:/);
+  h.apply({display:true,question,phase:'reveal',display_scene:'answer',media_manifest:['/question.png','/answer.wav'],
+    media_playback:{question:'q1',mode:'full',playing:true,position:0,updated_at:1000,revision:1}});
+  const audio=h.node('media-content').children[0].children[0];audio.emit('loadedmetadata');
+  assert.match(audio.src,/^blob:/);assert.equal(audio.paused,false);assert.equal(requests.length,2);
+  h.node('leave').onclick();assert.equal(h.run('mediaCache.urls.size'),0);
+});
+
+test('failed preload is reported and retries without downloading successful files again',async()=>{
+  const h=harness({pathname:'/display'}),requests=[];let fail=true;
+  h.ctx.fetch=async url=>{requests.push(url);return {ok:!(fail&&url==='/bad'),async blob(){return new Blob(['file']);}};};
+  h.apply({display:true,phase:'lobby',question:null,media_manifest:['/ok','/bad']});
+  await new Promise(setImmediate);
+  assert.equal(h.run('mediaCache.failed.size'),1);assert(!h.node('media-preload-retry').hidden);
+  fail=false;h.node('media-preload-retry').onclick();await new Promise(setImmediate);
+  assert.equal(h.run('mediaCache.urls.size'),2);assert.equal(h.run('mediaCache.failed.size'),0);
+  assert.deepEqual(requests,['/ok','/bad','/bad']);
+});
+
+test('late downloads from a departed room cannot populate the next room cache',async()=>{
+  const h=harness({pathname:'/display'});let complete;
+  h.ctx.fetch=()=>new Promise(resolve=>{complete=resolve;});
+  h.apply({display:true,question:null,media_manifest:['/old']});
+  h.node('leave').onclick();
+  complete({ok:true,async blob(){return new Blob(['old']);}});await new Promise(setImmediate);
+  assert.equal(h.run('mediaCache.urls.size'),0);assert.equal(h.run('room'),null);
+});
+
+test('a short answer clip does not stop a longer attached recording',()=>{
+  const h=harness({pathname:'/display'});h.ctx.stops=[];h.run('sendMediaAction=async(...args)=>stops.push(args)');
+  const question={id:'q1',attachments:[{kind:'audio',url:'/short',start:0,end:2,answer:true},{kind:'video',url:'/long',start:0,end:6,answer:true}]};
+  h.apply({display:true,phase:'reveal',display_scene:'answer',question,
+    media_playback:{question:'q1',mode:'full',playing:true,position:0,updated_at:1000,revision:1}});
+  const short=h.node('media-content').children[1].children[0],long=h.node('media-content').children[0];
+  short.emit('loadedmetadata');long.onloadedmetadata();
+  short.currentTime=2;short.emit('timeupdate');assert.equal(h.ctx.stops.length,0);
+  long.currentTime=6;long.ontimeupdate();
+  assert.equal(h.ctx.stops.length,1);assert.equal(h.ctx.stops[0][1],6);
 });
