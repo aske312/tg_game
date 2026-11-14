@@ -772,6 +772,8 @@ class Store:
             s['question'].pop('media', None)
         if s['question'] is not None and 'attachments' not in s['question']:
             s['question']['attachments'] = [m for m in q.get('attachments', []) if not m.get('answer')]
+        if display and s['question'] is not None and q.get('choices') and s['phase'] == 'reveal':
+            s['question']['correct_choice'] = q['correct_choice']
         if display and s['question'] is not None:
             if s['display_scene'] == 'answer':
                 s['question']['text'] = ''

@@ -10,6 +10,22 @@ let entryRole = 'player', reactionRoom = '', lastReaction = 0, reactionSentAt = 
 const isDisplay = () => room?.display === true;
 const isPlayer = () => !isHost() && !isDisplay();
 const modeTitles={blitz:'Блиц',grid:'Сетка вопросов',binary:'Выбор из двух'};
+const notifiedResults=new Set();
+let resultExpires=0,resultQuestion='';
+function renderAnswerResult(){
+  const key=room.code+':'+room.active+':'+auth.user.id;
+  if(resultQuestion!==key||!isPlayer())resultExpires=0;
+  resultQuestion=key;
+  const answer=ownAnswer(),penalty=room.omission_penalties?.[auth.user.id];
+  const points=answer?.verdict?answer.points:penalty;
+  if(isPlayer()&&Number.isFinite(points)&&!notifiedResults.has(key)){
+    notifiedResults.add(key);
+    resultExpires=Date.now()+4500;
+    $('answer-result').textContent=(penalty!==undefined?'Ответ не отправлен':answer.verdict==='correct'?'Верный ответ':'Неверный ответ')+' · '+(points>0?'+':points<0?'−':'')+countLabel(Math.abs(points),['балл','балла','баллов']);
+    $('answer-result').dataset.result=points>0?'positive':points<0?'negative':'zero';
+  }
+  show('answer-result',isPlayer()&&Date.now()<resultExpires);
+}
 function displayScene(state=room){return state?.display_scene||(state?.phase==='board'?'board':state?.phase==='reveal'?'answer':'question');}
 
 function renderModes() {
@@ -25,7 +41,7 @@ function renderModes() {
   $('board-cells').innerHTML=categories.map(c=>`<div class="board-row"><div class="board-category">${esc(c)}</div><div class="board-values">${room.board.filter(q=>q.category===c).sort((a,b)=>a.value-b.value).map(q=>`<button data-pick="${esc(q.id)}" ${!room.can_pick||q.used?'disabled':''} class="${q.used?'played':''}" aria-label="${esc(c)}: ${q.value} очков${q.used?', сыгран':''}">${q.used?'—':q.value}</button>`).join('')}</div></div>`).join('');
   const q=room.question,binary=Array.isArray(q?.choices);
   show('binary-options',binary&&room.phase!=='finished');
-  $('binary-options').innerHTML=binary?q.choices.map((choice,i)=>`<button data-choice="${i}" ${canAnswer()?'':'disabled'} class="${ownAnswer()?.choice===i?'chosen':''} ${q.correct_choice===i&&(!isDisplay()||!room.display_scene||room.display_scene==='answer')?'correct-option':''} ${ownAnswer()?.choice===i&&ownAnswer()?.verdict==='wrong'?'wrong-option':''}">${esc(choice)}</button>`).join(''):'';
+  $('binary-options').innerHTML=binary?q.choices.map((choice,i)=>`<button data-choice="${i}" ${canAnswer()?'':'disabled'} class="${ownAnswer()?.choice===i?'chosen':''} ${q.correct_choice===i&&(!isDisplay()||room.phase==='reveal'||displayScene()==='answer')?'correct-option':''} ${ownAnswer()?.choice===i&&ownAnswer()?.verdict==='wrong'?'wrong-option':''}">${esc(choice)}</button>`).join(''):'';
   show('auto-next',!!room.advance_at&&room.phase==='reveal');
 }
 
@@ -95,7 +111,7 @@ function renderPresentation() {
   if(isDisplay()&&active&&!room.paused&&!room.scores_visible){
     show('question',!!room.question&&['question','answer'].includes(scene));
     show('question-text',scene==='question');
-    show('binary-options',scene==='question'&&Array.isArray(room.question?.choices));
+    show('binary-options',['question','answer'].includes(scene)&&Array.isArray(room.question?.choices));
     show('question-board',scene==='board');
     show('solution',scene==='answer'&&!!room.question?.answer);
     show('event',scene==='question'&&room.phase==='event');
@@ -224,6 +240,7 @@ function apply(s){
   const unchanged=room&&s.code===room.code&&s.display===room.display&&(s.ui_version??s.version)===(room.ui_version??room.version);
   const oldQuestion=room?.code+':'+room?.active;
   room=s;offset=s.server_time*1000-Date.now();sessionStorage.setItem(displayPage?'displayRoom':'room',s.code);
+  renderAnswerResult();
   if(unchanged){renderReactions();tick();return;}
   syncMediaPreload();
   $('game').dataset.phase=s.phase;
@@ -283,6 +300,7 @@ function apply(s){
   renderDisplaySound();syncMediaPlayback();renderReactions();tick();
 }
 function tick(){
+  if(Date.now()>=resultExpires||!room)show('answer-result',false);
   if(!room)return;
   show('timeout-hint',false);show('timer-track',false);$('timer').textContent='';
   $('answer-send').disabled=room.paused;
@@ -426,7 +444,7 @@ $('reaction-buttons').onclick=async event=>{
   try{await command('reaction',{text:button.dataset.reaction});}catch{/* Reactions are optional and never interrupt the game. */}
 };
 $('finish').onclick=guard(async()=>{if(confirm('Завершить квиз и показать итоговый счёт?'))await command('finish');});
-$('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem(displayPage?'displayRoom':'room');sessionStorage.removeItem('roomRole');delete document.body.dataset.role;delete document.body.dataset.mediaExpanded;room=null;resetExperience();disposeQuestionMedia();clearMediaPreload();show('game',false);show('home',!displayPage);show('display-entry',displayPage);if(displayPage)auth=null;else setRole('player');notice('');history.replaceState(null,'',location.pathname);if(typeof updateMobileClient==='function')updateMobileClient();};
+$('leave').onclick=()=>{clearTimeout(retry);if(socket){socket.onclose=null;socket.close();socket=null;}sessionStorage.removeItem(displayPage?'displayRoom':'room');sessionStorage.removeItem('roomRole');delete document.body.dataset.role;delete document.body.dataset.mediaExpanded;room=null;resultExpires=0;show('answer-result',false);resetExperience();disposeQuestionMedia();clearMediaPreload();show('game',false);show('home',!displayPage);show('display-entry',displayPage);if(displayPage)auth=null;else setRole('player');notice('');history.replaceState(null,'',location.pathname);if(typeof updateMobileClient==='function')updateMobileClient();};
 $('q-kind').onchange=()=>{const kind=$('q-kind').value;show('file-fields',!!kind);show('clip-fields',kind==='audio'||kind==='video');$('q-file').accept=kind==='image'?'.png,.jpg,.jpeg,.jfif,.gif,.webp,.avif,.bmp':kind==='audio'?'.mp3,.wav,.ogg,.oga,.opus,.m4a,.aac,.flac':'.mp4,.webm,.mov,.m4v';$('q-file').required=!!kind;};
 function renderQuestionEditor() {
   const selected=room?.stages.find(s=>s.id===$('q-stage').value),binary=selected?.type==='binary',grid=selected?.type==='grid';

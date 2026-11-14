@@ -206,3 +206,8 @@ dialog::backdrop { background: var(--overlay); }
 @media(prefers-reduced-motion:reduce) {
   button, .button-link { transition: none; }
 }
+
+.binary-options button.correct-option { background: var(--accent-soft); border-color: var(--green); color: var(--green); opacity: 1; box-shadow: inset 0 0 0 2px var(--green); }
+.answer-result { position: fixed; z-index: 100; top: max(20px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); padding: 16px 22px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--panel-raised); color: var(--text); box-shadow: 0 8px 32px #0006; text-align: center; pointer-events: none; }
+.answer-result[data-result=positive] { border-color: var(--green); }
+.answer-result[data-result=negative] { border-color: var(--coral); }

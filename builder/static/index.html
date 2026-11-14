@@ -16,11 +16,13 @@
   <script src="/static/media-editor.js?v=11" defer></script>
   <script src="/static/validation.js?v=7" defer></script>
   <script src="/static/builder.js?v=17" defer></script>
+  <script src="/static/server-settings.js?v=1" defer></script>
+  <link rel="stylesheet" href="/static/server-settings.css?v=1">
 </head>
 <body class="builder-app">
   <header class="app-header">
     <a class="brand" href="/"><span class="brand-mark">кб.</span><span>крысиные бега<span class="brand-caption">КОНСТРУКТОР ИГР</span></span></a>
-    <div id="account-actions" hidden><button id="toggle-games" class="secondary" aria-expanded="false" aria-controls="game-library">Мои игры</button><button id="new-game" class="primary">+ Новая игра</button><button id="logout" class="quiet">Выйти</button></div>
+    <div id="account-actions" hidden><button id="app-settings" class="secondary" aria-haspopup="dialog">Настройки приложения</button><button id="toggle-games" class="secondary" aria-expanded="false" aria-controls="game-library">Мои игры</button><button id="new-game" class="primary">+ Новая игра</button><button id="logout" class="quiet">Выйти</button></div>
   </header>
   <div id="notice" role="status" aria-live="polite" hidden><span id="notice-text"></span><button id="dismiss-notice" type="button" aria-label="Закрыть уведомление">×</button></div>
   <section id="login-panel" class="login-panel panel" hidden>
@@ -115,6 +117,14 @@
   <dialog id="create-dialog"><form id="create-form"><span class="eyebrow">НОВЫЙ ЗАБЕГ</span><h2>Начнём с названия</h2><label for="new-title">Название игры</label><input id="new-title" maxlength="100" required placeholder="Например: пятничный квиз"><div class="dialog-actions"><button id="cancel-create" type="button" class="secondary">Отмена</button><button class="primary">Создать игру →</button></div></form></dialog>
   <dialog id="delete-game-dialog" aria-labelledby="delete-dialog-heading" aria-describedby="delete-game-description">
     <form id="delete-game-form"><span class="eyebrow">УДАЛЕНИЕ ИГРЫ</span><h2 id="delete-dialog-heading">Удалить игру?</h2><strong id="delete-game-title"></strong><p id="delete-game-description"></p><p id="delete-unsaved-note" class="hint" hidden>Несохранённые изменения этой игры также будут удалены.</p><p id="delete-game-error" class="category-warning" role="alert" hidden></p><div class="dialog-actions"><button id="cancel-delete-game" type="button" class="secondary">Отмена</button><button id="confirm-delete-game" class="delete-confirm">Удалить игру</button></div></form>
+  </dialog>
+  <dialog id="app-settings-dialog" class="server-settings" aria-labelledby="app-settings-heading">
+    <div class="server-settings-heading"><div><span class="eyebrow">ВСЁ ПРИЛОЖЕНИЕ</span><h2 id="app-settings-heading">Настройки приложения</h2></div><button id="close-app-settings" class="quiet" aria-label="Закрыть настройки приложения">×</button></div>
+    <p id="server-status-message" role="status" aria-live="polite">Загружаем состояние сервера…</p>
+    <div id="server-stats" class="server-stats"></div>
+    <section><div class="section-title"><h3>Службы</h3><button id="refresh-server" class="secondary">Обновить статистику</button></div><div id="server-services"></div></section>
+    <section><h3>Версии приложения</h3><div id="server-versions"></div><p class="hint">Обновление устанавливает последний опубликованный стабильный релиз GitHub для игры, бота и конструктора. Откат возвращает предыдущую установленную версию каждого компонента. Игры, медиа и текущие данные сохраняются; база автоматически не восстанавливается из резервной копии.</p><p class="server-warning">Обновление и откат перезапускают службы. Выполняйте их между играми. Несохранённый черновик будет сохранён перед запуском.</p><div class="server-actions"><button id="server-update" class="primary" disabled>Обновить из GitHub</button><button id="server-rollback" class="secondary" disabled>Откатить версию</button><button id="server-reload" class="secondary" hidden>Перезагрузить страницу</button></div></section>
+    <section id="server-job" hidden><h3 id="server-job-heading">Операция</h3><p id="server-job-status" role="status" aria-live="polite"></p><pre id="server-job-log" tabindex="0" aria-label="Журнал обновления сервера"></pre></section>
   </dialog>
   <footer id="app-version" class="app-version" aria-label="Версия приложения">__APP_VERSION_LABEL__</footer>
 </body>

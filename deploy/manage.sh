@@ -7,6 +7,7 @@ usage() {
     cat <<'HELP'
 Usage: sudo rat-race COMMAND [app|builder|all]
   update                  Fetch latest published release, test and deploy (default: all installed)
+  rollback                Restore previous installed versions; keep current data
   start | stop | restart  Control services (default: all installed)
   status                  Show systemd status
   logs                    Last 100 journal entries (add --follow for live logs)
@@ -20,7 +21,7 @@ HELP
 command=${1:-help}
 target=${2:-all}
 case "$command" in help|-h|--help) usage; exit 0;; esac
-case "$command" in update|start|stop|restart|status|logs|health|version) ;; *) usage >&2; exit 2;; esac
+case "$command" in update|rollback|start|stop|restart|status|logs|health|version) ;; *) usage >&2; exit 2;; esac
 case "$target" in app|builder|all) ;; *) usage >&2; exit 2;; esac
 if [ "$#" -gt 2 ]; then
     [ "$command" = logs ] && [ "$#" = 3 ] && [ "$3" = --follow ] || { usage >&2; exit 2; }
@@ -39,16 +40,73 @@ fi
 [ "${#components[@]}" -gt 0 ] || die "No installed services for target: $target"
 
 case "$command" in
-    update)
+    update|rollback)
         # Use one pinned SHA even if main changes between the two deployments.
         lock_deploy
-        fetch_release
-        snapshot=$release
+        originals=()
+        previous_pointers=()
+        destinations=()
+        if [ "$command" = update ]; then fetch_release; snapshot=$release; fi
         for component in "${components[@]}"; do
-            script=update.sh
-            [ "$component" != builder ] || script=update_builder.sh
-            bash "$snapshot/deploy/$script" --release "$snapshot"
+            link=current
+            [ "$component" != builder ] || link=builder-current
+            originals+=("$(readlink -f "$base/$link")")
+            previous_pointer=''
+            if [ -L "$base/$link-previous" ]; then previous_pointer=$(readlink -f "$base/$link-previous"); fi
+            previous_pointers+=("$previous_pointer")
+            if [ "$command" = rollback ]; then
+                [ -L "$base/$link-previous" ] || die "No previous release for $component."
+                destination=$(readlink -f "$base/$link-previous")
+                validate_installed_release "$destination"
+            else
+                destination=$snapshot
+            fi
+            destinations+=("$destination")
         done
+        restore_components() {
+            local result=$? index component link
+            trap - ERR
+            echo 'Operation failed; restoring original component versions.' >&2
+            for ((index=0; index<${#components[@]}; index++)); do
+                component=${components[index]}; link=current
+                [ "$component" != builder ] || link=builder-current
+                if [ "$(readlink -f "$base/$link")" != "${originals[index]}" ]; then
+                    # Each restoration keeps its own automatic error rollback.
+                    # A separate Bash preserves errexit/ERR even in this conditional.
+                    bash -c 'set -Eeuo pipefail; source /usr/local/lib/rat-race/common.sh; activate_installed_release "$1" "$2"' \
+                        bash "$component" "${originals[index]}" || echo "RESTORE FAILED: $component. Inspect server logs." >&2
+                fi
+                # A failed candidate must not replace the last known rollback target.
+                if [ "$(readlink -f "$base/$link")" = "${originals[index]}" ]; then
+                    if [ -n "${previous_pointers[index]}" ]; then
+                        ln -sfn "${previous_pointers[index]}" "$base/$link-previous-next"
+                        mv -Tf "$base/$link-previous-next" "$base/$link-previous"
+                    else
+                        rm -f -- "$base/$link-previous"
+                    fi
+                fi
+            done
+            exit "$result"
+        }
+        trap restore_components ERR
+        index=0
+        for component in "${components[@]}"; do
+            destination=${destinations[index]}
+            if [ "$destination" != "${originals[index]}" ]; then
+                if [ "$command" = rollback ]; then
+                    if [ "$component" = app ]; then backup_database; fi
+                    (activate_installed_release "$component" "$destination")
+                else
+                    script=update.sh
+                    [ "$component" != builder ] || script=update_builder.sh
+                    bash "$snapshot/deploy/$script" --release "$snapshot"
+                fi
+            else
+                echo "$component: already at requested release."
+            fi
+            index=$((index+1))
+        done
+        trap - ERR
         ;;
     start|stop|restart)
         lock_deploy

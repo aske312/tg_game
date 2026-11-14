@@ -37,7 +37,7 @@ if [ -f /etc/rat-race/builder.env ]; then bash "$release/deploy/update_builder.s
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['update', 'start', 'stop', 'restart', 'status', 'logs', 'health', 'version'])
+    parser.add_argument('command', choices=['update', 'rollback', 'start', 'stop', 'restart', 'status', 'logs', 'health', 'version'])
     parser.add_argument('target', nargs='?', default='all', choices=['app', 'builder', 'all'])
     parser.add_argument('--follow', action='store_true', help='Follow live logs')
     args = parser.parse_args(argv)

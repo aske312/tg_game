@@ -1,0 +1,22 @@
+[Unit]
+Description=Rat Race local server management
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=ratrace
+ExecStart=/usr/bin/python3 /usr/local/lib/rat-race/server_control.py
+RuntimeDirectory=rat-race-control
+RuntimeDirectoryMode=0750
+StateDirectory=rat-race-control
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=3
+KillMode=control-group
+TimeoutStopSec=30
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

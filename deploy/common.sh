@@ -110,6 +110,11 @@ install_manager() {
     install -d -m 755 /usr/local/lib/rat-race
     install -m 755 "$release/deploy/manage.sh" /usr/local/sbin/rat-race
     install -m 644 "$release/deploy/common.sh" /usr/local/lib/rat-race/common.sh
+    install -m 644 "$release/deploy/server_control.py" /usr/local/lib/rat-race/server_control.py
+    install -m 644 "$release/deploy/rat-race-control.service" /etc/systemd/system/
+    systemctl daemon-reload
+    # Do not restart a running controller: it may own this deployment job.
+    systemctl enable --now rat-race-control.service
 }
 
 # Save unit files too, so an existing installation can roll back during migration.
@@ -188,4 +193,52 @@ activate_release() {
     systemctl enable "${switch_units[@]}"
 }
 
-finish_switch() { trap - ERR; rm -rf -- "$transaction"; }
+finish_switch() {
+    trap - ERR
+    if [ -n "$previous" ] && [ "$previous" != "$release" ]; then
+        ln -sfn "$previous" "$base/$switch_link-previous-next"
+        mv -Tf "$base/$switch_link-previous-next" "$base/$switch_link-previous"
+    fi
+    rm -rf -- "$transaction"
+}
+
+validate_installed_release() {
+    local candidate=$1 name
+    name=${candidate##*/}
+    [[ "$name" =~ ^[0-9a-f]{40}$ ]] && [ "$candidate" = "$base/releases/$name" ] || die 'Invalid installed release path.'
+    [ -d "$candidate" ] && [ ! -L "$candidate" ] && [ -x "$candidate/.venv/bin/python" ] && [ -f "$candidate/VERSION" ] || die 'Previous release is incomplete.'
+}
+
+activate_installed_release() {
+    local component=$1 candidate=$2 public urlkey envfile url
+    validate_installed_release "$candidate"
+    release=$candidate
+    revision=${candidate##*/}
+    if [ "$component" = app ]; then
+        envfile=app.env; urlkey=APP_URL; url=http://127.0.0.1:8010
+        begin_switch current release.env rat-race-web.service rat-race-bot.service
+    else
+        envfile=builder.env; urlkey=BUILDER_SITE; url=http://127.0.0.1:8011
+        begin_switch builder-current builder-release.env rat-race-builder.service rat-race-builder-proxy.service
+    fi
+    public=$("$release/.venv/bin/python" "$release/deploy/configure.py" get "$config/$envfile" "$urlkey")
+    if [ "$component" = builder ]; then
+        export BUILDER_SITE="$public"
+        caddy validate --config "$release/deploy/builder.Caddyfile" --adapter caddyfile
+        install -o root -g caddy -m 640 "$release/deploy/builder.Caddyfile" "$config/builder.Caddyfile"
+    fi
+    systemctl stop "${switch_units[@]}"
+    activate_release
+    systemctl start "${switch_units[0]}"
+    wait_health "$url/api/health" "$revision"
+    if [ "$component" = builder ]; then
+        systemctl start rat-race-builder-proxy.service
+    fi
+    wait_health "$public/api/health" "$revision"
+    if [ "$component" = app ]; then
+        systemctl start rat-race-bot.service
+        wait_service rat-race-bot.service
+    fi
+    finish_switch
+    echo "Restored $component: $(cat "$release/VERSION") build $revision"
+}

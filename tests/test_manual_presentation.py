@@ -27,6 +27,20 @@ def setup_game(tmp_path, mode='binary', kind='audio', preload=True):
     return db, code, host, a, b
 
 
+def test_binary_close_exposes_correct_choice_without_requiring_answer_scene(tmp_path):
+    db, code, host, a, b = setup_game(tmp_path)
+    assert 'correct_choice' not in db.public(code, 'screen', display=True)['question']
+    db.change(code, a, 'answer', choice=0)
+    db.change(code, b, 'answer', choice=1)
+    assert 'correct_choice' not in db.public(code, 'a')['question']
+    db.change(code, host, 'close')
+    assert db.read(code)['display_scene'] == 'question'
+    assert db.public(code, 'screen', display=True)['question']['correct_choice'] == 0
+    for uid in ('a', 'b'):
+        assert 'correct_choice' not in db.public(code, uid)['question']
+    assert db.public(code, 'a')['answers']['a']['points'] > 0
+
+
 @pytest.mark.parametrize('mode', ['blitz', 'binary', 'grid'])
 @pytest.mark.parametrize('kind', [None, 'image', 'audio', 'video'])
 def test_host_reveal_starts_only_answer_files_and_grading_does_not_interrupt(tmp_path, monkeypatch, mode, kind):

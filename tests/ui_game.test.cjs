@@ -6,6 +6,55 @@ const vm=require('node:vm');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 
+test('binary display highlights the correct choice after closing and in the answer scene',()=>{
+  const h=harness({pathname:'/display'}),stage={id:'b',type:'binary',title:'Binary'};
+  const question={id:'q1',text:'Choose',choices:['Yes','No']};
+  h.apply({display:true,stage,question,display_scene:'question'});
+  assert(!h.node('binary-options').hidden);
+  assert(!h.node('binary-options').innerHTML.includes('correct-option'));
+  for(const display_scene of ['question','answer']){
+    h.apply({display:true,stage,phase:'reveal',display_scene,question:{...question,answer:'No',correct_choice:1}});
+    assert(!h.node('binary-options').hidden);
+    assert.match(h.node('binary-options').innerHTML,/data-choice="1"[^>]*correct-option/);
+  }
+});
+
+test('player result shows signed points once, expires and clears on leaving',()=>{
+  for(const points of [100,-25,0]){
+    const h=harness(),state={phase:'reveal',answers:{p:{text:'Answer',verdict:points>0?'correct':'wrong',points}}};
+    h.apply({answers:{p:{text:'Answer',verdict:null}}});assert(h.node('answer-result').hidden);
+    h.apply(state);assert(!h.node('answer-result').hidden);
+    assert(h.node('answer-result').textContent.includes(points>0?'+100':points<0?'−25':'0 баллов'));
+    h.advance(4600);assert(h.node('answer-result').hidden);
+    h.apply(state);assert(h.node('answer-result').hidden);
+    h.apply({...state,active:'q2'});assert(!h.node('answer-result').hidden);
+    h.node('leave').onclick();assert(h.node('answer-result').hidden);
+  }
+  for(const role of ['host','display']){
+    const h=harness();if(role==='host')h.run("auth.user.id='h'");
+    h.apply({display:role==='display',phase:'reveal',answers:{p:{verdict:'correct',points:100}}});
+    assert(h.node('answer-result').hidden);
+  }
+  const h=harness();h.apply({phase:'reveal',omission_penalties:{p:-50}});
+  assert.match(h.node('answer-result').textContent,/Ответ не отправлен · −50/);
+});
+
+test('completed grid media remains on display while host keeps remote controls',()=>{
+  const question={id:'q1',text:'Question',answer:'Answer',media:{kind:'image',url:'/question.png'},
+    attachments:[{kind:'audio',url:'/answer.wav',answer:true}]};
+  for(const role of ['host','player','display']){
+    const h=harness();if(role==='host')h.run("auth.user.id='h'");
+    h.apply({display:role==='display',question,display_scene:'question'});
+    assert.equal(h.node('media-content').children.length,1);
+    for(const phase of ['review','reveal'])for(const display_scene of ['question','answer']){
+      h.apply({display:role==='display',phase,display_scene,question});
+      assert.equal(h.node('media-content').children.length,role==='display'?1:0);
+      assert.equal(h.node('media-content').hidden,role!=='display');
+      if(role==='host')assert(!h.node('host-media-controls').hidden);
+    }
+  }
+});
+
 test('remote volume updates even when the browser has not decoded media metadata',()=>{
   const h=harness({pathname:'/display'}),question={id:'q1',media:{kind:'video',url:'/unsupported'}};
   h.apply({display:true,question,media_volume:1});

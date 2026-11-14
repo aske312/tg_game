@@ -181,3 +181,89 @@ prepare_release
     assert result.returncode != 0
     assert not (tmp_path/'node-was-run').exists()
     assert 'Release checks failed' in result.stderr
+
+
+@pytest.mark.parametrize('fail_health', [False, True])
+def test_manual_rollback_restores_installed_release_or_keeps_running_version(tmp_path, fail_health):
+    old, new = 'a'*40, 'b'*40
+    result = bash_test(tmp_path, '''old="$base/releases/'''+old+'''"
+new="$base/releases/'''+new+'''"
+mkdir -p "$old/.venv/bin" "$old/deploy" "$new"
+printf '0.4.0\\n' > "$old/VERSION"
+printf '#!/bin/bash\\necho https://example.com\\n' > "$old/.venv/bin/python"
+chmod +x "$old/.venv/bin/python"
+for unit in rat-race-web.service rat-race-bot.service; do
+    printf 'old unit' > "$old/deploy/$unit"
+    printf 'new unit' > "$units_dir/$unit"
+done
+ln -s "$new" "$base/current"
+ln -s "$old" "$base/current-previous"
+printf 'BUILD_SHA='''+new+'''\\n' > "$config/release.env"
+touch "$SANDBOX/previous-active"
+mkdir -p "$data"
+printf 'current user data' > "$data/game.sqlite3"
+wait_service() { return 0; }
+wait_health() { return '''+('1' if fail_health else '0')+'''; }
+activate_installed_release app "$old"
+''')
+    assert (tmp_path/'data/game.sqlite3').read_text() == 'current user data'
+    if fail_health:
+        assert result.returncode != 0
+        assert (tmp_path/'opt/current').resolve().name == new
+        assert (tmp_path/'units/rat-race-web.service').read_text() == 'new unit'
+        assert (tmp_path/'opt/current-previous').resolve().name == old
+    else:
+        assert result.returncode == 0, result.stderr
+        assert (tmp_path/'opt/current').resolve().name == old
+        assert (tmp_path/'opt/current-previous').resolve().name == new
+        assert (tmp_path/'units/rat-race-web.service').read_text() == 'old unit'
+
+
+def test_rollback_rejects_paths_outside_installed_releases(tmp_path):
+    result = bash_test(tmp_path, '''validate_installed_release "$SANDBOX/elsewhere"
+touch "$SANDBOX/should-not-run"
+''')
+    assert result.returncode != 0
+    assert not (tmp_path/'should-not-run').exists()
+
+
+def test_failed_combined_update_restores_both_versions_and_rollback_targets(tmp_path):
+    result = bash_test(tmp_path, r'''old=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+new=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+prior=cccccccccccccccccccccccccccccccccccccccc
+mkdir -p "$base/releases/$old" "$base/releases/$new/deploy" "$base/releases/$prior"
+for link in current builder-current; do
+    ln -s "$base/releases/$old" "$base/$link"
+    ln -s "$base/releases/$prior" "$base/$link-previous"
+done
+cat > "$SANDBOX/mock-common.sh" <<'MOCK'
+source "$PROJECT/deploy/common.sh"
+base="$SANDBOX/opt"; config="$SANDBOX/etc"; data="$SANDBOX/data"
+require_root() { :; }
+lock_deploy() { :; }
+fetch_release() { release="$base/releases/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"; }
+activate_installed_release() {
+    local link=current
+    [ "$1" != builder ] || link=builder-current
+    ln -sfn "$(readlink -f "$base/$link")" "$base/$link-previous"
+    ln -sfn "$2" "$base/$link"
+}
+MOCK
+cat > "$base/releases/$new/deploy/update.sh" <<'UPDATE'
+source "$SANDBOX/mock-common.sh"
+ln -sfn "$(readlink -f "$base/current")" "$base/current-previous"
+ln -sfn "$2" "$base/current"
+UPDATE
+printf 'exit 7\n' > "$base/releases/$new/deploy/update_builder.sh"
+sed 's@/usr/local/lib/rat-race/common.sh@"$SANDBOX/mock-common.sh"@g' "$PROJECT/deploy/manage.sh" > "$SANDBOX/manage.sh"
+set +e
+bash "$SANDBOX/manage.sh" update all
+status=$?
+set -e
+[ "$status" = 7 ]
+for link in current builder-current; do
+    [ "$(readlink -f "$base/$link")" = "$base/releases/$old" ]
+    [ "$(readlink -f "$base/$link-previous")" = "$base/releases/$prior" ]
+done
+''')
+    assert result.returncode == 0, result.stdout+result.stderr

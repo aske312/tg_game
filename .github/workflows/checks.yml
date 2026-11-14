@@ -49,6 +49,7 @@ jobs:
       - run: python tests/browser_web_login_check.py
       - run: python tests/browser_logic_audit.py
       - run: python tests/browser_grid_answer_check.py
+      - run: python tests/browser_server_settings_check.py
       - uses: actions/upload-artifact@v7
         if: always()
         with:

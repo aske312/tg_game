@@ -24,6 +24,7 @@ function harness(doc){
       get innerHTML(){return html;},set innerHTML(v){html=v;for(const m of v.matchAll(/id="([^"]+)"/g))if(!nodes.has(m[1]))nodes.set(m[1],element());this.options=[...v.matchAll(/<option value="([^"]*)"/g)].map(m=>({value:m[1]}));},
       querySelectorAll(){return [];},querySelector(){return null;},setAttribute(){},getAttribute(){return '';},removeAttribute(){},
       addEventListener(name,fn){(listeners[name]??=[]).push(fn);},emit(name){this['on'+name]?.();for(const fn of listeners[name]||[])fn();},
+      open:false,showModal(){this.open=true;},close(){this.open=false;this.emit('close');},
       focus(){},pause(){},replaceChildren(){},append(){},insertAdjacentElement(){},scrollIntoView(){},remove(){},textContent:''};
   }
   const html=fs.readFileSync(path.join(root,'builder/static/index.html'),'utf8');
@@ -60,6 +61,60 @@ function document(){return {title:'Game',stages:[{id:'g',type:'grid',title:'Grid
     {id:'other',stage:'g',type:'question',category:'Other',text:'C',answer:'C'},
     {id:'b1',stage:'b',type:'question',category:'Space',text:'D',answer:'D'},
     {id:'e',stage:'b',type:'event',title:'Bonus',effect:{type:'shield',target:'all_players'}}]};}
+
+function serverState(){return {available:true,metrics:{cpu_percent:25,cpu_count:2,memory:{used:1024**3,total:2*1024**3},disk:{used:1024**3,total:10*1024**3},uptime:90000},services:{'rat-race-web.service':'active'},versions:{app:{current:{version:'0.5.0',build:'a'.repeat(40)},previous:{version:'0.4.0',build:'b'.repeat(40)}}}};}
+
+test('application settings show server statistics and disable unavailable or running operations',()=>{
+  const h=harness(document());
+  h.run('state.busy=false');
+  h.run('globalThis.status='+JSON.stringify(serverState())+';renderServerStatus(status)');
+  assert.match(h.node('server-stats').innerHTML,/25%/);
+  assert.match(h.node('server-versions').innerHTML,/0.5.0.*0.4.0/);
+  assert(!h.node('server-update').disabled);assert(!h.node('server-rollback').disabled);
+  h.run("renderServerStatus({...status,job:{action:'update',status:'running',log:'Checking release'}})");
+  assert(h.node('server-update').disabled);assert(h.node('server-rollback').disabled);
+  assert.equal(h.node('server-job-log').textContent,'Checking release');
+  h.run('status.versions.app.previous=null;renderServerStatus(status)');
+  assert(!h.node('server-update').disabled);assert(h.node('server-rollback').disabled);
+  h.run("renderServerStatus({available:false,message:'Linux only'})");
+  assert(h.node('server-update').disabled);assert.equal(h.node('server-status-message').textContent,'Linux only');
+});
+
+test('server update saves the draft first and blocks repeat clicks while awaiting response',async()=>{
+  const h=harness(document());
+  h.run('state.busy=false;state.dirty=true;renderServerStatus('+JSON.stringify(serverState())+')');
+  h.run("globalThis.calls=[];save=async()=>{calls.push('save');state.dirty=false;};api=async(path,method,body)=>{calls.push(body.action);return new Promise(resolve=>globalThis.complete=resolve);}");
+  const first=h.node('server-update').onclick();
+  await new Promise(setImmediate);
+  await h.node('server-update').onclick();
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(calls)')),['save','update']);
+  h.run("complete({job:{id:'job',action:'update',status:'running'}})");await first;
+  assert(h.node('server-update').disabled);
+  assert(h.prompts[0].includes('0.5.0'));
+});
+
+test('cancelled rollback and failed draft save never start server changes',async()=>{
+  const h=harness(document());
+  h.run('state.busy=false;renderServerStatus('+JSON.stringify(serverState())+');globalThis.calls=[];api=async()=>calls.push("request")');
+  h.approve(false);await h.node('server-rollback').onclick();
+  assert.equal(h.run('calls.length'),0);
+  h.approve(true);h.run('state.dirty=true;save=async()=>{throw new Error("Save conflict")};loadServerStatus=async()=>{}');
+  await h.node('server-update').onclick();
+  assert.equal(h.run('calls.length'),0);
+  assert.equal(h.node('notice-text').textContent,'Save conflict');
+  assert.equal(h.run('state.busy'),false);
+});
+
+test('stale statistics cannot replace a newly launched server job',async()=>{
+  const h=harness(document());
+  h.run('state.busy=false;renderServerStatus('+JSON.stringify(serverState())+');$("app-settings-dialog").showModal();api=()=>new Promise(resolve=>globalThis.oldStatus=resolve)');
+  const pending=h.run('loadServerStatus()');
+  h.run("api=async()=>({job:{id:'new',action:'rollback',status:'running'}})");
+  await h.node('server-rollback').onclick();
+  h.run('oldStatus('+JSON.stringify(serverState())+')');await pending;
+  assert.equal(h.run('serverSnapshot.job.id'),'new');
+  assert(h.node('server-update').disabled);
+});
 
 test('display switch handles images and preserves legacy video sound settings',()=>{
   const h=harness(document());

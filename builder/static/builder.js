@@ -24,11 +24,11 @@ function notice(message='', type='info') {
   if(message&&type!=='error')noticeTimer=setTimeout(()=>notice(),6000);
 }
 $('dismiss-notice').onclick=()=>notice();
-function loginScreen() {show('login-panel',true);show('studio',false);show('account-actions',false);}
+function loginScreen() {if(typeof closeServerSettings==='function')closeServerSettings();show('login-panel',true);show('studio',false);show('account-actions',false);}
 async function api(path, method='GET', data) {
   const response=await fetch('/api'+path, {method,headers:{'X-Builder-Request':'1',...(data!==undefined?{'Content-Type':'application/json'}:{})},...(data!==undefined?{body:JSON.stringify(data)}:{})});
   const result=await response.json();
-  if(!response.ok) {if(response.status===401)loginScreen();const error=new Error(typeof result.detail==='string'?result.detail:result.detail?.message||'Проверь заполненные поля.');error.issues=result.detail?.issues;throw error;}
+  if(!response.ok) {if(response.status===401)loginScreen();const error=new Error(typeof result.detail==='string'?result.detail:result.detail?.message||'Проверь заполненные поля.');error.issues=result.detail?.issues;error.status=response.status;throw error;}
   return result;
 }
 function guarded(fn) {

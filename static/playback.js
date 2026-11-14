@@ -99,10 +99,11 @@ function renderQuestionMedia(q) {
   document.body.dataset.mediaExpanded=String(isDisplay()&&!!room.media_expanded&&!!canExpand);
   renderHostMediaToggle();
   const attachments=files.filter(item=>item!==m&&!(mediaPlaybackSurface()&&item.kind==='image'&&(item.show_in_question??!item.audio_only)===false&&!answerVisible));
-  const visible=attachments.some(item=>item.kind==='image'||mediaPlaybackSurface())||!!m&&(!av||mediaPlaybackSurface())&&!(mediaPlaybackSurface()&&m.kind==='image'&&hiddenPicture);
+  const completedGrid=room.stage?.type==='grid'&&['review','reveal'].includes(room.phase)&&!isDisplay();
+  const visible=!completedGrid&&(attachments.some(item=>item.kind==='image'||mediaPlaybackSurface())||!!m&&(!av||mediaPlaybackSurface())&&!(mediaPlaybackSurface()&&m.kind==='image'&&hiddenPicture));
   show('media-content',visible);
   const full=mediaTransport().mode==='full';
-  const key=room.code+':'+q?.id+':'+(isDisplay()?'display':isHost()?'host':'player')+':'+room.display_scene+':'+full+':'+(mediaPlaybackSurface()&&hiddenPicture)+':'+JSON.stringify([m,attachments]);
+  const key=room.code+':'+q?.id+':'+(isDisplay()?'display':isHost()?'host':'player')+':'+room.display_scene+':'+full+':'+completedGrid+':'+(mediaPlaybackSurface()&&hiddenPicture)+':'+JSON.stringify([m,attachments]);
   if(key===mediaKey)return;
   disposeQuestionMedia();
   mediaKey=key;

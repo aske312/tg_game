@@ -18,6 +18,7 @@ from starlette.background import BackgroundTask
 from app.pack_validation import PublicationError
 from builder.auth import check_password
 from builder.store import Catalog, Conflict
+from builder.server_control import ControlError, ControlUnavailable, request_control
 from app.version import version_info, versioned_html
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -39,6 +40,10 @@ class SaveGame(BaseModel):
 
 class Version(BaseModel):
     revision: str = Field(min_length=64, max_length=64)
+
+
+class ServerAction(BaseModel):
+    action: Literal['update', 'rollback']
 
 
 def create_app(catalog, password_hash):
@@ -138,6 +143,23 @@ def create_app(catalog, password_hash):
     @app.get('/api/games', dependencies=[Depends(author)])
     def games():
         return invoke(catalog.list)
+
+    @app.get('/api/server', dependencies=[Depends(author)])
+    def server_status():
+        try:
+            return request_control('status')
+        except (ControlUnavailable, ControlError):
+            return dict(available=False, version=version_info(),
+                        message='Управление сервером доступно после установки службы rat-race-control на Linux-сервере.')
+
+    @app.post('/api/server/action', dependencies=[Depends(author)], status_code=202)
+    def server_action(body: ServerAction):
+        try:
+            return request_control(body.action)
+        except ControlUnavailable:
+            raise HTTPException(503, 'Служба управления сервером недоступна.') from None
+        except ControlError as error:
+            raise HTTPException(409, str(error)) from None
 
     @app.post('/api/games', dependencies=[Depends(author)])
     def create(body: NewGame):
